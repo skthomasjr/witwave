@@ -28,7 +28,6 @@ sys.path.insert(0, str(_SHARED))
 
 import server  # type: ignore  # noqa: E402
 
-
 # ----- _reject_flag_like (argv flag injection, #693) -----
 
 
@@ -64,10 +63,20 @@ def test_reject_flag_like_rejects_non_string(bad):
 # ----- _looks_like_secret_key + _redact_values (#774) -----
 
 
-@pytest.mark.parametrize("key", [
-    "password", "Password", "PASSWORD", "api_key", "apiKey",
-    "authToken", "secret", "pullSecret", "tls.crt", # tls.crt doesn't match — sanity
-])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "password",
+        "Password",
+        "PASSWORD",
+        "api_key",
+        "apiKey",
+        "authToken",
+        "secret",
+        "pullSecret",
+        "tls.crt",  # tls.crt doesn't match — sanity
+    ],
+)
 def test_looks_like_secret_key_matches(key):
     # Every key above either matches or intentionally doesn't (tls.crt).
     looks = server._looks_like_secret_key(key)
@@ -108,8 +117,7 @@ def test_redact_values_masks_secret_valued_keys():
     assert out["nested"]["credentials"]["username"] == "u"
 
 
-def test_redact_values_preserves_non_secret_siblings_under_matched_container(
-):
+def test_redact_values_preserves_non_secret_siblings_under_matched_container():
     """When the parent key matches a hint (``auth``) but the container
     mixes sensitive and benign children (``url``, ``method``), the
     benign siblings must survive — otherwise operators are forced into
@@ -172,11 +180,13 @@ def test_write_values_unlinks_temp_on_dump_failure(monkeypatch):
     don't leak orphan /tmp/helm-values-*.yaml files across runs (#698).
     Exercises the cleanup path by dumping an object yaml refuses to
     serialize."""
+
     class Unserialisable:
         pass
 
     # Capture the tempfile path by spying on mkstemp.
     from tempfile import mkstemp as real_mkstemp
+
     captured: dict = {}
 
     def spy_mkstemp(**kw):
@@ -191,9 +201,7 @@ def test_write_values_unlinks_temp_on_dump_failure(monkeypatch):
 
     # The cleanup branch must have removed the tempfile.
     assert "path" in captured
-    assert not os.path.exists(captured["path"]), (
-        "temp file must be unlinked when yaml.safe_dump raises"
-    )
+    assert not os.path.exists(captured["path"]), "temp file must be unlinked when yaml.safe_dump raises"
 
 
 # ----- install/upgrade timeout argv guard (#1027) -----
@@ -229,9 +237,7 @@ def test_redact_diff_does_not_reset_on_pem_dash_prefix():
     out = server._redact_diff(diff_text)
     # The secret value for other.key must be redacted — previously the
     # PEM header reset state and this line emitted in the clear.
-    assert "s3cret" not in out, (
-        "_redact_diff must keep state across PEM-looking lines (#1028)"
-    )
+    assert "s3cret" not in out, "_redact_diff must keep state across PEM-looking lines (#1028)"
     assert server._REDACTED in out
 
 
@@ -241,13 +247,7 @@ def test_redact_diff_blank_line_between_data_leaves_preserves_redaction():
     (#1031). The bug was the inverse: the un-indented-non-blank exit
     path dropped the map prematurely on mixed diffs. Verify blank
     lines inside the data map do not leak subsequent leaves."""
-    diff_text = (
-        " kind: Secret\n"
-        " data:\n"
-        "   k1: dmFsMQ==\n"
-        "\n"
-        "   k2: dmFsMg==\n"
-    )
+    diff_text = " kind: Secret\n" " data:\n" "   k1: dmFsMQ==\n" "\n" "   k2: dmFsMg==\n"
     out = server._redact_diff(diff_text)
     assert "dmFsMQ==" not in out
     assert "dmFsMg==" not in out
@@ -257,13 +257,7 @@ def test_redact_diff_still_resets_on_standalone_doc_separator():
     """The exact ``---`` separator must still reset state so a Secret
     in doc N doesn't suppress a non-Secret leaf in doc N+1."""
     diff_text = (
-        " kind: Secret\n"
-        " data:\n"
-        "   pw: c2hoaA==\n"
-        "---\n"
-        " kind: ConfigMap\n"
-        " data:\n"
-        "   color: blue\n"
+        " kind: Secret\n" " data:\n" "   pw: c2hoaA==\n" "---\n" " kind: ConfigMap\n" " data:\n" "   color: blue\n"
     )
     out = server._redact_diff(diff_text)
     # pw is redacted, but color is left alone after the doc separator.
@@ -334,15 +328,12 @@ def test_diff_redactor_failure_path_uses_log_binding():
     # Guard against a regression that re-introduces an undefined `logger`
     # name. `logger` must NOT exist at module scope — if it does,
     # somebody may have papered over the bug by aliasing it.
-    assert not hasattr(server, "logger"), (
-        "server.logger must not exist; use server.log (see #1026)"
-    )
+    assert not hasattr(server, "logger"), "server.logger must not exist; use server.log (see #1026)"
     import inspect
+
     src = inspect.getsource(server.diff.fn) if hasattr(server.diff, "fn") else ""
     if src:
-        assert "logger.warning" not in src, (
-            "diff() must not reference undefined logger.warning (#1026)"
-        )
+        assert "logger.warning" not in src, "diff() must not reference undefined logger.warning (#1026)"
 
 
 # ----- diff_manifest (#1127) -----
@@ -368,9 +359,7 @@ def test_helm_subprocess_duration_seconds_is_registered():
     # Histogram exposed so prom_client's default registry collects it.
     assert server.helm_subprocess_duration_seconds is not None
     # Label schema is (command, outcome).
-    sample = server.helm_subprocess_duration_seconds.labels(
-        command="list", outcome="ok"
-    )
+    sample = server.helm_subprocess_duration_seconds.labels(command="list", outcome="ok")
     assert sample is not None
 
 
@@ -378,17 +367,18 @@ def test_helm_subprocess_duration_seconds_is_registered():
 
 
 def test_audit_redacts_values_and_writes_jsonl(tmp_path, monkeypatch):
-    import mcp_audit
     import json as _json
+
+    import mcp_audit
 
     log_path = tmp_path / "audit.jsonl"
     monkeypatch.setenv("MCP_AUDIT_LOG_PATH", str(log_path))
     monkeypatch.setenv("AGENT_NAME", "iris-test")
 
     mcp_audit.audit(
-        "mcp-helm", "install",
-        args={"name": "demo", "namespace": "ns",
-              "values": {"db": {"password": "sekret"}}},
+        "mcp-helm",
+        "install",
+        args={"name": "demo", "namespace": "ns", "values": {"db": {"password": "sekret"}}},
         dry_run=False,
     )
     assert log_path.exists()
@@ -525,6 +515,7 @@ def test_values_to_yaml_returns_none_for_empty():
 
 def test_values_to_yaml_round_trips():
     import yaml as _yaml
+
     rendered = server._values_to_yaml({"a": 1, "nested": {"b": "two"}})
     assert rendered is not None
     parsed = _yaml.safe_load(rendered)
@@ -741,11 +732,7 @@ def test_diff_repo_accepts_https(_stub_helm):
 
 def test_redact_error_text_masks_stdin_string_leaves():
     """Stdin-delivered values should be masked in stderr/stdout text."""
-    stdin_payload = (
-        "postgres:\n"
-        "  password: hunter2-special\n"
-        "  user: app\n"
-    )
+    stdin_payload = "postgres:\n" "  password: hunter2-special\n" "  user: app\n"
     body = "Error: invalid value 'hunter2-special' rendered in template"
     out = server._redact_helm_error_text(body, [], stdin_payload)
     assert "hunter2-special" not in out
@@ -758,7 +745,7 @@ def test_redact_error_text_skips_short_or_pure_alpha_stdin_leaves():
     stdin_payload = (
         "postgres:\n"
         "  user: alice\n"  # pure alpha — skip
-        "  port: 5432\n"   # YAML int — skip
+        "  port: 5432\n"  # YAML int — skip
         "  enabled: true\n"  # bool — skip
     )
     body = "alice connected to chart on port 5432 with enabled=true"
@@ -780,10 +767,7 @@ def test_redact_error_text_handles_nested_dicts_and_lists():
         "  nested:\n"
         "    api_key: deadbeef-cafe-1234-5678\n"
     )
-    body = (
-        "echoed: my-secret-token-1 and my-secret-token-2 plus "
-        "deadbeef-cafe-1234-5678 in error"
-    )
+    body = "echoed: my-secret-token-1 and my-secret-token-2 plus " "deadbeef-cafe-1234-5678 in error"
     out = server._redact_helm_error_text(body, [], stdin_payload)
     assert "my-secret-token-1" not in out
     assert "my-secret-token-2" not in out

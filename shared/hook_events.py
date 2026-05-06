@@ -133,7 +133,8 @@ _INFLIGHT: set[asyncio.Task] = set()
 # run_coroutine_threadsafe; track those Futures here so the inflight
 # cap governs them too.
 import concurrent.futures as _cf_mod
-_INFLIGHT_CF: "set[_cf_mod.Future[Any]]" = set()
+
+_INFLIGHT_CF: set[_cf_mod.Future[Any]] = set()
 
 # One-shot INFO flag for the URL-unset path in ``schedule_event_post``
 # (#1143). Logged at INFO (not WARN) because an empty URL is a
@@ -153,7 +154,7 @@ _warned_url_unset: bool = False
 # worker-thread caller (``asyncio.get_running_loop()`` raises) it
 # falls back to :func:`asyncio.run_coroutine_threadsafe` against this
 # reference so the coroutine still lands on the backend's main loop.
-_bound_loop: "asyncio.AbstractEventLoop | None" = None
+_bound_loop: asyncio.AbstractEventLoop | None = None
 # #1362: one-shot WARN when threadsafe dispatch path is reached but
 # bind_event_loop was never called — otherwise trace.span silently drops.
 _NO_LOOP_WARNED: bool = False
@@ -168,7 +169,7 @@ def _build_iso_ts() -> str:
     )
 
 
-def bind_event_loop(loop: "asyncio.AbstractEventLoop") -> None:
+def bind_event_loop(loop: asyncio.AbstractEventLoop) -> None:
     """Remember *loop* as the target for cross-thread schedule calls (#1144).
 
     Idempotent; last caller wins. Called once during each backend's
@@ -547,7 +548,7 @@ def schedule_event_post(
                     # keyed by id; cleaned up via add_done_callback.
                     _INFLIGHT_CF.add(cf)
 
-                    def _done_cb(_fut: "concurrent.futures.Future[Any]") -> None:
+                    def _done_cb(_fut: concurrent.futures.Future[Any]) -> None:
                         # #1580: mutate _INFLIGHT_CF under _inflight_lock so
                         # the cap check (which reads len() under the same
                         # lock) can't race the discard and over-admit or

@@ -1,4 +1,5 @@
 """Playwright-backed AsyncComputer implementation for ComputerTool."""
+
 import asyncio
 import base64
 import contextlib
@@ -19,13 +20,9 @@ logger = logging.getLogger(__name__)
 #   COMPUTER_MAX_CONTEXTS (32) — hard cap on concurrent live contexts;
 #     ``acquire`` evicts the oldest-idle entry on overflow.
 #   BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS (60s) — sweeper cadence.
-BROWSER_CONTEXT_MAX_IDLE_SECONDS = float(
-    os.environ.get("BROWSER_CONTEXT_MAX_IDLE_SECONDS", "600")
-)
+BROWSER_CONTEXT_MAX_IDLE_SECONDS = float(os.environ.get("BROWSER_CONTEXT_MAX_IDLE_SECONDS", "600"))
 COMPUTER_MAX_CONTEXTS = int(os.environ.get("COMPUTER_MAX_CONTEXTS", "32"))
-BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS = float(
-    os.environ.get("BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS", "60")
-)
+BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS = float(os.environ.get("BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS", "60"))
 
 # #1619: Chromium sandbox posture is opt-out-of-sandbox, not the historical
 # always-disabled. The previous unconditional ``--no-sandbox`` +
@@ -39,9 +36,7 @@ BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS = float(
 # ``--disable-dev-shm-usage`` stays on unconditionally — it is a memory
 # workaround for tiny ``/dev/shm`` mounts in containers, not a security
 # toggle.
-_CHROMIUM_SANDBOX_DISABLED = os.environ.get(
-    "CHROMIUM_SANDBOX_DISABLED", "false"
-).lower() in ("true", "1", "yes")
+_CHROMIUM_SANDBOX_DISABLED = os.environ.get("CHROMIUM_SANDBOX_DISABLED", "false").lower() in ("true", "1", "yes")
 
 
 def _chromium_launch_args() -> list[str]:
@@ -133,11 +128,14 @@ class PlaywrightComputer(AsyncComputer):
                 self._page = await self._context.new_page()
                 logger.info(
                     "Playwright per-session context opened for session %r (%dx%d)",
-                    self._session_id, self._width, self._height,
+                    self._session_id,
+                    self._width,
+                    self._height,
                 )
                 return
             # Stand-alone: launch an independent browser process.
             from playwright.async_api import async_playwright
+
             try:
                 self._playwright = await async_playwright().start()
                 self._browser = await self._playwright.chromium.launch(
@@ -284,6 +282,7 @@ class BrowserPool:
             if self._browser is not None:
                 return self._browser
             from playwright.async_api import async_playwright
+
             try:
                 self._playwright = await async_playwright().start()
                 self._browser = await self._playwright.chromium.launch(
@@ -292,7 +291,8 @@ class BrowserPool:
                 )
                 logger.info(
                     "Playwright shared browser started (%dx%d) for per-session contexts",
-                    self._width, self._height,
+                    self._width,
+                    self._height,
                 )
                 return self._browser
             except Exception:
@@ -355,13 +355,16 @@ class BrowserPool:
         for sid, comp in evicted:
             logger.info(
                 "BrowserPool evicting session %r to honour COMPUTER_MAX_CONTEXTS=%d",
-                sid, COMPUTER_MAX_CONTEXTS,
+                sid,
+                COMPUTER_MAX_CONTEXTS,
             )
             try:
                 await comp.close()
             except Exception as _e:
                 logger.warning(
-                    "Failed to close evicted PlaywrightComputer for %r: %s", sid, _e,
+                    "Failed to close evicted PlaywrightComputer for %r: %s",
+                    sid,
+                    _e,
                 )
         # Start sweeper lazily on first acquire so unused pools don't
         # spawn a dangling task.
@@ -400,14 +403,16 @@ class BrowserPool:
                 for sid, comp in stale:
                     logger.info(
                         "BrowserPool idle-release session %r (idle > %.0fs)",
-                        sid, BROWSER_CONTEXT_MAX_IDLE_SECONDS,
+                        sid,
+                        BROWSER_CONTEXT_MAX_IDLE_SECONDS,
                     )
                     try:
                         await comp.close()
                     except Exception as _e:
                         logger.warning(
                             "Failed to close idle PlaywrightComputer for %r: %s",
-                            sid, _e,
+                            sid,
+                            _e,
                         )
         except asyncio.CancelledError:
             raise
@@ -429,7 +434,8 @@ class BrowserPool:
         except Exception as _e:
             logger.warning(
                 "Failed to close per-session PlaywrightComputer for %r: %s",
-                session_id, _e,
+                session_id,
+                _e,
             )
 
     async def close(self) -> None:
@@ -463,7 +469,8 @@ class BrowserPool:
             except Exception as _e:
                 logger.warning(
                     "Failed to close per-session PlaywrightComputer for %r on shutdown: %s",
-                    session_id, _e,
+                    session_id,
+                    _e,
                 )
         async with self._browser_lock:
             if self._browser is not None:

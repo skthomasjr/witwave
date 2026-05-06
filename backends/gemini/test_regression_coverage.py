@@ -18,6 +18,7 @@ Targets the historical bug surfaces called out in the issue:
 All tests use the same sys.path / stub setup the sibling
 ``test_mcp_lifespan.py`` does.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -169,11 +170,13 @@ types_mod = sys.modules["google.genai.types"]
 # stub wins and lacks model_dump. Ensure the attribute exists so
 # _save_history can serialise parts regardless of which file ran first.
 if not hasattr(types_mod.Part, "model_dump"):
+
     def _part_model_dump(self, exclude_none=False):
         d = dict(self.__dict__)
         if exclude_none:
             d = {k: v for k, v in d.items() if v is not None}
         return d
+
     types_mod.Part.model_dump = _part_model_dump  # type: ignore[attr-defined]
 
 
@@ -231,8 +234,7 @@ class SaveHistoryCutPointTests(unittest.TestCase):
             _user_text("t2"),
             _model_text("a2"),
         ]
-        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 2), \
-             patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", 0):
+        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 2), patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", 0):
             asyncio.run(executor._save_history(sid, history))
 
         with open(self._session_path(sid)) as fh:
@@ -268,8 +270,9 @@ class SaveHistoryCutPointTests(unittest.TestCase):
         # Cap small enough that the force-split must drop entries and
         # large enough that a single AFC pair (~4 KiB serialised) fits.
         cap = 16 * 1024
-        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 0), \
-             patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", cap):
+        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 0), patch.object(
+            executor, "_SAVE_HISTORY_MAX_BYTES", cap
+        ):
             asyncio.run(executor._save_history(sid, history))
 
         path = self._session_path(sid)
@@ -298,8 +301,7 @@ class SaveHistoryCutPointTests(unittest.TestCase):
             _fc("slow"),
             _fr("slow", {"out": "ok"}),
         ]
-        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 1), \
-             patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", 0):
+        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 1), patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", 0):
             asyncio.run(executor._save_history(sid, history))
 
         with open(self._session_path(sid)) as fh:
@@ -335,16 +337,25 @@ class EmitAfcHistoryTests(unittest.TestCase):
 
     def test_empty_history_is_noop(self):
         # Must not raise; no rows to emit, no pairing work.
-        asyncio.run(executor._emit_afc_history(
-            [], session_id="sid-empty", model="gemini-1.5",
-        ))
+        asyncio.run(
+            executor._emit_afc_history(
+                [],
+                session_id="sid-empty",
+                model="gemini-1.5",
+            )
+        )
 
     def test_prefix_only_history_is_noop(self):
         # A prefix without a current slice must still short-circuit.
         prefix = [_fc("echo")]
-        asyncio.run(executor._emit_afc_history(
-            [], session_id="sid-prefix", model="gemini-1.5", prefix_history=prefix,
-        ))
+        asyncio.run(
+            executor._emit_afc_history(
+                [],
+                session_id="sid-prefix",
+                model="gemini-1.5",
+                prefix_history=prefix,
+            )
+        )
 
     def test_prefix_paired_fr_skips_duration_histogram(self):
         """#1727: when a current-slice function_response pairs with a
@@ -364,30 +375,37 @@ class EmitAfcHistoryTests(unittest.TestCase):
         class _DurFake:
             def labels(self, **_kw):
                 return self
+
             def observe(self, v):
                 observed_durations.append(v)
 
         class _CallsFake:
             def labels(self, **_kw):
                 return self
+
             def inc(self):
                 observed_calls.append(1)
 
-        with patch.object(executor, "backend_sdk_tool_duration_seconds", _DurFake()), \
-             patch.object(executor, "backend_sdk_tool_calls_total", _CallsFake()):
-            asyncio.run(executor._emit_afc_history(
-                current,
-                session_id="sid-prefix-pair",
-                model="gemini-1.5",
-                prefix_history=prefix,
-            ))
+        with patch.object(executor, "backend_sdk_tool_duration_seconds", _DurFake()), patch.object(
+            executor, "backend_sdk_tool_calls_total", _CallsFake()
+        ):
+            asyncio.run(
+                executor._emit_afc_history(
+                    current,
+                    session_id="sid-prefix-pair",
+                    model="gemini-1.5",
+                    prefix_history=prefix,
+                )
+            )
 
         self.assertEqual(
-            observed_durations, [],
+            observed_durations,
+            [],
             "duration histogram must not observe samples for prefix-paired AFC fr (#1727)",
         )
         self.assertEqual(
-            len(observed_calls), 1,
+            len(observed_calls),
+            1,
             "tool-call counter should still fire so audit/counts stay correct",
         )
 
@@ -409,9 +427,9 @@ class WriterDoneEventRaceTests(unittest.TestCase):
         def _always_raise(*a, **kw):
             raise OSError("synthetic disk failure")
 
-        with patch.object(executor, "_SAVE_HISTORY_MAX_RETRIES", 2), \
-             patch.object(executor, "_SAVE_HISTORY_BACKOFF_BASE", 0.0), \
-             patch.object(executor, "_write_history_respecting_epoch", _always_raise):
+        with patch.object(executor, "_SAVE_HISTORY_MAX_RETRIES", 2), patch.object(
+            executor, "_SAVE_HISTORY_BACKOFF_BASE", 0.0
+        ), patch.object(executor, "_write_history_respecting_epoch", _always_raise):
             with self.assertRaises(RuntimeError):
                 asyncio.run(executor._save_history(sid, history))
 
@@ -447,6 +465,7 @@ class PreToolUseGateScaffoldTests(unittest.TestCase):
         class _Rule:
             name = "rm-rf-root"
             reason = "destructive"
+
         fake_mod = types.ModuleType("hooks_engine")
         fake_mod.evaluate_pre_tool_use = lambda *a, **kw: ("deny", _Rule())
         sys.modules["hooks_engine"] = fake_mod
@@ -458,8 +477,10 @@ class PreToolUseGateScaffoldTests(unittest.TestCase):
 
     def test_fail_open_on_evaluate_exception(self):
         fake_mod = types.ModuleType("hooks_engine")
+
         def _boom(*a, **kw):
             raise RuntimeError("engine bug")
+
         fake_mod.evaluate_pre_tool_use = _boom
         sys.modules["hooks_engine"] = fake_mod
         try:
@@ -537,8 +558,9 @@ class McpConfigPathPrefixTests(unittest.TestCase):
     def test_mcp_config_path_outside_prefix_is_rejected(self):
         # /etc/passwd exists on every POSIX host, so os.path.exists short-
         # circuit doesn't hide the prefix check we're trying to assert.
-        with patch.object(executor, "MCP_CONFIG_PATH", "/etc/passwd"), \
-             patch.object(executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/"):
+        with patch.object(executor, "MCP_CONFIG_PATH", "/etc/passwd"), patch.object(
+            executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/"
+        ):
             result = executor._load_mcp_config()
         self.assertEqual(result, {})
 
@@ -552,8 +574,9 @@ class McpConfigPathPrefixTests(unittest.TestCase):
             # the production default of /home/agent/ is exercised by the
             # rejection test above.
             allowed = os.path.realpath(tmp) + os.sep
-            with patch.object(executor, "MCP_CONFIG_PATH", cfg_path), \
-                 patch.object(executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", allowed):
+            with patch.object(executor, "MCP_CONFIG_PATH", cfg_path), patch.object(
+                executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", allowed
+            ):
                 result = executor._load_mcp_config()
         self.assertEqual(result, {"k8s": {"url": "http://example/"}})
 
@@ -573,9 +596,7 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
     def test_no_sync_remove_while_save_in_flight(self):
         async def scenario():
             evicted_id = "evict-bp-pending"
-            evicted_path = os.path.join(
-                executor.SESSION_STORE_DIR, f"{evicted_id}.json"
-            )
+            evicted_path = os.path.join(executor.SESSION_STORE_DIR, f"{evicted_id}.json")
             os.makedirs(executor.SESSION_STORE_DIR, exist_ok=True)
             # Materialise the file so a buggy synchronous remove would
             # actually unlink something observable.
@@ -590,6 +611,7 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
             # Build a sessions OrderedDict that's already at MAX_SESSIONS,
             # with our target as the LRU. Adding a brand-new id will evict it.
             from collections import OrderedDict
+
             sessions: OrderedDict[str, float] = OrderedDict()
             # Force the eviction by setting MAX_SESSIONS = 1 for the call.
             sessions[evicted_id] = 0.0
@@ -623,10 +645,11 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
                     removed_calls.append(path)
                     return real_remove(path, *a, **kw)
 
-                with patch.object(executor, "MAX_SESSIONS", 1), \
-                     patch.object(executor.os, "remove", _spy_remove):
+                with patch.object(executor, "MAX_SESSIONS", 1), patch.object(executor.os, "remove", _spy_remove):
                     executor._track_session(
-                        sessions, "fresh-session-id", session_locks,
+                        sessions,
+                        "fresh-session-id",
+                        session_locks,
                     )
 
                     # The backpressure branch must NOT have synchronously
@@ -651,10 +674,7 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
                     # Drain: cycle the loop a few times until the waiter
                     # completes (use wait_for on a copy so we don't hang
                     # on the saturating idlers).
-                    new_tasks = [
-                        t for t in executor._EVICT_REMOVE_TASKS
-                        if t not in saturating
-                    ]
+                    new_tasks = [t for t in executor._EVICT_REMOVE_TASKS if t not in saturating]
                     self.assertEqual(len(new_tasks), 1)
                     await asyncio.wait_for(new_tasks[0], timeout=5.0)
 
@@ -683,11 +703,10 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
         for the evicted session, the backpressure branch is allowed to
         take the synchronous remove fast path — no waiter overhead.
         """
+
         async def scenario():
             evicted_id = "evict-bp-no-pending"
-            evicted_path = os.path.join(
-                executor.SESSION_STORE_DIR, f"{evicted_id}.json"
-            )
+            evicted_path = os.path.join(executor.SESSION_STORE_DIR, f"{evicted_id}.json")
             os.makedirs(executor.SESSION_STORE_DIR, exist_ok=True)
             with open(evicted_path, "w") as fh:
                 fh.write("[]")
@@ -696,6 +715,7 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
             executor._history_write_done.pop(evicted_id, None)
 
             from collections import OrderedDict
+
             sessions: OrderedDict[str, float] = OrderedDict()
             sessions[evicted_id] = 0.0
             session_locks: dict = {}
@@ -719,7 +739,9 @@ class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
 
                 with patch.object(executor, "MAX_SESSIONS", 1):
                     executor._track_session(
-                        sessions, "fresh-session-id-2", session_locks,
+                        sessions,
+                        "fresh-session-id-2",
+                        session_locks,
                     )
 
                 # The fast path ran: file is gone, no new task queued.

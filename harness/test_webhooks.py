@@ -40,7 +40,6 @@ os.environ.pop("WEBHOOK_ALLOW_LOOPBACK_HOSTS", None)
 
 import webhooks  # noqa: E402
 
-
 # ----- _is_retryable_http -----
 
 

@@ -78,8 +78,13 @@ def load_backends_config(raw: dict | None = None) -> list[BackendConfig]:
         with open(BACKEND_CONFIG_PATH) as f:
             raw = yaml.safe_load(f)
 
-    if not isinstance(raw, dict) or "backend" not in raw or not isinstance(raw["backend"], dict) or "agents" not in raw["backend"]:
-        raise ValueError(f"backend.yaml must contain a top-level 'backend' mapping with an 'agents' list.")
+    if (
+        not isinstance(raw, dict)
+        or "backend" not in raw
+        or not isinstance(raw["backend"], dict)
+        or "agents" not in raw["backend"]
+    ):
+        raise ValueError("backend.yaml must contain a top-level 'backend' mapping with an 'agents' list.")
 
     entries = raw["backend"]["agents"]
     if not isinstance(entries, list) or not entries:
@@ -120,6 +125,7 @@ def load_backends_config(raw: dict | None = None) -> list[BackendConfig]:
 @dataclass
 class RoutingEntry:
     """A single routing target: an agent id and an optional model override."""
+
     agent: str
     model: str | None = None
 
@@ -148,6 +154,7 @@ class RoutingConfig:
     Each field is a RoutingEntry (agent id + optional model) or None to fall back
     to the default.
     """
+
     default: Optional[RoutingEntry] = None
     a2a: Optional[RoutingEntry] = None
     heartbeat: Optional[RoutingEntry] = None

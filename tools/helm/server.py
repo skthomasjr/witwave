@@ -29,8 +29,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from mcp.server.fastmcp import FastMCP
 from env import parse_bool_env
+from mcp.server.fastmcp import FastMCP
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported as a
 # top-level module. Falls back to no-op shims if the shared module isn't on
@@ -38,11 +38,11 @@ from env import parse_bool_env
 sys.path.insert(0, "/home/tool/shared")
 try:
     from otel import (  # type: ignore
-        init_otel_if_enabled,
-        start_span,
-        set_span_error,
-        SPAN_KIND_SERVER,
         SPAN_KIND_INTERNAL,
+        SPAN_KIND_SERVER,
+        init_otel_if_enabled,
+        set_span_error,
+        start_span,
     )
 except Exception:  # pragma: no cover - defensive fallback
     SPAN_KIND_SERVER = "server"
@@ -60,6 +60,7 @@ except Exception:  # pragma: no cover - defensive fallback
     def set_span_error(*_a: Any, **_kw: Any) -> None:  # type: ignore
         return None
 
+
 try:
     from mcp_metrics import record_tool_call  # type: ignore
 except Exception:  # pragma: no cover - defensive fallback
@@ -69,11 +70,14 @@ except Exception:  # pragma: no cover - defensive fallback
     def record_tool_call(*_a: Any, **_kw: Any):
         yield None
 
+
 try:
     from mcp_audit import audit as _audit  # type: ignore
 except Exception:  # pragma: no cover - defensive fallback
+
     def _audit(*_a: Any, **_kw: Any) -> None:  # type: ignore
         return None
+
 
 log = logging.getLogger("tools.helm")
 
@@ -122,13 +126,9 @@ _REDACTED = "[REDACTED]"
 _HELM_SET_FLAGS = ("--set", "--set-string", "--set-file", "--set-json")
 
 # `--set foo.bar=secret` (space-separated)
-_HELM_SET_SPACE_RE = re.compile(
-    r"(--set(?:-string|-file|-json)?)(\s+)([^\s=]+)=([^\s]+)"
-)
+_HELM_SET_SPACE_RE = re.compile(r"(--set(?:-string|-file|-json)?)(\s+)([^\s=]+)=([^\s]+)")
 # `--set=foo.bar=secret` (equals-joined)
-_HELM_SET_EQUALS_RE = re.compile(
-    r"(--set(?:-string|-file|-json)?)=([^\s=]+)=([^\s]+)"
-)
+_HELM_SET_EQUALS_RE = re.compile(r"(--set(?:-string|-file|-json)?)=([^\s=]+)=([^\s]+)")
 # Authorization: Bearer <token>
 _BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+")
 # AWS access key IDs
@@ -164,12 +164,8 @@ def _redact_helm_error_text(
     if not text:
         return text
     out = text
-    out = _HELM_SET_SPACE_RE.sub(
-        lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}={_REDACTED}", out
-    )
-    out = _HELM_SET_EQUALS_RE.sub(
-        lambda m: f"{m.group(1)}={m.group(2)}={_REDACTED}", out
-    )
+    out = _HELM_SET_SPACE_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}={_REDACTED}", out)
+    out = _HELM_SET_EQUALS_RE.sub(lambda m: f"{m.group(1)}={m.group(2)}={_REDACTED}", out)
     out = _BEARER_RE.sub(lambda m: f"{m.group(1)}{_REDACTED}", out)
     out = _AWS_AKID_RE.sub(_REDACTED, out)
     out = _BASIC_AUTH_URL_RE.sub(lambda m: f"{m.group(1)}{_REDACTED}@", out)
@@ -191,7 +187,7 @@ def _redact_helm_error_text(
             for flag in _HELM_SET_FLAGS:
                 prefix = flag + "="
                 if tok.startswith(prefix):
-                    rest = tok[len(prefix):]
+                    rest = tok[len(prefix) :]
                     if "=" in rest:
                         value = rest.split("=", 1)[1]
                     break
@@ -206,6 +202,7 @@ def _redact_helm_error_text(
                 # non-alphabetic mix so pure English words are skipped.
                 if len(value) >= 8 and not value.isalpha():
                     import re as _re
+
                     _pat = _re.compile(r"\b" + _re.escape(value) + r"\b")
                     out = _pat.sub(_REDACTED, out)
             i += 1
@@ -241,6 +238,7 @@ def _redact_helm_error_text(
             _walk(parsed)
             if seen:
                 import re as _re_stdin
+
                 # Sort longest-first so a redacted long value isn't
                 # truncated by a shorter substring redaction landing
                 # first; the longest match wins.
@@ -264,9 +262,7 @@ def _redact_helm_error_text(
 # Precedence: HELM_SUBPROCESS_TIMEOUT_SECONDS > MCP_SUBPROCESS_TIMEOUT_SEC
 # > 300s default.
 _HELM_SUBPROCESS_TIMEOUT_SECONDS = float(
-    os.environ.get("HELM_SUBPROCESS_TIMEOUT_SECONDS")
-    or os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC")
-    or "300"
+    os.environ.get("HELM_SUBPROCESS_TIMEOUT_SECONDS") or os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "300"
 )
 
 # Per-response byte cap on tool output (#778). Defends against a stuck
@@ -274,9 +270,7 @@ _HELM_SUBPROCESS_TIMEOUT_SECONDS = float(
 # renders an enormous manifest: every string/JSON payload returned by
 # a query tool is truncated to this many bytes before being handed
 # back to the MCP client. 0 or negative disables the cap.
-_MCP_RESPONSE_MAX_BYTES = int(
-    os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024)
-)
+_MCP_RESPONSE_MAX_BYTES = int(os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024))
 
 
 def _truncate_text(value: str, *, tool: str) -> str:
@@ -354,6 +348,7 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
         ),
     }
 
+
 # Prometheus counter for process-level timeouts (#857). Guarded so the server
 # still runs on machines without prometheus_client installed.
 try:
@@ -361,8 +356,7 @@ try:
 
     mcp_subprocess_timeouts_total = _prom.Counter(
         "mcp_subprocess_timeouts_total",
-        "Total helm CLI subprocess invocations killed because they "
-        "exceeded HELM_SUBPROCESS_TIMEOUT_SECONDS (#857).",
+        "Total helm CLI subprocess invocations killed because they " "exceeded HELM_SUBPROCESS_TIMEOUT_SECONDS (#857).",
         ["tool", "command"],
     )
     # Inner-work histogram for helm-CLI latency (#1126). Distinct from
@@ -375,7 +369,18 @@ try:
         "Wall-clock duration of a helm CLI invocation (subprocess).",
         ["command", "outcome"],
         buckets=(
-            0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            1.0,
+            2.5,
+            5.0,
+            10.0,
+            30.0,
+            60.0,
+            120.0,
+            300.0,
         ),
     )
 except Exception:  # pragma: no cover - metrics disabled
@@ -383,41 +388,77 @@ except Exception:  # pragma: no cover - metrics disabled
     helm_subprocess_duration_seconds = None  # type: ignore
 
 
-_ENV_ALLOWLIST = frozenset({
-    # Path + runtime basics
-    "PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TZ",
-    "HOSTNAME", "TMPDIR",
-    # Helm-owned
-    "HELM_CACHE_HOME", "HELM_CONFIG_HOME", "HELM_DATA_HOME",
-    "HELM_DEBUG", "HELM_DRIVER", "HELM_DRIVER_SQL_CONNECTION_STRING",
-    "HELM_KUBEAPISERVER", "HELM_KUBEASUSER", "HELM_KUBECAFILE",
-    "HELM_KUBECONTEXT", "HELM_KUBETOKEN", "HELM_MAX_HISTORY",
-    "HELM_NAMESPACE", "HELM_NO_PLUGINS", "HELM_PLUGINS",
-    "HELM_REGISTRY_CONFIG", "HELM_REPOSITORY_CACHE",
-    "HELM_REPOSITORY_CONFIG", "HELM_ROOT",
-    # Kubernetes config
-    "KUBECONFIG",
-    # OTel — allowed so helm's outbound telemetry (if any) is traceable
-    "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME",
-    # #1421: proxy config — required for helm behind corporate proxies
-    # to reach chart repos. Stripping these silently breaks enterprise
-    # deployments.
-    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
-    "http_proxy", "https_proxy", "no_proxy",
-    # #1421: cloud-provider exec-plugin credentials (BYO-kubeconfig
-    # using AWS EKS / GCP GKE / Azure AKS auth plugins). Stripping
-    # these makes kubectl/helm silently fail auth on cloud clusters.
-    "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE",
-    "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME",
-    "AWS_WEB_IDENTITY_TOKEN_FILE",
-    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-    "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE",
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "CLOUDSDK_CORE_PROJECT", "CLOUDSDK_COMPUTE_ZONE",
-    "CLOUDSDK_COMPUTE_REGION", "CLOUDSDK_CONFIG",
-    "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET",
-    "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID",
-})
+_ENV_ALLOWLIST = frozenset(
+    {
+        # Path + runtime basics
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "LANG",
+        "LC_ALL",
+        "TZ",
+        "HOSTNAME",
+        "TMPDIR",
+        # Helm-owned
+        "HELM_CACHE_HOME",
+        "HELM_CONFIG_HOME",
+        "HELM_DATA_HOME",
+        "HELM_DEBUG",
+        "HELM_DRIVER",
+        "HELM_DRIVER_SQL_CONNECTION_STRING",
+        "HELM_KUBEAPISERVER",
+        "HELM_KUBEASUSER",
+        "HELM_KUBECAFILE",
+        "HELM_KUBECONTEXT",
+        "HELM_KUBETOKEN",
+        "HELM_MAX_HISTORY",
+        "HELM_NAMESPACE",
+        "HELM_NO_PLUGINS",
+        "HELM_PLUGINS",
+        "HELM_REGISTRY_CONFIG",
+        "HELM_REPOSITORY_CACHE",
+        "HELM_REPOSITORY_CONFIG",
+        "HELM_ROOT",
+        # Kubernetes config
+        "KUBECONFIG",
+        # OTel — allowed so helm's outbound telemetry (if any) is traceable
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_SERVICE_NAME",
+        # #1421: proxy config — required for helm behind corporate proxies
+        # to reach chart repos. Stripping these silently breaks enterprise
+        # deployments.
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        # #1421: cloud-provider exec-plugin credentials (BYO-kubeconfig
+        # using AWS EKS / GCP GKE / Azure AKS auth plugins). Stripping
+        # these makes kubectl/helm silently fail auth on cloud clusters.
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_PROFILE",
+        "AWS_ROLE_ARN",
+        "AWS_ROLE_SESSION_NAME",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "AWS_CONFIG_FILE",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "CLOUDSDK_CORE_PROJECT",
+        "CLOUDSDK_COMPUTE_ZONE",
+        "CLOUDSDK_COMPUTE_REGION",
+        "CLOUDSDK_CONFIG",
+        "AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET",
+        "AZURE_TENANT_ID",
+        "AZURE_SUBSCRIPTION_ID",
+    }
+)
 
 
 def _filtered_env() -> dict[str, str]:
@@ -442,6 +483,7 @@ def _helm(
     # outer mcp.handler span, so operators can attribute time spent in the
     # CLI vs. in-process work.
     import time as _t  # local import to keep top-of-file clean
+
     _subp_start = _t.monotonic()
     _subp_outcome = "ok"
     with start_span(
@@ -472,6 +514,7 @@ def _helm(
                 env=_filtered_env(),
             )
             import threading as _threading
+
             _stdout_buf = bytearray()
             _stderr_buf = bytearray()
             _stdout_truncated = [False]
@@ -496,11 +539,13 @@ def _helm(
                     pass
 
             t_out = _threading.Thread(
-                target=_drain, args=(proc.stdout, _stdout_buf, _stdout_truncated),
+                target=_drain,
+                args=(proc.stdout, _stdout_buf, _stdout_truncated),
                 daemon=True,
             )
             t_err = _threading.Thread(
-                target=_drain, args=(proc.stderr, _stderr_buf, _stderr_truncated),
+                target=_drain,
+                args=(proc.stderr, _stderr_buf, _stderr_truncated),
                 daemon=True,
             )
             t_out.start()
@@ -536,7 +581,8 @@ def _helm(
                         "helm subprocess drain threads outlived handler "
                         "(stdout_alive=%s stderr_alive=%s); pipe FDs held "
                         "until process exit. (#1365)",
-                        t_out.is_alive(), t_err.is_alive(),
+                        t_out.is_alive(),
+                        t_err.is_alive(),
                     )
 
             # If either stream was truncated, kill the process so we
@@ -565,14 +611,10 @@ def _helm(
                 # rendered values from --values -; without redaction those
                 # values land in caller-visible errors and downstream logs.
                 safe_args = _redact_helm_error_text(" ".join(args), args, stdin)
-                safe_body = _redact_helm_error_text(
-                    (stderr_text or stdout_text).strip(), args, stdin
-                )
+                safe_body = _redact_helm_error_text((stderr_text or stdout_text).strip(), args, stdin)
                 err = HelmError(
                     f"helm {safe_args} exited {returncode}: "
-                    f"{safe_body}"
-                    + (f" (output truncated at {_subp_cap} bytes, #1204)"
-                       if truncated else "")
+                    f"{safe_body}" + (f" (output truncated at {_subp_cap} bytes, #1204)" if truncated else "")
                 )
                 set_span_error(_exec_span, err)
                 _subp_outcome = "error"
@@ -594,8 +636,7 @@ def _helm(
                 return json.loads(out) if out else None
             if truncated:
                 stdout_text += (
-                    f"\n\n# [mcp-helm] subprocess output truncated at "
-                    f"{_subp_cap} bytes (#1204); process killed."
+                    f"\n\n# [mcp-helm] subprocess output truncated at " f"{_subp_cap} bytes (#1204); process killed."
                 )
             return stdout_text
         except subprocess.TimeoutExpired as exc:
@@ -625,7 +666,8 @@ def _helm(
                     "helm subprocess drain threads outlived timeout handler "
                     "(stdout_alive=%s stderr_alive=%s); pipe FDs held "
                     "until process exit. (#1516)",
-                    t_out.is_alive(), t_err.is_alive(),
+                    t_out.is_alive(),
+                    t_err.is_alive(),
                 )
             _subp_outcome = "timeout"
             # subprocess.run has already killed the child and reaped it by
@@ -634,7 +676,8 @@ def _helm(
             if mcp_subprocess_timeouts_total is not None:
                 try:
                     mcp_subprocess_timeouts_total.labels(
-                        tool="helm", command=(args[0] if args else ""),
+                        tool="helm",
+                        command=(args[0] if args else ""),
                     ).inc()
                 except Exception:
                     pass
@@ -662,7 +705,8 @@ def _helm(
             if helm_subprocess_duration_seconds is not None:
                 try:
                     helm_subprocess_duration_seconds.labels(
-                        command=command, outcome=_subp_outcome,
+                        command=command,
+                        outcome=_subp_outcome,
                     ).observe(_t.monotonic() - _subp_start)
                 except Exception:
                     pass
@@ -708,9 +752,7 @@ _HELM_VALUES_DIR = os.environ.get("HELM_VALUES_TMPDIR") or None
 def _write_values(values: dict | None) -> Path | None:
     if not values:
         return None
-    fd, path = tempfile.mkstemp(
-        suffix=".yaml", prefix=_HELM_VALUES_PREFIX, dir=_HELM_VALUES_DIR
-    )
+    fd, path = tempfile.mkstemp(suffix=".yaml", prefix=_HELM_VALUES_PREFIX, dir=_HELM_VALUES_DIR)
     try:
         with os.fdopen(fd, "w") as f:
             yaml.safe_dump(values, f)
@@ -739,6 +781,7 @@ def _sweep_orphan_values_files(max_age_seconds: int = 3600) -> int:
     best-effort cleanup, not a correctness gate.
     """
     import time as _time
+
     removed = 0
     directory = _HELM_VALUES_DIR or tempfile.gettempdir()
     try:
@@ -787,25 +830,17 @@ def _reject_flag_like(**named: str | None) -> None:
         if value is None or value == "":
             continue
         if not isinstance(value, str):
-            raise ValueError(
-                f"helm: {label!r} must be a string (got {type(value).__name__})"
-            )
+            raise ValueError(f"helm: {label!r} must be a string (got {type(value).__name__})")
         if value.startswith("-"):
-            raise ValueError(
-                f"helm: {label!r} must not start with '-' (got {value!r})"
-            )
+            raise ValueError(f"helm: {label!r} must not start with '-' (got {value!r})")
         # #1206: control / whitespace / non-printable characters.
         for _bad in ("\n", "\r", "\t", "\0"):
             if _bad in value:
                 raise ValueError(
-                    f"helm: {label!r} must not contain control characters "
-                    f"(newline/CR/tab/NUL) (got {value!r})"
+                    f"helm: {label!r} must not contain control characters " f"(newline/CR/tab/NUL) (got {value!r})"
                 )
         if not value.isprintable():
-            raise ValueError(
-                f"helm: {label!r} must contain only printable characters "
-                f"(got {value!r})"
-            )
+            raise ValueError(f"helm: {label!r} must contain only printable characters " f"(got {value!r})")
 
 
 def _validate_repo_url(url: str) -> None:
@@ -831,15 +866,9 @@ def _validate_repo_url(url: str) -> None:
 
     parsed = _urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise HelmError(
-            f"helm: 'repo' URL scheme must be http or https (got "
-            f"{parsed.scheme!r}). See #1638."
-        )
+        raise HelmError(f"helm: 'repo' URL scheme must be http or https (got " f"{parsed.scheme!r}). See #1638.")
     if not parsed.hostname:
-        raise HelmError(
-            f"helm: 'repo' URL must have a hostname (got {url!r}). "
-            "See #1638."
-        )
+        raise HelmError(f"helm: 'repo' URL must have a hostname (got {url!r}). " "See #1638.")
 
 
 # Key substrings that mark a values-tree leaf as likely secret material
@@ -867,9 +896,9 @@ _SECRET_KEY_HINTS = (
 # rather than credential leaves (#920). Suppressing these preserves useful
 # diff/values output while keeping actual credential leaves redacted.
 _SECRET_KEY_FALSE_POSITIVES = (
-    "authmode",        # Helm/Grafana: auth backend mode string
-    "authtype",        # generic: type of auth, not a credential
-    "authmethod",      # same — method name, not a credential
+    "authmode",  # Helm/Grafana: auth backend mode string
+    "authtype",  # generic: type of auth, not a credential
+    "authmethod",  # same — method name, not a credential
     "authdomain",
     "authhost",
     "authurl",
@@ -878,12 +907,12 @@ _SECRET_KEY_FALSE_POSITIVES = (
     "authaudience",
     "authprovider",
     "authclass",
-    "secretkeyref",    # k8s: reference to a Secret, not a secret value
-    "secretref",       # k8s: reference
-    "secretname",      # k8s: name of a Secret, not its contents
-    "tokenaudience",   # OIDC audience claim, not a token
-    "tokenurl",        # OAuth token-endpoint URL
-    "tokenpath",       # Vault-agent config path
+    "secretkeyref",  # k8s: reference to a Secret, not a secret value
+    "secretref",  # k8s: reference
+    "secretname",  # k8s: name of a Secret, not its contents
+    "tokenaudience",  # OIDC audience claim, not a token
+    "tokenurl",  # OAuth token-endpoint URL
+    "tokenpath",  # Vault-agent config path
     "tokenexpiry",
     "tokenlifetime",
     "tokenissuer",
@@ -1029,14 +1058,12 @@ def _redact_diff(diff_text: str) -> str:
         # YAML parse, so the whole body is masked.
         _head_match = None
         for _hd in ("data:", "stringData:"):
-            if stripped.startswith(_hd) and stripped[len(_hd):].lstrip().startswith("{"):
+            if stripped.startswith(_hd) and stripped[len(_hd) :].lstrip().startswith("{"):
                 _head_match = _hd
                 break
         if _head_match is not None:
             indent = len(content) - len(content.lstrip())
-            out_lines.append(
-                f"{prefix}{' ' * indent}{_head_match} {{{_REDACTED}}}"
-            )
+            out_lines.append(f"{prefix}{' ' * indent}{_head_match} {{{_REDACTED}}}")
             # Keep in_data_map false — the payload is on the same line and
             # nothing further is "inside" the map.
             continue
@@ -1064,9 +1091,7 @@ def _redact_diff(diff_text: str) -> str:
                 # to a single redacted leaf.
                 if ":" in stripped:
                     key, _, _value = content[indent:].partition(":")
-                    out_lines.append(
-                        f"{prefix}{' ' * indent}{key}: {_REDACTED}"
-                    )
+                    out_lines.append(f"{prefix}{' ' * indent}{key}: {_REDACTED}")
                 else:
                     out_lines.append(f"{prefix}{' ' * indent}{_REDACTED}")
                 continue
@@ -1134,9 +1159,7 @@ def list_releases(namespace: str | None = None, all_namespaces: bool = False) ->
         {"helm.namespace": namespace, "helm.all_namespaces": all_namespaces},
     ) as _h:
         try:
-            result = _helm(
-                ["list", "-o", "json", *_ns_args(namespace, all_namespaces)], parse_json=True
-            ) or []
+            result = _helm(["list", "-o", "json", *_ns_args(namespace, all_namespaces)], parse_json=True) or []
             return _truncate_json(result, tool="list_releases")
         except Exception as exc:
             set_span_error(_h, exc)
@@ -1183,10 +1206,13 @@ def _history_impl(name: str, namespace: str, max_revisions: int = 10) -> list[di
     # leading "-" that helm would interpret as a flag (#772).
     if max_revisions < 1:
         raise ValueError("helm: 'max_revisions' must be >= 1")
-    return _helm(
-        ["history", name, "-n", namespace, "--max", str(max_revisions), "-o", "json"],
-        parse_json=True,
-    ) or []
+    return (
+        _helm(
+            ["history", name, "-n", namespace, "--max", str(max_revisions), "-o", "json"],
+            parse_json=True,
+        )
+        or []
+    )
 
 
 @mcp.tool()
@@ -1240,9 +1266,7 @@ def get_values(
         {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
     ) as _h:
         try:
-            result = _get_values_impl(
-                name=name, namespace=namespace, all_values=all_values, redact=redact
-            )
+            result = _get_values_impl(name=name, namespace=namespace, all_values=all_values, redact=redact)
             return _truncate_json(result, tool="get_values")
         except Exception as exc:
             set_span_error(_h, exc)
@@ -1274,9 +1298,7 @@ def history(name: str, namespace: str, max_revisions: int = 10) -> list[dict]:
     """Return revision history for a release."""
     with _handler_span("history", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
-            result = _history_impl(
-                name=name, namespace=namespace, max_revisions=max_revisions
-            )
+            result = _history_impl(name=name, namespace=namespace, max_revisions=max_revisions)
             return _truncate_json(result, tool="history")
         except Exception as exc:
             set_span_error(_h, exc)
@@ -1322,16 +1344,23 @@ def install(
     if repo:
         _validate_repo_url(repo)
     _audit(
-        "mcp-helm", "install",
-        args={"name": name, "chart": chart, "namespace": namespace,
-              "version": version, "repo": repo, "values": values,
-              "wait": wait, "timeout": timeout},
+        "mcp-helm",
+        "install",
+        args={
+            "name": name,
+            "chart": chart,
+            "namespace": namespace,
+            "version": version,
+            "repo": repo,
+            "values": values,
+            "wait": wait,
+            "timeout": timeout,
+        },
         dry_run=dry_run,
     )
     with _handler_span(
         "install",
-        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace,
-         "helm.dry_run": dry_run},
+        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace, "helm.dry_run": dry_run},
     ) as _h:
         try:
             args = ["install", name, chart, "-n", namespace, "-o", "json"]
@@ -1395,18 +1424,26 @@ def upgrade(
     if repo:
         _validate_repo_url(repo)
     _audit(
-        "mcp-helm", "upgrade",
-        args={"name": name, "chart": chart, "namespace": namespace,
-              "version": version, "repo": repo, "values": values,
-              "install_if_missing": install_if_missing, "wait": wait,
-              "timeout": timeout, "reset_values": reset_values,
-              "reuse_values": reuse_values},
+        "mcp-helm",
+        "upgrade",
+        args={
+            "name": name,
+            "chart": chart,
+            "namespace": namespace,
+            "version": version,
+            "repo": repo,
+            "values": values,
+            "install_if_missing": install_if_missing,
+            "wait": wait,
+            "timeout": timeout,
+            "reset_values": reset_values,
+            "reuse_values": reuse_values,
+        },
         dry_run=dry_run,
     )
     with _handler_span(
         "upgrade",
-        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace,
-         "helm.dry_run": dry_run},
+        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace, "helm.dry_run": dry_run},
     ) as _h:
         try:
             args = ["upgrade", name, chart, "-n", namespace, "-o", "json"]
@@ -1470,9 +1507,7 @@ def diff(
     treat an empty string as "no changes". Non-zero exit codes from
     the wrapped CLI bubble up as ``HelmError``.
     """
-    _reject_flag_like(
-        name=name, chart=chart, namespace=namespace, version=version, repo=repo
-    )
+    _reject_flag_like(name=name, chart=chart, namespace=namespace, version=version, repo=repo)
     # #1664: tighten 'repo' beyond _reject_flag_like — reject file://,
     # javascript:, and other non-http(s) schemes. Mirrors install/upgrade
     # (#1638) so diff() can't be used as a back-door to fetch a chart over
@@ -1486,8 +1521,7 @@ def diff(
         {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace},
     ) as _h:
         try:
-            args = ["diff", "upgrade", name, chart, "-n", namespace,
-                    "--context", str(context)]
+            args = ["diff", "upgrade", name, chart, "-n", namespace, "--context", str(context)]
             if version:
                 args += ["--version", version]
             if repo:
@@ -1545,7 +1579,11 @@ def _kubectl_present() -> bool:
     try:
         proc = subprocess.run(
             ["kubectl", "version", "--client=true", "--output=yaml"],
-            capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=_filtered_env(),
         )
         _KUBECTL_PRESENT_CACHE = proc.returncode == 0
         return _KUBECTL_PRESENT_CACHE
@@ -1612,6 +1650,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
                 env=_filtered_env(),
             )
             import threading as _threading
+
             _stdout_buf = bytearray()
             _stderr_buf = bytearray()
             _stdout_truncated = [False]
@@ -1672,10 +1711,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
             returncode = proc.returncode if proc.returncode is not None else -1
             truncated = _stdout_truncated[0] or _stderr_truncated[0]
             if returncode not in (0, 1):
-                err = HelmError(
-                    f"kubectl diff exited {returncode}: "
-                    f"{(stderr_text or stdout_text).strip()}"
-                )
+                err = HelmError(f"kubectl diff exited {returncode}: " f"{(stderr_text or stdout_text).strip()}")
                 set_span_error(_h, err)
                 raise err
             raw = stdout_text
@@ -1721,9 +1757,9 @@ def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> st
     _refuse_if_read_only("rollback")
     _reject_flag_like(name=name, namespace=namespace)
     _audit(
-        "mcp-helm", "rollback",
-        args={"name": name, "namespace": namespace,
-              "revision": revision, "wait": wait},
+        "mcp-helm",
+        "rollback",
+        args={"name": name, "namespace": namespace, "revision": revision, "wait": wait},
     )
     # Type-validate revision as int so an LLM-supplied "-1"-style string
     # cannot flow into argv as a flag (#693).
@@ -1760,9 +1796,9 @@ def uninstall(
     _refuse_if_read_only("uninstall")
     _reject_flag_like(name=name, namespace=namespace)
     _audit(
-        "mcp-helm", "uninstall",
-        args={"name": name, "namespace": namespace,
-              "keep_history": keep_history},
+        "mcp-helm",
+        "uninstall",
+        args={"name": name, "namespace": namespace, "keep_history": keep_history},
         dry_run=dry_run,
     )
     with _handler_span(
@@ -1832,7 +1868,10 @@ def _repo_url_allowlist() -> list[tuple[str, int | None]]:
 
 def _repo_allow_any() -> bool:
     return os.environ.get("MCP_HELM_ALLOW_ANY_REPO", "").strip().lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
 
@@ -1855,12 +1894,13 @@ def repo_add(name: str, url: str) -> str:
     # #1202: validate the URL against the operator allow-list before
     # letting helm reach out to it.
     from urllib.parse import urlparse as _urlparse
+
     parsed = _urlparse(url)
     # #1369: refuse userinfo in URL (credentials in-line defeat the
     # allow-list since allow-list compares hostname only).
     if parsed.username is not None or parsed.password is not None:
         raise HelmError(
-            f"helm repo_add: URL with userinfo is not accepted "
+            "helm repo_add: URL with userinfo is not accepted "
             "(embed credentials via helm's login flow instead). See #1369."
         )
     hostname = (parsed.hostname or "").lower().rstrip(".")
@@ -1872,6 +1912,7 @@ def repo_add(name: str, url: str) -> str:
     # valid IP literals after normalising IPv6 via ipaddress.
     if hostname:
         import ipaddress as _ipaddress
+
         _hostname_for_ip = hostname
         # urllib strips [] from IPv6 hosts already, so .hostname is
         # already the bare address; ip_address round-trips collapse
@@ -1887,24 +1928,16 @@ def repo_add(name: str, url: str) -> str:
         else:
             try:
                 import idna as _idna
+
                 hostname = _idna.encode(hostname).decode("ascii")
             except Exception:
                 # idna not installed or invalid name — reject rather than
                 # fall through to the less-strict .lower() compare.
-                raise HelmError(
-                    f"helm repo_add: hostname {parsed.hostname!r} failed IDN "
-                    "normalisation. See #1369."
-                )
+                raise HelmError(f"helm repo_add: hostname {parsed.hostname!r} failed IDN " "normalisation. See #1369.")
     if parsed.scheme not in ("http", "https", "oci"):
-        raise HelmError(
-            f"helm repo_add: URL scheme must be http/https/oci (got "
-            f"{parsed.scheme!r}). See #1202."
-        )
+        raise HelmError(f"helm repo_add: URL scheme must be http/https/oci (got " f"{parsed.scheme!r}). See #1202.")
     if not hostname:
-        raise HelmError(
-            f"helm repo_add: URL must have a hostname (got {url!r}). "
-            "See #1202."
-        )
+        raise HelmError(f"helm repo_add: URL must have a hostname (got {url!r}). " "See #1202.")
     allowlist = _repo_url_allowlist()
     allow_any = _repo_allow_any()
     if not allowlist and not allow_any:
@@ -1942,9 +1975,7 @@ def repo_add(name: str, url: str) -> str:
                     matched = True
                     break
         if not matched:
-            allowed_repr = sorted(
-                f"{h}:{p}" if p is not None else h for h, p in allowlist
-            )
+            allowed_repr = sorted(f"{h}:{p}" if p is not None else h for h, p in allowlist)
             url_port_repr = url_port if url_port is not None else scheme_default
             raise HelmError(
                 f"helm repo_add: host {hostname!r} (port {url_port_repr!r}) "
@@ -1979,16 +2010,17 @@ def _get_info_doc() -> dict[str, Any]:
     anything that could leak cluster state.
     """
     image_version = (
-        os.environ.get("IMAGE_VERSION")
-        or os.environ.get("IMAGE_TAG")
-        or os.environ.get("VERSION")
-        or "unknown"
+        os.environ.get("IMAGE_VERSION") or os.environ.get("IMAGE_TAG") or os.environ.get("VERSION") or "unknown"
     )
     helm_version: Any = "unknown"
     try:
         proc = subprocess.run(
             ["helm", "version", "--short"],
-            capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=_filtered_env(),
         )
         if proc.returncode == 0:
             helm_version = proc.stdout.strip()
@@ -1999,12 +2031,14 @@ def _get_info_doc() -> dict[str, Any]:
     try:
         proc = subprocess.run(
             ["helm", "plugin", "list"],
-            capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=_filtered_env(),
         )
         if proc.returncode == 0:
-            helm_diff_present = any(
-                line.split()[:1] == ["diff"] for line in proc.stdout.splitlines()
-            )
+            helm_diff_present = any(line.split()[:1] == ["diff"] for line in proc.stdout.splitlines())
     except Exception:
         helm_diff_present = False
 
@@ -2029,8 +2063,8 @@ def _get_info_doc() -> dict[str, Any]:
             # Log the attribute shape change so operators notice, rather
             # than silently emitting an empty tool list.
             log.warning(
-                'mcp server: FastMCP internal _tool_manager._tools attr missing — '
-                'falling back to empty tool_names (#1400/#1404). Upgrade guard needed.'
+                "mcp server: FastMCP internal _tool_manager._tools attr missing — "
+                "falling back to empty tool_names (#1400/#1404). Upgrade guard needed."
             )
             tool_names = []
     except Exception:
@@ -2081,9 +2115,7 @@ if __name__ == "__main__":
                 logger=logging.getLogger("mcp-helm.metrics"),
             )
         except Exception as _e:  # pragma: no cover - defensive
-            logging.getLogger(__name__).warning(
-                "metrics listener failed to start — continuing without it: %r", _e
-            )
+            logging.getLogger(__name__).warning("metrics listener failed to start — continuing without it: %r", _e)
 
     # Streamable-HTTP transport so the container is reachable across pod
     # boundaries (#644). stdio mode (FastMCP's default) assumes a local
@@ -2097,6 +2129,7 @@ if __name__ == "__main__":
     try:
         import uvicorn  # type: ignore
         from mcp_auth import require_bearer_token  # type: ignore
+
         _app = mcp.streamable_http_app()
         _app = require_bearer_token(_app, info_provider=_get_info_doc)
         uvicorn.run(

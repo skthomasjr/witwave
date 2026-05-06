@@ -21,8 +21,6 @@ import asyncio
 import os
 import sys
 import unittest
-from unittest import mock
-
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SHARED = os.path.abspath(os.path.join(_HERE, "..", "shared"))

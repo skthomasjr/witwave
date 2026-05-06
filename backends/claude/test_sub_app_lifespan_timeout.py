@@ -7,6 +7,7 @@ _SUB_APP_SHUTDOWN_TIMEOUT_SEC)`` and logs a WARN (not ERROR — operators
 expect this on bad rollouts) before proceeding with the rest of the
 teardown so the pod still drains in bounded time.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +19,6 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
-
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent
@@ -37,6 +37,7 @@ os.environ.setdefault("AGENT_ID", "claude")
 os.environ["SUB_APP_SHUTDOWN_TIMEOUT_SEC"] = "0.5"
 
 import tempfile as _tempfile
+
 _log_tmp_dir = _tempfile.mkdtemp(prefix="claude-test-")
 os.environ.setdefault("CONVERSATION_LOG", os.path.join(_log_tmp_dir, "conversation.jsonl"))
 os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "tool-activity.jsonl"))
@@ -130,6 +131,7 @@ def _install_a2a_stubs() -> None:
 
         def build(self, *a, **kw):
             from starlette.applications import Starlette
+
             return Starlette()
 
     class _DefaultRequestHandler:
@@ -378,10 +380,7 @@ class SubAppLifespanShutdownTimeoutTests(unittest.TestCase):
         finally:
             logger.removeHandler(handler)
 
-        timeout_warns = [
-            r for r in records
-            if r.levelno == logging.WARNING and "shutdown timed out" in r.getMessage()
-        ]
+        timeout_warns = [r for r in records if r.levelno == logging.WARNING and "shutdown timed out" in r.getMessage()]
         self.assertFalse(
             timeout_warns,
             f"well-behaved sub-app tripped timeout WARN: {[r.getMessage() for r in timeout_warns]}",

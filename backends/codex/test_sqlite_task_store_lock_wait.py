@@ -14,7 +14,6 @@ runs without the real a2a / prometheus_client wheels installed.
 
 from __future__ import annotations
 
-import asyncio
 import json as _json
 import os
 import sys
@@ -23,7 +22,6 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent
@@ -100,7 +98,7 @@ class _StubTask:
         return _json.dumps({"id": self.id, "payload": self.payload})
 
     @classmethod
-    def model_validate_json(cls, raw: str) -> "_StubTask":
+    def model_validate_json(cls, raw: str) -> _StubTask:
         obj = _json.loads(raw)
         return cls(id=obj["id"], payload=obj.get("payload", ""))
 

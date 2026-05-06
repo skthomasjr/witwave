@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import time
-import uuid
 from collections import OrderedDict
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
@@ -31,7 +30,8 @@ from google.genai import types
 # duration samples risk mislabelling.
 _MIN_GENAI_VERSION = "1.73.0"
 try:
-    from importlib.metadata import PackageNotFoundError, version as _pkg_version
+    from importlib.metadata import version as _pkg_version
+
     _genai_version = _pkg_version("google-genai")
 except Exception as _exc:  # pragma: no cover - metadata access failure
     _genai_version = None
@@ -60,85 +60,11 @@ if _genai_version is not None:
             "google-genai %s < %s: function_call/response Parts may lack stable ids; "
             "AFC metric pairing will fall back to FIFO and can mispair parallel "
             "calls that share a tool name (#737). Pin google-genai>=%s in requirements.txt.",
-            _genai_version, _MIN_GENAI_VERSION, _MIN_GENAI_VERSION,
+            _genai_version,
+            _MIN_GENAI_VERSION,
+            _MIN_GENAI_VERSION,
         )
-from metrics import (
-
-    backend_a2a_last_request_timestamp_seconds,
-    backend_a2a_request_duration_seconds,
-    backend_a2a_requests_total,
-    backend_active_sessions,
-    backend_allowed_tools_reload_total,
-    backend_budget_exceeded_total,
-    backend_concurrent_queries,
-    backend_context_exhaustion_total,
-    backend_context_tokens,
-    backend_context_tokens_remaining,
-    backend_context_usage_percent,
-    backend_context_warnings_total,
-    backend_empty_prompts_total,
-    backend_empty_responses_total,
-    backend_hooks_config_errors_total,
-    backend_hooks_config_reloads_total,
-    backend_hooks_enforcement_mode,
-    backend_hooks_evaluations_total,
-    backend_log_bytes_total,
-    backend_log_entries_total,
-    backend_log_write_errors_by_logger_total,
-    backend_log_write_errors_total,
-    backend_mcp_outbound_duration_seconds,
-    backend_mcp_outbound_requests_total,
-    backend_tool_audit_bytes_per_entry,
-    backend_tool_audit_entries_total,
-    backend_tool_audit_rotation_pressure_total,
-    backend_lru_cache_utilization_percent,
-    backend_mcp_command_rejected_total,
-    backend_mcp_config_errors_total,
-    backend_mcp_config_reloads_total,
-    backend_mcp_server_exits_total,
-    backend_mcp_server_up,
-    backend_mcp_servers_active,
-    backend_model_requests_total,
-    backend_prompt_length_bytes,
-    backend_prompt_too_large_total,
-    backend_response_length_bytes,
-    backend_running_tasks,
-    backend_sdk_messages_per_query,
-    backend_sdk_query_duration_seconds,
-    backend_sdk_client_errors_total,
-    backend_sdk_errors_total,
-    backend_sdk_query_error_duration_seconds,
-    backend_sdk_result_errors_total,
-    backend_sdk_session_duration_seconds,
-    backend_sdk_subprocess_spawn_duration_seconds,
-    backend_sdk_time_to_first_message_seconds,
-    backend_sdk_tokens_per_query,
-    backend_sdk_tool_call_input_size_bytes,
-    backend_sdk_tool_calls_total,
-    backend_sdk_tool_errors_total,
-    backend_sdk_tool_duration_seconds,
-    backend_sdk_tool_result_size_bytes,
-    backend_sdk_turns_per_query,
-    backend_session_age_seconds,
-    backend_session_evictions_total,
-    backend_session_history_save_errors_total,
-    backend_session_history_reset_total,
-    backend_history_force_split_total,
-    backend_session_idle_seconds,
-    backend_session_starts_total,
-    backend_task_cancellations_total,
-    backend_task_duration_seconds,
-    backend_task_error_duration_seconds,
-    backend_task_last_error_timestamp_seconds,
-    backend_task_last_success_timestamp_seconds,
-    backend_task_timeout_headroom_seconds,
-    backend_tasks_total,
-    backend_streaming_events_emitted_total,
-    backend_text_blocks_per_query,
-    backend_watcher_events_total,
-    backend_file_watcher_restarts_total,
-    backend_agent_md_revision,
-)
+from exceptions import BudgetExceededError, PromptTooLargeError
 
 # Hooks engine facade (#631). Imported even though the gemini tool-call path
 # is not wired yet (blocked on #640) — this lands the infrastructure so the
@@ -151,21 +77,100 @@ from hooks import (
     HookState,
     load_hooks_config_sync,
 )
-
 from log_utils import _append_log
+from metrics import (
+    backend_a2a_last_request_timestamp_seconds,
+    backend_a2a_request_duration_seconds,
+    backend_a2a_requests_total,
+    backend_active_sessions,
+    backend_agent_md_revision,
+    backend_allowed_tools_reload_total,
+    backend_budget_exceeded_total,
+    backend_concurrent_queries,
+    backend_context_exhaustion_total,
+    backend_context_tokens,
+    backend_context_tokens_remaining,
+    backend_context_usage_percent,
+    backend_context_warnings_total,
+    backend_empty_prompts_total,
+    backend_empty_responses_total,
+    backend_file_watcher_restarts_total,
+    backend_history_force_split_total,
+    backend_hooks_config_errors_total,
+    backend_hooks_config_reloads_total,
+    backend_hooks_enforcement_mode,
+    backend_hooks_evaluations_total,
+    backend_log_bytes_total,
+    backend_log_entries_total,
+    backend_log_write_errors_by_logger_total,
+    backend_log_write_errors_total,
+    backend_lru_cache_utilization_percent,
+    backend_mcp_command_rejected_total,
+    backend_mcp_config_errors_total,
+    backend_mcp_config_reloads_total,
+    backend_mcp_outbound_duration_seconds,
+    backend_mcp_outbound_requests_total,
+    backend_mcp_server_exits_total,
+    backend_mcp_server_up,
+    backend_mcp_servers_active,
+    backend_model_requests_total,
+    backend_prompt_length_bytes,
+    backend_prompt_too_large_total,
+    backend_response_length_bytes,
+    backend_running_tasks,
+    backend_sdk_client_errors_total,
+    backend_sdk_errors_total,
+    backend_sdk_messages_per_query,
+    backend_sdk_query_duration_seconds,
+    backend_sdk_query_error_duration_seconds,
+    backend_sdk_result_errors_total,
+    backend_sdk_session_duration_seconds,
+    backend_sdk_subprocess_spawn_duration_seconds,
+    backend_sdk_time_to_first_message_seconds,
+    backend_sdk_tokens_per_query,
+    backend_sdk_tool_call_input_size_bytes,
+    backend_sdk_tool_calls_total,
+    backend_sdk_tool_duration_seconds,
+    backend_sdk_tool_errors_total,
+    backend_sdk_tool_result_size_bytes,
+    backend_sdk_turns_per_query,
+    backend_session_age_seconds,
+    backend_session_evictions_total,
+    backend_session_history_reset_total,
+    backend_session_history_save_errors_total,
+    backend_session_idle_seconds,
+    backend_session_starts_total,
+    backend_streaming_events_emitted_total,
+    backend_task_cancellations_total,
+    backend_task_duration_seconds,
+    backend_task_error_duration_seconds,
+    backend_task_last_error_timestamp_seconds,
+    backend_task_last_success_timestamp_seconds,
+    backend_task_timeout_headroom_seconds,
+    backend_tasks_total,
+    backend_text_blocks_per_query,
+    backend_tool_audit_bytes_per_entry,
+    backend_tool_audit_entries_total,
+    backend_tool_audit_rotation_pressure_total,
+    backend_watcher_events_total,
+)
+from otel import set_span_error, start_span
+from redact import redact_text, should_redact
+
 # Shared PostToolUse audit helper (#809). Parity with codex's
 # _append_tool_audit path — emits event_type='tool_audit' rows into
 # tool-activity.jsonl so the dashboard Tool Trace tab sees gemini tool
 # invocations alongside claude/codex.
 from tool_audit import (  # type: ignore
     ToolAuditContext as _ToolAuditContext,
+)
+from tool_audit import (
     ToolAuditMetrics as _ToolAuditMetrics,
+)
+from tool_audit import (
     log_tool_audit as _shared_log_tool_audit,
 )
-from exceptions import BudgetExceededError, PromptTooLargeError
 from validation import parse_max_tokens, sanitize_model_label
-from otel import start_span, set_span_error
-from redact import redact_text, should_redact
 
 
 def _pre_tool_use_gate(
@@ -208,8 +213,9 @@ def _pre_tool_use_gate(
         from hooks_engine import evaluate_pre_tool_use  # type: ignore
     except Exception as _imp_exc:
         logger.warning(
-            "_pre_tool_use_gate: hooks_engine import failed (%r); "
-            "fail-open for %s.", _imp_exc, tool_name,
+            "_pre_tool_use_gate: hooks_engine import failed (%r); " "fail-open for %s.",
+            _imp_exc,
+            tool_name,
         )
         return None
     # #1724: align with the shared-engine contract documented in
@@ -229,7 +235,8 @@ def _pre_tool_use_gate(
     except Exception as _eval_exc:
         logger.warning(
             "_pre_tool_use_gate: evaluate raised for %s: %r — fail-open.",
-            tool_name, _eval_exc,
+            tool_name,
+            _eval_exc,
         )
         return None
     if str(decision).lower() == "deny" and matched is not None:
@@ -238,6 +245,7 @@ def _pre_tool_use_gate(
             str(getattr(matched, "reason", "denied")),
         )
     return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +264,7 @@ except Exception:  # pragma: no cover
     try:
         from shared.hook_events import schedule_event_post as _schedule_event_post  # type: ignore
     except Exception:
+
         def _schedule_event_post(*_a, **_kw):  # type: ignore
             return False
 
@@ -273,6 +282,8 @@ def _emit_event_safe(event_type: str, payload: dict) -> None:
         _schedule_event_post(event_type, payload, agent_id=AGENT_OWNER or AGENT_NAME)
     except Exception as exc:  # pragma: no cover
         logger.debug("event emit (%s) raised: %r", event_type, exc)
+
+
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 AGENT_MD = "/home/agent/.gemini/GEMINI.md"
@@ -313,7 +324,8 @@ MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.gemini/mcp.jso
 # in-container home for backend pods; tests / non-default deployments can
 # override via ``MCP_CONFIG_PATH_ALLOWED_PREFIX``.
 _MCP_CONFIG_PATH_ALLOWED_PREFIX = os.environ.get(
-    "MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/",
+    "MCP_CONFIG_PATH_ALLOWED_PREFIX",
+    "/home/agent/",
 )
 
 # #1100: scaffold for the eventual gemini allow-list enforcement. The
@@ -330,11 +342,7 @@ _MCP_CONFIG_PATH_ALLOWED_PREFIX = os.environ.get(
 # Exposed as a module-level list so a future ``settings_watcher`` can
 # mutate it in place and bump ``backend_allowed_tools_reload_total``.
 _ALLOWED_TOOLS_ENV = os.environ.get("ALLOWED_TOOLS")
-ALLOWED_TOOLS: list[str] = (
-    [t.strip() for t in _ALLOWED_TOOLS_ENV.split(",") if t.strip()]
-    if _ALLOWED_TOOLS_ENV
-    else []
-)
+ALLOWED_TOOLS: list[str] = [t.strip() for t in _ALLOWED_TOOLS_ENV.split(",") if t.strip()] if _ALLOWED_TOOLS_ENV else []
 
 
 def _bump_allowed_tools_reload(direction: str) -> None:
@@ -351,28 +359,31 @@ def _bump_allowed_tools_reload(direction: str) -> None:
     except Exception:
         pass
 
+
 # Env var keys that must not be overridden by caller-supplied MCP server env
 # entries. Mirrors codex (#519): MCP stdio entries spawn a subprocess with
 # identical code-injection risk so keep the denylist symmetric. gemini has
 # no LocalShell path; this list is only used by ``_build_mcp_stdio_params``.
-_SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
-    "PATH",
-    "LD_PRELOAD",
-    "LD_LIBRARY_PATH",
-    "LD_AUDIT",
-    "LD_DEBUG",
-    "PYTHONPATH",
-    "PYTHONSTARTUP",
-    "PYTHONINSPECT",
-    "RUBYLIB",
-    "RUBYOPT",
-    "PERL5LIB",
-    "PERL5OPT",
-    "NODE_PATH",
-    "DYLD_INSERT_LIBRARIES",
-    "DYLD_LIBRARY_PATH",
-    "DYLD_FRAMEWORK_PATH",
-})
+_SHELL_ENV_DENYLIST: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "LD_AUDIT",
+        "LD_DEBUG",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONINSPECT",
+        "RUBYLIB",
+        "RUBYOPT",
+        "PERL5LIB",
+        "PERL5OPT",
+        "NODE_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FRAMEWORK_PATH",
+    }
+)
 
 _BACKEND_ID = "gemini"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
@@ -430,7 +441,9 @@ def _load_mcp_config() -> dict:
     if not resolved.startswith(_MCP_CONFIG_PATH_ALLOWED_PREFIX):
         logger.warning(
             "MCP config path %s (resolved %s) is outside allowed prefix %s; skipping load.",
-            MCP_CONFIG_PATH, resolved, _MCP_CONFIG_PATH_ALLOWED_PREFIX,
+            MCP_CONFIG_PATH,
+            resolved,
+            _MCP_CONFIG_PATH_ALLOWED_PREFIX,
         )
         return {}
     try:
@@ -462,14 +475,19 @@ def _load_mcp_config() -> dict:
 # counterpart.
 from mcp_command_allowlist import (  # noqa: E402
     mcp_command_allowed as _gemini_mcp_command_allowed,
+)
+from mcp_command_allowlist import (
     mcp_command_args_safe as _gemini_mcp_command_args_safe,
 )
 
 _DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
 _GEMINI_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_CWD_PREFIXES", _DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES,
-    ).split(",") if t.strip()
+    t.strip()
+    for t in os.environ.get(
+        "MCP_ALLOWED_CWD_PREFIXES",
+        _DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES,
+    ).split(",")
+    if t.strip()
 )
 
 
@@ -522,12 +540,15 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
             "MCP server %r: command %r rejected by allow-list (%s) — "
             "dropping entry. Set MCP_ALLOWED_COMMANDS / "
             "MCP_ALLOWED_COMMAND_PREFIXES to widen. (#730)",
-            name, cfg.get("command"), cmd_reason,
+            name,
+            cfg.get("command"),
+            cmd_reason,
         )
         if backend_mcp_command_rejected_total is not None:
             try:
                 backend_mcp_command_rejected_total.labels(
-                    **_LABELS, reason=cmd_reason,
+                    **_LABELS,
+                    reason=cmd_reason,
                 ).inc()
             except Exception:
                 pass
@@ -538,12 +559,15 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
             logger.warning(
                 "MCP server %r: cwd %r rejected by allow-list (%s) — "
                 "dropping entry. Set MCP_ALLOWED_CWD_PREFIXES to widen. (#730)",
-                name, cfg.get("cwd"), cwd_reason,
+                name,
+                cfg.get("cwd"),
+                cwd_reason,
             )
             if backend_mcp_command_rejected_total is not None:
                 try:
                     backend_mcp_command_rejected_total.labels(
-                        **_LABELS, reason=cwd_reason,
+                        **_LABELS,
+                        reason=cwd_reason,
                     ).inc()
                 except Exception:
                     pass
@@ -555,7 +579,8 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
     # silently re-open the arbitrary-code-execution path the README
     # promises is closed.
     args_ok, args_reason = _gemini_mcp_command_args_safe(
-        cfg["command"], cfg.get("args"),
+        cfg["command"],
+        cfg.get("args"),
     )
     if not args_ok:
         logger.warning(
@@ -563,12 +588,15 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
             "sanitiser (%s) — dropping entry. Adjust the config or "
             "set MCP_ALLOWED_CWD_PREFIXES if a positional script "
             "lives in an operator-vetted tree. (#1734)",
-            name, cfg.get("command"), args_reason,
+            name,
+            cfg.get("command"),
+            args_reason,
         )
         if backend_mcp_command_rejected_total is not None:
             try:
                 backend_mcp_command_rejected_total.labels(
-                    **_LABELS, reason=args_reason,
+                    **_LABELS,
+                    reason=args_reason,
                 ).inc()
             except Exception:
                 pass
@@ -583,7 +611,8 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
         if rejected:
             logger.warning(
                 "MCP server %r: stripped dangerous env vars from config env: %s",
-                name, sorted(rejected),
+                name,
+                sorted(rejected),
             )
         params_kwargs["env"] = sanitized_env
     if "cwd" in cfg:
@@ -768,8 +797,10 @@ async def _emit_afc_history(
                     # produces a near-zero sample that misrepresents real
                     # tool runtime.
                     _pre_entry = {
-                        "id": _pre_call_id, "ts": _pre_ts,
-                        "name": _pre_name, "fc_id": _pre_fc_id,
+                        "id": _pre_call_id,
+                        "ts": _pre_ts,
+                        "name": _pre_name,
+                        "fc_id": _pre_fc_id,
                         "from_prefix": True,
                     }
                     if _pre_fc_id:
@@ -838,11 +869,16 @@ async def _emit_afc_history(
                 # backend_sdk_tool_call_input_size_bytes.
                 if backend_sdk_tool_call_input_size_bytes is not None:
                     try:
-                        _input_bytes = len(json.dumps(
-                            entry["input"], default=str, ensure_ascii=False,
-                        ).encode("utf-8"))
+                        _input_bytes = len(
+                            json.dumps(
+                                entry["input"],
+                                default=str,
+                                ensure_ascii=False,
+                            ).encode("utf-8")
+                        )
                         backend_sdk_tool_call_input_size_bytes.labels(
-                            **_LABELS, tool=name,
+                            **_LABELS,
+                            tool=name,
                         ).observe(_input_bytes)
                     except Exception:
                         pass
@@ -967,11 +1003,20 @@ async def _emit_afc_history(
                 # claude's backend_sdk_tool_result_size_bytes.
                 if backend_sdk_tool_result_size_bytes is not None:
                     try:
-                        _result_bytes = len(json.dumps(
-                            response_j, default=str, ensure_ascii=False,
-                        ).encode("utf-8")) if response_j is not None else 0
+                        _result_bytes = (
+                            len(
+                                json.dumps(
+                                    response_j,
+                                    default=str,
+                                    ensure_ascii=False,
+                                ).encode("utf-8")
+                            )
+                            if response_j is not None
+                            else 0
+                        )
                         backend_sdk_tool_result_size_bytes.labels(
-                            **_LABELS, tool=name,
+                            **_LABELS,
+                            tool=name,
                         ).observe(_result_bytes)
                     except Exception:
                         pass
@@ -998,10 +1043,7 @@ async def _emit_afc_history(
                         # the computed delta is a near-zero false sample.
                         # Tool-call counters and result-size metric still
                         # fire so audit / counts stay correct.
-                        if (
-                            backend_sdk_tool_duration_seconds is not None
-                            and not matched.get("from_prefix")
-                        ):
+                        if backend_sdk_tool_duration_seconds is not None and not matched.get("from_prefix"):
                             backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=name).observe(_dur_seconds)
                     except Exception:
                         pass
@@ -1009,9 +1051,17 @@ async def _emit_afc_history(
                 try:
                     _emit_result_bytes = 0
                     try:
-                        _emit_result_bytes = len(json.dumps(
-                            response_j, default=str, ensure_ascii=False,
-                        ).encode("utf-8")) if response_j is not None else 0
+                        _emit_result_bytes = (
+                            len(
+                                json.dumps(
+                                    response_j,
+                                    default=str,
+                                    ensure_ascii=False,
+                                ).encode("utf-8")
+                            )
+                            if response_j is not None
+                            else 0
+                        )
                     except Exception:
                         _emit_result_bytes = 0
                     _emit_event_safe(
@@ -1029,6 +1079,7 @@ async def _emit_afc_history(
                 # Outbound MCP tool metric family (#1104) — no-op for non-mcp__ names.
                 try:
                     from mcp_metrics import observe_outbound_mcp_call as _obs_outbound_mcp
+
                     _obs_outbound_mcp(
                         backend_mcp_outbound_requests_total,
                         backend_mcp_outbound_duration_seconds,
@@ -1050,7 +1101,9 @@ async def _emit_afc_history(
             "AFC pairing: %d cross-tool FIFO fallback pair(s) this turn; "
             "example: fr name=%r matched pending fc name=%r — "
             "tool_use_id/duration label may be imprecise (#887, #998).",
-            _cross_tool_fallback_count, _fr_name, _fc_name,
+            _cross_tool_fallback_count,
+            _fr_name,
+            _fc_name,
         )
 
 
@@ -1151,7 +1204,9 @@ def _load_history(session_id: str) -> list[types.Content]:
             except Exception as _pe:
                 _dropped_parts += 1
                 logger.debug(
-                    "Session %r: dropping corrupt Part during load: %r", session_id, _pe,
+                    "Session %r: dropping corrupt Part during load: %r",
+                    session_id,
+                    _pe,
                 )
         if not parts:
             _dropped_entries += 1
@@ -1161,13 +1216,18 @@ def _load_history(session_id: str) -> list[types.Content]:
         except Exception as _ce:
             _dropped_entries += 1
             logger.debug(
-                "Session %r: dropping corrupt Content during load: %r", session_id, _ce,
+                "Session %r: dropping corrupt Content during load: %r",
+                session_id,
+                _ce,
             )
     if _dropped_parts or _dropped_entries:
         logger.warning(
             "Session %r: partial history load — dropped %d bad part(s) and %d "
             "bad entry/entries; retained %d entries. (#1508)",
-            session_id, _dropped_parts, _dropped_entries, len(history),
+            session_id,
+            _dropped_parts,
+            _dropped_entries,
+            len(history),
         )
     return history
 
@@ -1193,9 +1253,7 @@ _SAVE_HISTORY_MAX_BYTES = int(os.environ.get("GEMINI_MAX_HISTORY_BYTES", str(256
 # streamed chunk and raise BudgetExceededError early once we cross the
 # cap. Default 2 MiB (~8x _SAVE_HISTORY_MAX_BYTES) so normal AFC loops
 # complete; set to 0 to disable.
-_AFC_HISTORY_SOFT_CAP_BYTES = int(
-    os.environ.get("GEMINI_AFC_HISTORY_SOFT_CAP_BYTES", str(2 * 1024 * 1024))
-)
+_AFC_HISTORY_SOFT_CAP_BYTES = int(os.environ.get("GEMINI_AFC_HISTORY_SOFT_CAP_BYTES", str(2 * 1024 * 1024)))
 
 
 def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
@@ -1254,18 +1312,14 @@ _EVICT_REMOVE_TASKS: set[asyncio.Task] = set()
 # disables deferred eviction entirely and degrades to the
 # backpressure branch on every eviction (still safe — never removes
 # while a save is in flight).
-_EVICT_REMOVE_TASKS_MAX = int(
-    os.environ.get("GEMINI_EVICT_REMOVE_TASKS_MAX") or "256"
-)
+_EVICT_REMOVE_TASKS_MAX = int(os.environ.get("GEMINI_EVICT_REMOVE_TASKS_MAX") or "256")
 
 # #1611: how long the backpressure branch waits for an in-flight history
 # save before re-queueing the eviction. Longer than the per-task 5s
 # wait used by the deferred-eviction task because the backpressure path
 # is the last line of defence — we'd rather block briefly than risk
 # unlinking the file from under a writer that's about to publish.
-_EVICT_BACKPRESSURE_SAVE_WAIT_SEC = float(
-    os.environ.get("GEMINI_EVICT_BACKPRESSURE_SAVE_WAIT_SEC") or "30.0"
-)
+_EVICT_BACKPRESSURE_SAVE_WAIT_SEC = float(os.environ.get("GEMINI_EVICT_BACKPRESSURE_SAVE_WAIT_SEC") or "30.0")
 
 
 def _bump_cleanup_epoch(session_id: str) -> int:
@@ -1288,9 +1342,7 @@ def _write_history_tmp_blocking(tmp_path: str, raw: list) -> None:
         json.dump(raw, f)
 
 
-def _write_history_respecting_epoch(
-    tmp_path: str, path: str, raw: list, session_id: str, expected_epoch: int
-) -> bool:
+def _write_history_respecting_epoch(tmp_path: str, path: str, raw: list, session_id: str, expected_epoch: int) -> bool:
     """Backwards-compatible thin wrapper retained for callers/tests.
 
     Newer call sites (see ``_save_history``) split the tmp write onto
@@ -1372,7 +1424,8 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                 "Session %r: history truncation found no safe boundary within "
                 "the target window; preserving full history (%d entries) to "
                 "avoid silent session loss. Next save will retry truncation (#731).",
-                session_id, n,
+                session_id,
+                n,
             )
         else:
             raw = raw[cut:]
@@ -1444,7 +1497,9 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                         "Session %r: byte-cap trim found no safe boundary "
                         "and no user-role fallback boundary "
                         "(payload=%dB cap=%dB); preserving current slice (#817).",
-                        session_id, current_bytes, _SAVE_HISTORY_MAX_BYTES,
+                        session_id,
+                        current_bytes,
+                        _SAVE_HISTORY_MAX_BYTES,
                     )
                     break
                 logger.warning(
@@ -1452,7 +1507,10 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                     "boundary idx=%d (payload=%dB cap=%dB) — corruption "
                     "recovery path, NOT the happy path. Reload may reset "
                     "the session if the head function_call is orphaned (#1622).",
-                    session_id, fallback_cut, current_bytes, _SAVE_HISTORY_MAX_BYTES,
+                    session_id,
+                    fallback_cut,
+                    current_bytes,
+                    _SAVE_HISTORY_MAX_BYTES,
                 )
                 try:
                     if backend_history_force_split_total is not None:
@@ -1539,7 +1597,7 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                     f"(attempt {attempt + 1}/{_SAVE_HISTORY_MAX_RETRIES}): {e}"
                 )
                 if attempt < _SAVE_HISTORY_MAX_RETRIES - 1:
-                    await asyncio.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2 ** attempt))
+                    await asyncio.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2**attempt))
     finally:
         # Always signal completion (success, permanent failure, or
         # cancellation) so the timeout cleanup never blocks forever.
@@ -1550,8 +1608,7 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
             _history_write_done.pop(session_id, None)
     # All retries exhausted — raise so the caller can log at ERROR level.
     raise RuntimeError(
-        f"Permanently failed to save session history for {session_id!r} "
-        f"after {_SAVE_HISTORY_MAX_RETRIES} attempts"
+        f"Permanently failed to save session history for {session_id!r} " f"after {_SAVE_HISTORY_MAX_RETRIES} attempts"
     ) from last_exc
 
 
@@ -1602,9 +1659,7 @@ def _assert_event_loop_thread() -> None:
         ) from exc
 
 
-def _acquire_session_lock(
-    session_id: str, session_locks: dict[str, "_RefCountedLock"]
-) -> "_RefCountedLock":
+def _acquire_session_lock(session_id: str, session_locks: dict[str, "_RefCountedLock"]) -> "_RefCountedLock":
     """Return (and register a waiter on) the refcounted lock for ``session_id``.
 
     Must be paired with a ``_release_session_lock`` call in a ``finally`` so
@@ -1627,9 +1682,7 @@ def _acquire_session_lock(
     return entry
 
 
-def _release_session_lock(
-    session_id: str, session_locks: dict[str, "_RefCountedLock"]
-) -> None:
+def _release_session_lock(session_id: str, session_locks: dict[str, "_RefCountedLock"]) -> None:
     """Drop this task's reference; evict the dict entry when no waiters remain.
 
     The ``session_locks.get(session_id) is entry`` identity check below is
@@ -1694,6 +1747,7 @@ def _track_session(
             except RuntimeError:
                 _loop = None
             if _loop is not None:
+
                 async def _deferred_evict_remove(
                     _ev_id: str = _evicted_id,
                     _ev_path: str = _evicted_path,
@@ -1716,10 +1770,12 @@ def _track_session(
                     except OSError as _e:
                         logger.warning(
                             "Could not remove evicted session file %s: %s",
-                            _ev_path, _e,
+                            _ev_path,
+                            _e,
                         )
                     _bump_cleanup_epoch(_ev_id)
                     _session_cleanup_epoch.pop(_ev_id, None)
+
                 # #1513: bound the deferred-eviction task set. Under
                 # sustained churn the 5s wait-for on each task could let
                 # the set grow proportionally to eviction backlog.
@@ -1740,6 +1796,7 @@ def _track_session(
                     #     still relieves quickly.
                     _pending_save_bp = _history_write_done.get(_evicted_id)
                     if _pending_save_bp is not None:
+
                         async def _backpressure_evict_remove(
                             _ev_id: str = _evicted_id,
                             _ev_path: str = _evicted_path,
@@ -1766,12 +1823,13 @@ def _track_session(
                                 pass
                             except OSError as _bp_err:
                                 logger.warning(
-                                    "Could not remove evicted session file "
-                                    "%s (backpressure path): %s",
-                                    _ev_path, _bp_err,
+                                    "Could not remove evicted session file " "%s (backpressure path): %s",
+                                    _ev_path,
+                                    _bp_err,
                                 )
                             _bump_cleanup_epoch(_ev_id)
                             _session_cleanup_epoch.pop(_ev_id, None)
+
                         _bp_task = _loop.create_task(_backpressure_evict_remove())
                         _EVICT_REMOVE_TASKS.add(_bp_task)
                         _bp_task.add_done_callback(_EVICT_REMOVE_TASKS.discard)
@@ -1786,7 +1844,8 @@ def _track_session(
                             logger.warning(
                                 "Could not remove evicted session file %s "
                                 "(deferred cap reached, no pending save): %s",
-                                _evicted_path, e,
+                                _evicted_path,
+                                e,
                             )
                         _bump_cleanup_epoch(_evicted_id)
                         _session_cleanup_epoch.pop(_evicted_id, None)
@@ -1806,7 +1865,8 @@ def _track_session(
                 except OSError as e:
                     logger.warning(
                         "Could not remove evicted session file %s: %s",
-                        _evicted_path, e,
+                        _evicted_path,
+                        e,
                     )
                 _bump_cleanup_epoch(_evicted_id)
                 _session_cleanup_epoch.pop(_evicted_id, None)
@@ -1826,6 +1886,7 @@ _genai_client: genai.Client | None = None
 # singleton between the ``if None`` check and the assignment during
 # key rotation.
 import threading as _threading
+
 _genai_client_lock = _threading.Lock()
 
 # #1621: rotation flag + pending-teardown queue. The api-key-file watcher
@@ -1949,7 +2010,8 @@ def _get_client(model_label: str | None = None) -> genai.Client:
             # request cold-starts (and slow rotations).
             if backend_sdk_subprocess_spawn_duration_seconds is not None:
                 backend_sdk_subprocess_spawn_duration_seconds.labels(
-                    **_LABELS, model=_sanitize_model_label(model_label or ""),
+                    **_LABELS,
+                    model=_sanitize_model_label(model_label or ""),
                 ).observe(time.monotonic() - _spawn_start)
         except Exception:
             pass
@@ -2002,7 +2064,7 @@ async def _close_client() -> None:
         _rotation_pending = False
         pending = list(_clients_pending_close)
         _clients_pending_close.clear()
-    to_close: "list[genai.Client]" = []
+    to_close: list[genai.Client] = []
     if client is not None:
         to_close.append(client)
     to_close.extend(pending)
@@ -2065,9 +2127,7 @@ async def run_query(
             # resume from inconsistent turn state. Start fresh and
             # best-effort remove the stale file so the next successful
             # save is not merged with a corrupt remainder.
-            _save_failed = (
-                history_save_failed is not None and session_id in history_save_failed
-            )
+            _save_failed = history_save_failed is not None and session_id in history_save_failed
             if _save_failed:
                 history = []
                 # #1000: surface the silent-reset path. Operators need
@@ -2094,7 +2154,8 @@ async def run_query(
                 except Exception as _rm_exc:
                     logger.debug(
                         "Gemini run_query: stale history removal for %r failed: %s",
-                        session_id, _rm_exc,
+                        session_id,
+                        _rm_exc,
                     )
             else:
                 history = await asyncio.to_thread(_load_history, session_id)
@@ -2177,9 +2238,9 @@ async def run_query(
                         if _first_chunk_at is None:
                             _first_chunk_at = time.monotonic()
                             if backend_sdk_time_to_first_message_seconds is not None:
-                                backend_sdk_time_to_first_message_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
-                                    _first_chunk_at - _query_start
-                                )
+                                backend_sdk_time_to_first_message_seconds.labels(
+                                    **_LABELS, model=_sanitize_model_label(resolved_model)
+                                ).observe(_first_chunk_at - _query_start)
                         collected.append(text)
                         # Stream the chunk to the A2A event_queue (#430). Set by
                         # execute(); None for non-streaming callers (e.g. /mcp).
@@ -2213,10 +2274,7 @@ async def run_query(
                     # to avoid running a sizeof over multi-MB history on
                     # every token; still catches runaway growth within a
                     # few chunks of crossing the cap.
-                    if (
-                        _AFC_HISTORY_SOFT_CAP_BYTES > 0
-                        and (_message_count & 0x3) == 0
-                    ):
+                    if _AFC_HISTORY_SOFT_CAP_BYTES > 0 and (_message_count & 0x3) == 0:
                         # #1507: switch from len(repr(_h)) to the same
                         # model_dump + json.dumps byte count the save
                         # path uses (_SAVE_HISTORY_MAX_BYTES). repr() on
@@ -2228,19 +2286,13 @@ async def run_query(
                         # to 0 so the soft cap never false-trips.
                         try:
                             _raw_for_sizing = []
-                            for _h in (chat.history or []):
+                            for _h in chat.history or []:
                                 _parts = [
-                                    p.model_dump(exclude_none=True)
-                                    for p in (getattr(_h, "parts", None) or [])
-                                    if p
+                                    p.model_dump(exclude_none=True) for p in (getattr(_h, "parts", None) or []) if p
                                 ]
                                 if _parts:
-                                    _raw_for_sizing.append(
-                                        {"role": getattr(_h, "role", ""), "parts": _parts}
-                                    )
-                            _hist_bytes = len(
-                                json.dumps(_raw_for_sizing, default=str).encode("utf-8")
-                            )
+                                    _raw_for_sizing.append({"role": getattr(_h, "role", ""), "parts": _parts})
+                            _hist_bytes = len(json.dumps(_raw_for_sizing, default=str).encode("utf-8"))
                         except Exception:
                             _hist_bytes = 0
                         if _hist_bytes >= _AFC_HISTORY_SOFT_CAP_BYTES:
@@ -2248,25 +2300,27 @@ async def run_query(
                                 "Session %r: AFC history soft cap tripped "
                                 "(~%d bytes >= %d) — aborting turn before "
                                 "truncation runs post-hoc. (#1058)",
-                                session_id, _hist_bytes, _AFC_HISTORY_SOFT_CAP_BYTES,
+                                session_id,
+                                _hist_bytes,
+                                _AFC_HISTORY_SOFT_CAP_BYTES,
                             )
                             if backend_budget_exceeded_total is not None:
                                 try:
                                     backend_budget_exceeded_total.labels(**_LABELS).inc()
                                 except Exception:
                                     pass
-                            raise BudgetExceededError(
-                                _total_tokens, max_tokens or 0, list(collected)
-                            )
+                            raise BudgetExceededError(_total_tokens, max_tokens or 0, list(collected))
                 _turn_count = 1
             except BudgetExceededError as exc:
                 if backend_sdk_session_duration_seconds is not None:
-                    backend_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
-                        time.monotonic() - _session_start
-                    )
+                    backend_sdk_session_duration_seconds.labels(
+                        **_LABELS, model=_sanitize_model_label(resolved_model)
+                    ).observe(time.monotonic() - _session_start)
                 partial_response = "".join(exc.collected)
                 if partial_response:
-                    await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
+                    await log_entry(
+                        "agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None
+                    )
                 # Do not persist chat.history here (#493). At this point the
                 # history contains the user turn that triggered the aborted
                 # call and, at best, a partial/implementation-defined model
@@ -2282,28 +2336,35 @@ async def run_query(
                 raise
             except Exception as _run_exc:
                 if backend_sdk_query_error_duration_seconds is not None:
-                    backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
-                        time.monotonic() - _query_start
-                    )
+                    backend_sdk_query_error_duration_seconds.labels(
+                        **_LABELS, model=_sanitize_model_label(resolved_model)
+                    ).observe(time.monotonic() - _query_start)
                 if backend_sdk_session_duration_seconds is not None:
-                    backend_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
-                        time.monotonic() - _session_start
-                    )
+                    backend_sdk_session_duration_seconds.labels(
+                        **_LABELS, model=_sanitize_model_label(resolved_model)
+                    ).observe(time.monotonic() - _session_start)
                 # Classify by exception type so the new SDK error counters track
                 # connection vs result vs catch-all failures (#445). Best-effort —
                 # if the google.api_core import is unavailable, fall through to the
                 # generic catch-all counter.
                 try:
                     from google.api_core import exceptions as _g_exc
+
                     if isinstance(_run_exc, _g_exc.ClientError):
                         if backend_sdk_client_errors_total is not None:
-                            backend_sdk_client_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
+                            backend_sdk_client_errors_total.labels(
+                                **_LABELS, model=_sanitize_model_label(resolved_model)
+                            ).inc()
                     elif isinstance(_run_exc, _g_exc.GoogleAPIError):
                         if backend_sdk_result_errors_total is not None:
-                            backend_sdk_result_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
+                            backend_sdk_result_errors_total.labels(
+                                **_LABELS, model=_sanitize_model_label(resolved_model)
+                            ).inc()
                     else:
                         if backend_sdk_errors_total is not None:
-                            backend_sdk_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
+                            backend_sdk_errors_total.labels(
+                                **_LABELS, model=_sanitize_model_label(resolved_model)
+                            ).inc()
                 except Exception:
                     if backend_sdk_errors_total is not None:
                         backend_sdk_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
@@ -2333,9 +2394,9 @@ async def run_query(
                         pass
 
             if backend_sdk_session_duration_seconds is not None:
-                backend_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
-                    time.monotonic() - _session_start
-                )
+                backend_sdk_session_duration_seconds.labels(
+                    **_LABELS, model=_sanitize_model_label(resolved_model)
+                ).observe(time.monotonic() - _session_start)
 
             full_response = "".join(collected)
             if full_response:
@@ -2400,7 +2461,9 @@ async def run_query(
             except Exception as _save_exc:
                 logger.error(
                     "Permanently failed to save session history for %r: %s",
-                    session_id, _save_exc, exc_info=True,
+                    session_id,
+                    _save_exc,
+                    exc_info=True,
                 )
                 if backend_session_history_save_errors_total is not None:
                     backend_session_history_save_errors_total.labels(**_LABELS).inc()
@@ -2408,20 +2471,29 @@ async def run_query(
                     history_save_failed.add(session_id)
 
         if backend_sdk_query_duration_seconds is not None:
-            backend_sdk_query_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
+            backend_sdk_query_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
+                time.monotonic() - _query_start
+            )
         if backend_sdk_messages_per_query is not None:
-            backend_sdk_messages_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(_message_count)
+            backend_sdk_messages_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
+                _message_count
+            )
         if backend_sdk_turns_per_query is not None:
-            backend_sdk_turns_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(_turn_count)
+            backend_sdk_turns_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
+                _turn_count
+            )
         if backend_text_blocks_per_query is not None:
-            backend_text_blocks_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(len(collected))
+            backend_text_blocks_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
+                len(collected)
+            )
         # Tokens-per-query (#813). Parity with claude's
         # backend_sdk_tokens_per_query. Falls back to 0 when the
         # response usage_metadata is missing.
         if backend_sdk_tokens_per_query is not None:
             try:
                 backend_sdk_tokens_per_query.labels(
-                    **_LABELS, model=_sanitize_model_label(resolved_model),
+                    **_LABELS,
+                    model=_sanitize_model_label(resolved_model),
                 ).observe(int(_total_tokens or 0))
             except Exception:
                 pass
@@ -2442,7 +2514,8 @@ async def run_query(
             ts = datetime.now(timezone.utc).isoformat()
             _trace_entry = {
                 "ts": ts,
-                "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                "agent": AGENT_NAME,
+                "agent_id": AGENT_ID,
                 "session_id": session_id,
                 "event_type": "response",
                 "model": resolved_model,
@@ -2484,9 +2557,16 @@ async def run(
         backend_concurrent_queries.labels(**_LABELS).inc()
     try:
         return await _run_inner(
-            prompt, session_id, sessions, agent_md_content, session_locks,
-            history_save_failed, model, max_tokens,
-            on_chunk=on_chunk, live_mcp_servers=live_mcp_servers,
+            prompt,
+            session_id,
+            sessions,
+            agent_md_content,
+            session_locks,
+            history_save_failed,
+            model,
+            max_tokens,
+            on_chunk=on_chunk,
+            live_mcp_servers=live_mcp_servers,
         )
     finally:
         if backend_concurrent_queries is not None:
@@ -2512,7 +2592,9 @@ async def _run_inner(
     # Treat sessions whose history failed to persist as new — resuming from a
     # partially-written or missing history file could produce incorrect context (#409).
     _save_failed = history_save_failed is not None and session_id in history_save_failed
-    is_new = _save_failed or (session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id))
+    is_new = _save_failed or (
+        session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id)
+    )
     if not is_new and backend_session_idle_seconds is not None:
         _last_used = sessions.get(session_id)
         if _last_used is not None:
@@ -2520,7 +2602,11 @@ async def _run_inner(
     if backend_session_starts_total is not None:
         backend_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
-    _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
+    _prompt_preview = (
+        prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "")
+        if LOG_PROMPT_MAX_BYTES > 0
+        else "[redacted]"
+    )
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
     # conversation.turn event (#1110 phase 3). Wrap — never raise.
@@ -2545,9 +2631,15 @@ async def _run_inner(
     try:
         collected = await asyncio.wait_for(
             run_query(
-                prompt, session_id, agent_md_content, session_locks,
-                history_save_failed, model=model, max_tokens=max_tokens,
-                on_chunk=on_chunk, live_mcp_servers=live_mcp_servers,
+                prompt,
+                session_id,
+                agent_md_content,
+                session_locks,
+                history_save_failed,
+                model=model,
+                max_tokens=max_tokens,
+                on_chunk=on_chunk,
+                live_mcp_servers=live_mcp_servers,
                 sessions=sessions,
             ),
             timeout=TASK_TIMEOUT_SECONDS,
@@ -2675,7 +2767,9 @@ async def _run_inner(
     if backend_task_duration_seconds is not None:
         backend_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
     if backend_task_timeout_headroom_seconds is not None:
-        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
+        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(
+            TASK_TIMEOUT_SECONDS - (time.monotonic() - _start)
+        )
 
     response = "".join(collected) if collected else ""
     if not response:
@@ -2692,9 +2786,7 @@ class AgentExecutor(A2AAgentExecutor):
         # rather than on the first request (#417).
         _key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
         if not _key:
-            raise RuntimeError(
-                "No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY before starting."
-            )
+            raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY before starting.")
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._session_locks: dict[str, _RefCountedLock] = {}
         self._running_tasks: dict[str, asyncio.Task] = {}
@@ -2738,6 +2830,7 @@ class AgentExecutor(A2AAgentExecutor):
         # locally but the harness side-channel is silent.
         try:
             import hook_events as _hev  # noqa: F401
+
             self._hook_events_ready = True
         except Exception:  # pragma: no cover — shared mount failure
             self._hook_events_ready = False
@@ -2781,7 +2874,8 @@ class AgentExecutor(A2AAgentExecutor):
         # in-flight request gets the natural release path; shorter than
         # a workday so a leaked reference doesn't accumulate overnight.
         self._mcp_parked_stack_max_age_s: float = max(
-            float(TASK_TIMEOUT_SECONDS) * 2.0, 600.0,
+            float(TASK_TIMEOUT_SECONDS) * 2.0,
+            600.0,
         )
         # Hard grace factor (#995): after _PARKED_STACK_HARD_GRACE_FACTOR
         # × max_age_s have elapsed, the watchdog force-closes even when
@@ -2833,11 +2927,13 @@ class AgentExecutor(A2AAgentExecutor):
             # and promotes the flag as soon as the mount lands.
             try:
                 import hook_events as _hev_probe  # noqa: F401
+
                 self._hook_events_ready = True
             except Exception:
                 return
         try:
             import hook_events as _hev
+
             _hev.schedule_post(
                 {
                     # #1149: send BACKEND id (gemini/claude/codex), not
@@ -2866,7 +2962,9 @@ class AgentExecutor(A2AAgentExecutor):
             if backend_hooks_evaluations_total is not None:
                 try:
                     backend_hooks_evaluations_total.labels(
-                        **_LABELS, tool=tool or "unknown", decision=decision,
+                        **_LABELS,
+                        tool=tool or "unknown",
+                        decision=decision,
                     ).inc()
                 except Exception:
                     pass
@@ -2913,7 +3011,10 @@ class AgentExecutor(A2AAgentExecutor):
         if previous is not None and previous != current:
             try:
                 backend_agent_md_revision.remove(
-                    _LABELS["agent"], _LABELS["agent_id"], _LABELS["backend"], previous,
+                    _LABELS["agent"],
+                    _LABELS["agent_id"],
+                    _LABELS["backend"],
+                    previous,
                 )
             except (KeyError, ValueError):
                 # Label set never registered / already removed — benign.
@@ -2952,6 +3053,7 @@ class AgentExecutor(A2AAgentExecutor):
             )
             return
         from watchfiles import awatch as _awatch
+
         watch_dir = os.path.dirname(os.path.abspath(key_file)) or "/"
         while True:
             if not os.path.isdir(watch_dir):
@@ -2965,7 +3067,8 @@ class AgentExecutor(A2AAgentExecutor):
                 async for changes in _awatch(watch_dir, recursive=False):
                     if backend_watcher_events_total is not None:
                         backend_watcher_events_total.labels(
-                            **_LABELS, watcher="api_key_file",
+                            **_LABELS,
+                            watcher="api_key_file",
                         ).inc()
                     for _, path in changes:
                         if os.path.abspath(path) == os.path.abspath(key_file):
@@ -2984,14 +3087,15 @@ class AgentExecutor(A2AAgentExecutor):
                             # stale env, live client) state window.
                             async with _get_api_key_rotation_lock():
                                 try:
-                                    with open(key_file, "r") as _fh:
+                                    with open(key_file) as _fh:
                                         _new_key = _fh.read().strip()
                                     if _new_key:
                                         os.environ["GEMINI_API_KEY"] = _new_key
                                 except Exception as _read_exc:
                                     logger.warning(
                                         "api_key_file_watcher: failed to read %r: %r",
-                                        key_file, _read_exc,
+                                        key_file,
+                                        _read_exc,
                                     )
                                 # #1621: flag rotation instead of nulling
                                 # the cached client. The next _get_client
@@ -3003,8 +3107,7 @@ class AgentExecutor(A2AAgentExecutor):
                                     _request_client_rotation()
                                 except Exception as _rot_exc:
                                     logger.warning(
-                                        "api_key_file_watcher: "
-                                        "_request_client_rotation raised %r",
+                                        "api_key_file_watcher: " "_request_client_rotation raised %r",
                                         _rot_exc,
                                     )
                             break
@@ -3015,7 +3118,8 @@ class AgentExecutor(A2AAgentExecutor):
                 )
                 if backend_file_watcher_restarts_total is not None:
                     backend_file_watcher_restarts_total.labels(
-                        **_LABELS, watcher="api_key_file",
+                        **_LABELS,
+                        watcher="api_key_file",
                     ).inc()
                 await asyncio.sleep(10)
 
@@ -3057,10 +3161,7 @@ class AgentExecutor(A2AAgentExecutor):
                     # WARN so operators notice a caller that never released
                     # rather than silently aborting their request.
                     age = now - parked_at
-                    hard_grace_s = (
-                        self._mcp_parked_stack_max_age_s
-                        * max(1.0, self._mcp_parked_stack_hard_grace_factor)
-                    )
+                    hard_grace_s = self._mcp_parked_stack_max_age_s * max(1.0, self._mcp_parked_stack_hard_grace_factor)
                     if age > self._mcp_parked_stack_max_age_s:
                         if _old_ref <= 0:
                             to_close.append(entry)
@@ -3077,7 +3178,9 @@ class AgentExecutor(A2AAgentExecutor):
                                 "hard-grace (%.1fs) with refcount=%d > 0 — "
                                 "force-closing to reclaim subprocess and pipes "
                                 "(#995). Original refcount protection: #885.",
-                                age, hard_grace_s, _old_ref,
+                                age,
+                                hard_grace_s,
+                                _old_ref,
                             )
                             to_close.append(entry)
                         else:
@@ -3092,7 +3195,9 @@ class AgentExecutor(A2AAgentExecutor):
                                     "but refcount=%d > 0 — leaving intact to "
                                     "avoid aborting an in-flight call (#885); "
                                     "hard-grace force-close at age %.1fs (#995).",
-                                    age, _old_ref, hard_grace_s,
+                                    age,
+                                    _old_ref,
+                                    hard_grace_s,
                                 )
                     else:
                         still_parked.append(entry)
@@ -3101,7 +3206,8 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.warning(
                     "MCP watchdog: force-closing parked stack (refcount=%d, "
                     "age=%.1fs) — acquire/release pairing failed (#735).",
-                    old_ref, now - parked_at,
+                    old_ref,
+                    now - parked_at,
                 )
                 try:
                     await old_stack.aclose()
@@ -3178,7 +3284,8 @@ class AgentExecutor(A2AAgentExecutor):
                     if not isinstance(cfg, dict):
                         logger.warning(
                             "MCP server %r: config must be a dict; got %r — skipping.",
-                            name, type(cfg).__name__,
+                            name,
+                            type(cfg).__name__,
                         )
                         continue
                     # #814: URL-shaped MCP entries (production in-cluster
@@ -3214,8 +3321,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 _headers = dict((cfg.get("headers") if isinstance(cfg, dict) else None) or {})
                                 _mcp_env_token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()
                                 _has_auth = any(
-                                    isinstance(k, str) and k.strip().lower() == "authorization"
-                                    for k in _headers
+                                    isinstance(k, str) and k.strip().lower() == "authorization" for k in _headers
                                 )
                                 if _mcp_env_token and not _has_auth:
                                     _headers["Authorization"] = f"Bearer {_mcp_env_token}"
@@ -3234,22 +3340,17 @@ class AgentExecutor(A2AAgentExecutor):
                                             sse_client(url_entry, headers=_headers or None)
                                         )
                                     except TypeError:
-                                        read, write = await new_stack.enter_async_context(
-                                            sse_client(url_entry)
-                                        )
+                                        read, write = await new_stack.enter_async_context(sse_client(url_entry))
                                 else:
-                                    raise RuntimeError(
-                                        "neither streamablehttp_client nor sse_client available"
-                                    )
-                                session = await new_stack.enter_async_context(
-                                    ClientSession(read, write)
-                                )
+                                    raise RuntimeError("neither streamablehttp_client nor sse_client available")
+                                session = await new_stack.enter_async_context(ClientSession(read, write))
                                 await session.initialize()
                                 new_live.append(session)
                                 if backend_mcp_server_up is not None:
                                     try:
                                         backend_mcp_server_up.labels(
-                                            **_LABELS, server=name,
+                                            **_LABELS,
+                                            server=name,
                                         ).set(1)
                                     except Exception:
                                         pass
@@ -3258,12 +3359,15 @@ class AgentExecutor(A2AAgentExecutor):
                                 set_span_error(_mcp_span, _mcp_exc)
                                 logger.warning(
                                     "MCP server %r (url=%s) failed to start (%s); proceeding without it.",
-                                    name, url_entry, _mcp_exc,
+                                    name,
+                                    url_entry,
+                                    _mcp_exc,
                                 )
                                 if backend_mcp_server_up is not None:
                                     try:
                                         backend_mcp_server_up.labels(
-                                            **_LABELS, server=name,
+                                            **_LABELS,
+                                            server=name,
                                         ).set(0)
                                     except Exception:
                                         pass
@@ -3271,7 +3375,9 @@ class AgentExecutor(A2AAgentExecutor):
                                 if backend_mcp_server_exits_total is not None:
                                     try:
                                         backend_mcp_server_exits_total.labels(
-                                            **_LABELS, server=name, reason="init_failed",
+                                            **_LABELS,
+                                            server=name,
+                                            reason="init_failed",
                                         ).inc()
                                     except Exception:
                                         pass
@@ -3299,7 +3405,8 @@ class AgentExecutor(A2AAgentExecutor):
                             if backend_mcp_server_up is not None:
                                 try:
                                     backend_mcp_server_up.labels(
-                                        **_LABELS, server=name,
+                                        **_LABELS,
+                                        server=name,
                                     ).set(1)
                                 except Exception:
                                     pass
@@ -3308,12 +3415,14 @@ class AgentExecutor(A2AAgentExecutor):
                             set_span_error(_mcp_span, _mcp_exc)
                             logger.warning(
                                 "MCP server %r failed to start (%s); proceeding without it.",
-                                name, _mcp_exc,
+                                name,
+                                _mcp_exc,
                             )
                             if backend_mcp_server_up is not None:
                                 try:
                                     backend_mcp_server_up.labels(
-                                        **_LABELS, server=name,
+                                        **_LABELS,
+                                        server=name,
                                     ).set(0)
                                 except Exception:
                                     pass
@@ -3321,7 +3430,9 @@ class AgentExecutor(A2AAgentExecutor):
                             if backend_mcp_server_exits_total is not None:
                                 try:
                                     backend_mcp_server_exits_total.labels(
-                                        **_LABELS, server=name, reason="init_failed",
+                                        **_LABELS,
+                                        server=name,
+                                        reason="init_failed",
                                     ).inc()
                                 except Exception:
                                     pass
@@ -3350,7 +3461,8 @@ class AgentExecutor(A2AAgentExecutor):
                 for _gone in removed:
                     try:
                         backend_mcp_server_up.labels(
-                            **_LABELS, server=_gone,
+                            **_LABELS,
+                            server=_gone,
                         ).set(0)
                     except Exception:
                         pass
@@ -3373,8 +3485,10 @@ class AgentExecutor(A2AAgentExecutor):
             # both sides are active. hooks skeleton in #631 cannot intercept
             # tool calls that AFC runs inside the SDK; the hand-rolled-loop
             # option lives in the #640 issue body.
-            if new_live and os.environ.get("HOOKS_CONFIG_PATH") and (
-                self._hook_state.extensions or self._hook_state.baseline
+            if (
+                new_live
+                and os.environ.get("HOOKS_CONFIG_PATH")
+                and (self._hook_state.extensions or self._hook_state.baseline)
             ):
                 logger.warning(
                     "gemini hooks skeleton (#631) cannot intercept MCP tool calls "
@@ -3424,7 +3538,8 @@ class AgentExecutor(A2AAgentExecutor):
                             await old_stack.aclose()
                         except Exception as _close_exc:
                             logger.warning(
-                                "Deferred MCP stack aclose error: %s", _close_exc,
+                                "Deferred MCP stack aclose error: %s",
+                                _close_exc,
                             )
                     else:
                         self._mcp_old_stacks[i] = (old_stack, new_ref, parked_at)
@@ -3574,7 +3689,8 @@ class AgentExecutor(A2AAgentExecutor):
                             logger.warning("hooks.yaml reload failed — keeping previous rules: %s", exc)
                             if backend_hooks_config_errors_total is not None:
                                 backend_hooks_config_errors_total.labels(
-                                    **_LABELS, reason="yaml_reload_failed",
+                                    **_LABELS,
+                                    reason="yaml_reload_failed",
                                 ).inc()
                         break
             logger.warning("hooks.yaml directory watcher exited — retrying in 10s.")
@@ -3592,13 +3708,9 @@ class AgentExecutor(A2AAgentExecutor):
         # entry, emit an error event, and return.
         if not prompt or not prompt.strip():
             _empty_sid_raw = str(
-                context.context_id
-                or (context.message.metadata or {}).get("session_id")
-                or ""
+                context.context_id or (context.message.metadata or {}).get("session_id") or ""
             ).strip()[:256]
-            _empty_sid_sanitized = (
-                "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
-            )
+            _empty_sid_sanitized = "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
             # Route through derive_session_id (#888) so the log entry and
             # every metric label uses the HMAC-bound session id under
             # SESSION_ID_SECRET — otherwise the rejected-prompt path
@@ -3606,13 +3718,13 @@ class AgentExecutor(A2AAgentExecutor):
             # accepted path used the derived id, which leaks the
             # resumption key and mis-bins the two request categories.
             from session_binding import derive_session_id as _derive_session_id
+
             _empty_caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
             _empty_sid = _derive_session_id(
-                _empty_sid_sanitized, caller_identity=_empty_caller_id,
+                _empty_sid_sanitized,
+                caller_identity=_empty_caller_id,
             )
-            logger.warning(
-                f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
-            )
+            logger.warning(f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544).")
             if backend_empty_prompts_total is not None:
                 backend_empty_prompts_total.labels(**_LABELS).inc()
             if backend_a2a_requests_total is not None:
@@ -3646,21 +3758,15 @@ class AgentExecutor(A2AAgentExecutor):
         _prompt_bytes = len(prompt.encode("utf-8"))
         if _prompt_bytes > _MAX_PROMPT_BYTES:
             _too_large_sid_raw = str(
-                context.context_id
-                or (context.message.metadata or {}).get("session_id")
-                or ""
+                context.context_id or (context.message.metadata or {}).get("session_id") or ""
             ).strip()[:256]
-            _too_large_sid_sanitized = (
-                "".join(c for c in _too_large_sid_raw if c >= " ")
-            )
+            _too_large_sid_sanitized = "".join(c for c in _too_large_sid_raw if c >= " ")
             from session_binding import derive_session_id as _derive_session_id_tl
-            _too_large_caller_id = (
-                metadata.get("caller_id")
-                if isinstance(metadata.get("caller_id"), str)
-                else None
-            )
+
+            _too_large_caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
             _too_large_sid = _derive_session_id_tl(
-                _too_large_sid_sanitized, caller_identity=_too_large_caller_id,
+                _too_large_sid_sanitized,
+                caller_identity=_too_large_caller_id,
             )
             _too_large_err = PromptTooLargeError(_prompt_bytes, _MAX_PROMPT_BYTES)
             logger.warning(
@@ -3672,9 +3778,7 @@ class AgentExecutor(A2AAgentExecutor):
             if backend_a2a_requests_total is not None:
                 backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
             if backend_a2a_request_duration_seconds is not None:
-                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(
-                    time.monotonic() - _exec_start
-                )
+                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
             if backend_a2a_last_request_timestamp_seconds is not None:
                 backend_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
             await log_entry(
@@ -3683,15 +3787,16 @@ class AgentExecutor(A2AAgentExecutor):
                 f"MAX_PROMPT_BYTES={_MAX_PROMPT_BYTES} (#1620).",
                 _too_large_sid,
             )
-            await event_queue.enqueue_event(
-                new_agent_text_message(f"Error: {_too_large_err}")
-            )
+            await event_queue.enqueue_event(new_agent_text_message(f"Error: {_too_large_err}"))
             return
         # OTel server span continuation (#469).
         from otel import extract_otel_context as _extract_ctx
+
         _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
         _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
-        _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        _raw_sid = "".join(
+            c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " "
+        )
         # Per-caller session_id binding (#733). See the matching block in
         # backends/claude/executor.py for the rationale and the shared
         # helper in shared/session_binding.py for the derivation rules.
@@ -3699,9 +3804,14 @@ class AgentExecutor(A2AAgentExecutor):
         # is unset.
         from session_binding import (
             derive_session_id as _derive_session_id,
+        )
+        from session_binding import (
             derive_session_id_candidates as _derive_session_id_candidates,
+        )
+        from session_binding import (
             note_prev_secret_hit as _note_prev_secret_hit,
         )
+
         _caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
         # Probe-list rotation (#1042). If SESSION_ID_SECRET_PREV is set we
         # compute both derivations and route resumption to whichever id
@@ -3749,6 +3859,7 @@ class AgentExecutor(A2AAgentExecutor):
         # — a broadcaster fault must not break the A2A response path.
         try:
             from session_stream import get_session_stream as _get_session_stream
+
             _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
             # Per-turn seq covers user+assistant chunks (#1139).
             _sess_stream.reset_turn_seq()
@@ -3780,9 +3891,7 @@ class AgentExecutor(A2AAgentExecutor):
                         final=False,
                     )
                 except Exception as _s_exc:  # pragma: no cover
-                    logger.warning(
-                        "session_stream: chunk publish failed: %r", _s_exc
-                    )
+                    logger.warning("session_stream: chunk publish failed: %r", _s_exc)
             # Per-chunk A2A event_queue emission removed — see
             # backends/claude/executor.py _emit_chunk for the rationale
             # (A2A SDK's blocking handler returns on first Message event,
@@ -3794,7 +3903,9 @@ class AgentExecutor(A2AAgentExecutor):
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
 
-        from otel import start_span as _start_span, set_span_error as _set_span_error
+        from otel import set_span_error as _set_span_error
+        from otel import start_span as _start_span
+
         _otel_span = None
         try:
             with _start_span(
@@ -3843,9 +3954,7 @@ class AgentExecutor(A2AAgentExecutor):
                             final=True,
                         )
                     except Exception as _f_exc:  # pragma: no cover
-                        logger.warning(
-                            "session_stream: final chunk publish failed: %r", _f_exc
-                        )
+                        logger.warning("session_stream: final chunk publish failed: %r", _f_exc)
                 if backend_a2a_requests_total is not None:
                     backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
@@ -3867,8 +3976,8 @@ class AgentExecutor(A2AAgentExecutor):
                     )
                 except Exception as _ef_exc:  # pragma: no cover
                     logger.warning(
-                        "session_stream: final chunk publish on error "
-                        "path failed: %r", _ef_exc,
+                        "session_stream: final chunk publish on error " "path failed: %r",
+                        _ef_exc,
                     )
             raise
         finally:
@@ -3925,7 +4034,8 @@ class AgentExecutor(A2AAgentExecutor):
                 for _name in self._mcp_known_servers:
                     try:
                         backend_mcp_server_up.labels(
-                            **_LABELS, server=_name,
+                            **_LABELS,
+                            server=_name,
                         ).set(0)
                     except Exception:
                         pass

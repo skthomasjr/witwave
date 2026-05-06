@@ -10,6 +10,7 @@ Asserts the build-then-swap behaviour added in #1621:
 The sys.path / stub setup mirrors ``test_regression_coverage.py`` so the
 file is independently runnable under plain ``python3 test_*.py``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,7 +21,6 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent  # backends/gemini -> backends -> repo root
@@ -180,8 +180,7 @@ class GetClientRotationSuccessTests(_ResetSingletonMixin, unittest.TestCase):
         self.assertIs(got, new, "new client must replace the old singleton")
         self.assertIs(executor._genai_client, new)
         self.assertFalse(executor._rotation_pending)
-        self.assertIn(prev, executor._clients_pending_close,
-                      "previous client must be queued for teardown")
+        self.assertIn(prev, executor._clients_pending_close, "previous client must be queued for teardown")
 
 
 class GetClientRotationFailureTests(_ResetSingletonMixin, unittest.TestCase):
@@ -192,20 +191,18 @@ class GetClientRotationFailureTests(_ResetSingletonMixin, unittest.TestCase):
 
         os.environ["GEMINI_API_KEY"] = "rotated-but-bad"
         boom = RuntimeError("constructor refused new key")
-        with patch.object(executor.genai, "Client", side_effect=boom), \
-                self.assertLogs(executor.logger, level="ERROR") as logs:
+        with patch.object(executor.genai, "Client", side_effect=boom), self.assertLogs(
+            executor.logger, level="ERROR"
+        ) as logs:
             got = executor._get_client()
 
-        self.assertIs(got, prev,
-                      "failed rotation must return the previously-cached client")
-        self.assertIs(executor._genai_client, prev,
-                      "singleton must NOT be left as None after a failed rotation")
-        self.assertIsNotNone(executor._genai_client,
-                             "no caller may ever observe a None client (#1621)")
-        self.assertFalse(executor._rotation_pending,
-                         "rotation flag must clear so the fast path re-engages")
-        self.assertNotIn(prev, executor._clients_pending_close,
-                         "old client must not be queued for teardown when rotation failed")
+        self.assertIs(got, prev, "failed rotation must return the previously-cached client")
+        self.assertIs(executor._genai_client, prev, "singleton must NOT be left as None after a failed rotation")
+        self.assertIsNotNone(executor._genai_client, "no caller may ever observe a None client (#1621)")
+        self.assertFalse(executor._rotation_pending, "rotation flag must clear so the fast path re-engages")
+        self.assertNotIn(
+            prev, executor._clients_pending_close, "old client must not be queued for teardown when rotation failed"
+        )
         joined = "\n".join(logs.output)
         self.assertIn("#1621", joined)
 
@@ -221,8 +218,7 @@ class GetClientRotationFailureTests(_ResetSingletonMixin, unittest.TestCase):
             with self.assertLogs(executor.logger, level="ERROR") as logs:
                 got = executor._get_client()
 
-        self.assertIs(got, prev,
-                      "missing key during rotation must fall back to the cached client")
+        self.assertIs(got, prev, "missing key during rotation must fall back to the cached client")
         self.assertIs(executor._genai_client, prev)
         self.assertFalse(executor._rotation_pending)
         self.assertIn("#1621", "\n".join(logs.output))

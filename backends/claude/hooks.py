@@ -30,6 +30,7 @@ PreToolUse deny, the hook callable returns
 ``{"hookSpecificOutput": {"hookEventName": "PreToolUse",
 "permissionDecision": "deny", "permissionDecisionReason": "<why>"}}``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -71,11 +72,13 @@ except Exception as _hooks_engine_import_exc:  # noqa: BLE001 — documented sin
 
     class HookState:  # type: ignore[no-redef]
         """Fallback stub when hooks_engine import fails (#1050)."""
+
         def __init__(self, *args, **kwargs) -> None:
             self.rules: list = []
 
     class Rule:  # type: ignore[no-redef]
         """Fallback stub when hooks_engine import fails (#1050)."""
+
         pass
 
     def evaluate_pre_tool_use(tool_name, tool_input, rules):  # type: ignore[no-redef]
@@ -91,6 +94,7 @@ except Exception as _hooks_engine_import_exc:  # noqa: BLE001 — documented sin
     # the failure surfaces in dashboards the same way as a YAML parse error.
     try:
         from metrics import backend_hooks_config_errors_total
+
         if backend_hooks_config_errors_total is not None:
             backend_hooks_config_errors_total.labels(
                 agent=os.environ.get("AGENT_OWNER", os.environ.get("AGENT_NAME", "claude")),
@@ -122,6 +126,7 @@ def _bump_config_error(reason: str) -> None:
     """
     try:
         from metrics import backend_hooks_config_errors_total
+
         if backend_hooks_config_errors_total is None:
             return
         labels = {

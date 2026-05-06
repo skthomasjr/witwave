@@ -4,7 +4,6 @@ import hmac as hmac_mod
 import logging
 import os
 import time
-import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -13,7 +12,6 @@ import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from sqlite_task_store import SqliteTaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
@@ -24,9 +22,8 @@ from conversations import (
     make_conversations_handler,
     make_trace_handler,
 )
-from executor import AgentExecutor
-from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
 from env import parse_bool_env
+from executor import AgentExecutor
 from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
@@ -41,6 +38,9 @@ from metrics import (
     backend_up,
     backend_uptime_seconds,
 )
+from session_binding import derive_session_id
+from session_binding import set_fallback_counter as _set_session_binding_fallback_counter
+from sqlite_task_store import SqliteTaskStore
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -175,7 +175,9 @@ async def health_start(request: Request) -> JSONResponse:
     # three-probe contract (docs/product-vision.md:74) holds across
     # the whole platform — not just the harness.
     if backend_health_checks_total is not None:
-        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start").inc()
+        backend_health_checks_total.labels(
+            agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start"
+        ).inc()
     if _ready:
         return JSONResponse({"status": "ok"})
     return JSONResponse({"status": "starting"}, status_code=503)
@@ -189,7 +191,9 @@ async def health(request: Request) -> JSONResponse:
     # (i.e. removing a degraded pod from Service endpoints) point K8s
     # readinessProbe at /health/ready instead.
     if backend_health_checks_total is not None:
-        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
+        backend_health_checks_total.labels(
+            agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health"
+        ).inc()
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         # #1341: expose both fields so consumers that cross-reference with
@@ -222,7 +226,9 @@ async def health_ready(request: Request) -> JSONResponse:
     # the degraded reason clears (currently never automatically — manual
     # restart or operator intervention required to reset the flag).
     if backend_health_checks_total is not None:
-        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready").inc()
+        backend_health_checks_total.labels(
+            agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready"
+        ).inc()
     if not _ready:
         return JSONResponse({"status": "starting"}, status_code=503)
     if _boot_degraded_reason is not None:
@@ -385,11 +391,17 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
             if time.monotonic() - _attempt_start >= restart_delay:
                 consecutive_restarts = 0
             consecutive_restarts += 1
-            logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
+            logger.error(
+                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+            )
             if backend_task_restarts_total is not None:
-                backend_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
+                backend_task_restarts_total.labels(
+                    agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__
+                ).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
-                logger.error(f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready")
+                logger.error(
+                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"
+                )
                 _ready = False
             await asyncio.sleep(restart_delay)
 
@@ -401,7 +413,9 @@ async def _event_loop_monitor() -> None:
         await asyncio.sleep(_interval)
         lag = time.monotonic() - _before - _interval
         if lag > 0 and backend_event_loop_lag_seconds is not None:
-            backend_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(lag)
+            backend_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(
+                lag
+            )
 
 
 async def _set_ready_when_started(server: uvicorn.Server) -> None:
@@ -410,7 +424,9 @@ async def _set_ready_when_started(server: uvicorn.Server) -> None:
     global _ready
     _ready = True
     if backend_startup_duration_seconds is not None:
-        backend_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(time.monotonic() - _startup_mono)
+        backend_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(
+            time.monotonic() - _startup_mono
+        )
     logger.info(f"Backend agent {AGENT_NAME} is ready")
 
 
@@ -426,6 +442,7 @@ async def main():
     # a loop reference to fall back to.
     try:
         from hook_events import bind_event_loop as _bind_event_loop
+
         _bind_event_loop(asyncio.get_running_loop())
     except Exception as _bind_exc:  # pragma: no cover — best-effort
         logger.warning("hook_events.bind_event_loop failed: %r", _bind_exc)
@@ -433,7 +450,10 @@ async def main():
     # Initialise OTel before the executor so every request gets a span if
     # enabled (#469). No-op when OTEL_ENABLED is falsy.
     from otel import init_otel_if_enabled
-    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or f"claude-{os.environ.get('AGENT_OWNER', 'unknown')}")
+
+    init_otel_if_enabled(
+        service_name=os.environ.get("OTEL_SERVICE_NAME") or f"claude-{os.environ.get('AGENT_OWNER', 'unknown')}"
+    )
 
     agent_card = build_agent_card()
     executor = AgentExecutor()
@@ -463,7 +483,9 @@ async def main():
         if backend_up is not None:
             backend_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
         if backend_info is not None:
-            backend_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
+            backend_info.info(
+                {"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
+            )
         # Register the shared session-binding fallback counter (#1103).
         if backend_session_binding_fallback_total is not None:
             _set_session_binding_fallback_counter(
@@ -474,7 +496,9 @@ async def main():
         # dashboards can catch claude-agent-sdk drift without shelling in.
         if backend_sdk_info is not None:
             try:
-                from importlib.metadata import version as _pkg_version, PackageNotFoundError
+                from importlib.metadata import PackageNotFoundError
+                from importlib.metadata import version as _pkg_version
+
                 try:
                     _sdk_ver = _pkg_version("claude-agent-sdk")
                 except PackageNotFoundError:
@@ -483,7 +507,9 @@ async def main():
             except Exception as _exc:
                 logger.warning("backend_sdk_info: failed to resolve claude-agent-sdk version: %r", _exc)
         if backend_uptime_seconds is not None:
-            backend_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
+            backend_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(
+                lambda: (datetime.now(timezone.utc) - start_time).total_seconds()
+            )
         logger.info("Prometheus metrics enabled at /metrics")
     else:
         logger.warning(
@@ -501,9 +527,8 @@ async def main():
     # conversation.chunk / conversation.turn / tool.use / trace.span
     # envelopes for one session. Auth parity with /conversations.
     from session_stream import make_session_stream_handler
-    session_stream_handler = make_session_stream_handler(
-        CONVERSATIONS_AUTH_TOKEN, agent_id=AGENT_OWNER
-    )
+
+    session_stream_handler = make_session_stream_handler(CONVERSATIONS_AUTH_TOKEN, agent_id=AGENT_OWNER)
 
     _agent_description = load_agent_description()
 
@@ -525,6 +550,7 @@ async def main():
         alert on rate / p95 latency without rewriting labels vs gemini.
         """
         import time as _time_for_mcp
+
         _mcp_start = _time_for_mcp.monotonic()
         _method_box: list[str] = ["unknown"]
         _status_box: list[str] = ["ok"]
@@ -597,13 +623,18 @@ async def main():
             )
         if _reason == "parse_error" or _raw is None:
             _status_box[0] = "parse_error"
-            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400
+            )
         try:
             import json as _json_for_mcp
+
             body = _json_for_mcp.loads(_raw.decode("utf-8"))
         except Exception:
             _status_box[0] = "parse_error"
-            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400
+            )
         rpc_id = body.get("id")
         method = body.get("method", "")
         params = body.get("params") or {}
@@ -626,48 +657,52 @@ async def main():
                 _negotiated_version = _client_version
             else:
                 _negotiated_version = SUPPORTED_MCP_VERSIONS[-1]
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "protocolVersion": _negotiated_version,
-                    "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
-                },
-            })
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {
+                        "protocolVersion": _negotiated_version,
+                        "capabilities": {"tools": {"listChanged": False}},
+                        "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
+                    },
+                }
+            )
 
         if method == "tools/list":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "tools": [
-                        {
-                            "name": "ask_agent",
-                            "description": _agent_description,
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "prompt": {"type": "string", "description": "The prompt to send to the agent."},
-                                    "session_id": {
-                                        "type": "string",
-                                        "description": "Optional session identifier for conversation continuity (#596). "
-                                                       "A valid UUID is passed through verbatim; any other string is "
-                                                       "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "ask_agent",
+                                "description": _agent_description,
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "prompt": {"type": "string", "description": "The prompt to send to the agent."},
+                                        "session_id": {
+                                            "type": "string",
+                                            "description": "Optional session identifier for conversation continuity (#596). "
+                                            "A valid UUID is passed through verbatim; any other string is "
+                                            "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
+                                        },
+                                        "max_tokens": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "description": "Optional per-call token budget (#460). Positive integers only; "
+                                            "non-positive or invalid values are logged and ignored.",
+                                        },
                                     },
-                                    "max_tokens": {
-                                        "type": "integer",
-                                        "minimum": 1,
-                                        "description": "Optional per-call token budget (#460). Positive integers only; "
-                                                       "non-positive or invalid values are logged and ignored.",
-                                    },
+                                    "required": ["prompt"],
                                 },
-                                "required": ["prompt"],
-                            },
-                        }
-                    ]
-                },
-            })
+                            }
+                        ]
+                    },
+                }
+            )
 
         if method == "tools/call":
             tool_name = params.get("name", "")
@@ -679,22 +714,26 @@ async def main():
                 # params). Clients that branch on isError see the
                 # failure; clients that ignore it still see a well-formed
                 # result payload.
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "result": {
-                        "isError": True,
-                        "content": [{"type": "text", "text": f"Unknown tool: {tool_name!r}"}],
-                    },
-                })
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "result": {
+                            "isError": True,
+                            "content": [{"type": "text", "text": f"Unknown tool: {tool_name!r}"}],
+                        },
+                    }
+                )
             arguments = params.get("arguments") or {}
             prompt = arguments.get("prompt", "")
             if not prompt:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "error": {"code": -32602, "message": "Missing required argument: prompt"},
-                })
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "error": {"code": -32602, "message": "Missing required argument: prompt"},
+                    }
+                )
             # Optional max_tokens — same parsing semantics as the A2A path
             # (positive int; non-positive or invalid is logged and dropped) (#460).
             _max_tokens_raw = arguments.get("max_tokens")
@@ -715,20 +754,10 @@ async def main():
             # SESSION_ID_SECRET is set. On endpoints without caller auth, or
             # without the secret, derive_session_id falls back to the legacy
             # uuid5 derivation for backward compatibility.
-            _raw_sid = "".join(
-                c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
-            )
+            _raw_sid = "".join(c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " ")
             _bearer_header = request.headers.get("Authorization", "")
-            _bearer_token = (
-                _bearer_header[len("Bearer "):]
-                if _bearer_header.startswith("Bearer ")
-                else ""
-            )
-            _caller_identity = (
-                hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
-                if _bearer_token
-                else None
-            )
+            _bearer_token = _bearer_header[len("Bearer ") :] if _bearer_header.startswith("Bearer ") else ""
+            _caller_identity = hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest() if _bearer_token else None
             # #982: the "no-bearer on /mcp" case silently downgrades to
             # the legacy uuid5 derivation (re-exposing the #710 cross-
             # caller collision risk). The shared counter in
@@ -786,6 +815,7 @@ async def main():
             # cross-agent joins missed tools/call work entirely.
             from otel import set_span_error as _set_span_error
             from otel import start_span as _start_span
+
             try:
                 with _start_span(
                     "backend.mcp.tools_call",
@@ -798,6 +828,7 @@ async def main():
                 ) as _mcp_span:
                     try:
                         from executor import run as _run_query_for_mcp
+
                         response = await _run_query_for_mcp(
                             prompt,
                             session_id,
@@ -816,25 +847,31 @@ async def main():
                 # report it as result.isError=true with a generic text
                 # block. The full exception detail is logged server-side
                 # above but not leaked to MCP clients (#455).
-                return JSONResponse({
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "result": {
+                            "isError": True,
+                            "content": [{"type": "text", "text": "Internal server error"}],
+                        },
+                    }
+                )
+            return JSONResponse(
+                {
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    "result": {
-                        "isError": True,
-                        "content": [{"type": "text", "text": "Internal server error"}],
-                    },
-                })
-            return JSONResponse({
+                    "result": {"content": [{"type": "text", "text": response}]},
+                }
+            )
+
+        return JSONResponse(
+            {
                 "jsonrpc": "2.0",
                 "id": rpc_id,
-                "result": {"content": [{"type": "text", "text": response}]},
-            })
-
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "error": {"code": -32601, "message": f"Method not found: {method!r}"},
-        })
+                "error": {"code": -32601, "message": f"Method not found: {method!r}"},
+            }
+        )
 
     # OTel in-memory span store (#otel-in-cluster). Serves the Jaeger v1
     # shape so the harness's fan-out aggregator can merge backend spans
@@ -898,15 +935,18 @@ async def main():
             offset = 0
         try:
             from otel import get_in_memory_traces  # type: ignore
+
             traces = get_in_memory_traces()
         except Exception:
             traces = []
-        return JSONResponse({
-            "data": traces[offset:offset + limit],
-            "total": len(traces),
-            "offset": offset,
-            "limit": limit,
-        })
+        return JSONResponse(
+            {
+                "data": traces[offset : offset + limit],
+                "total": len(traces),
+                "offset": offset,
+                "limit": limit,
+            }
+        )
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
         unauthorized = _require_traces_auth(request)
@@ -915,6 +955,7 @@ async def main():
         trace_id = request.path_params.get("trace_id") or ""
         try:
             from otel import get_in_memory_traces  # type: ignore
+
             traces = get_in_memory_traces()
         except Exception:
             traces = []
@@ -975,6 +1016,7 @@ async def main():
     # so the A2A SDK's @trace_class spans become children of the harness
     # trace rather than orphaned roots (#otel-cross-pod).
     from otel import TraceparentASGIMiddleware
+
     full_app = TraceparentASGIMiddleware(full_app)
 
     logger.info(f"Starting {AGENT_NAME} on {AGENT_HOST}:{BACKEND_PORT}")
@@ -994,9 +1036,7 @@ async def main():
     # pick up asynchronously — the worst case is a brief window where the
     # executor sees partial config, which is strictly better than an
     # indefinite bind-time hang + pod restart loop.
-    _INITIAL_LOADS_TIMEOUT_S = float(
-        os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10")
-    )
+    _INITIAL_LOADS_TIMEOUT_S = float(os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10"))
     # #1368: track boot-degraded state so operators can alert on
     # backends that came up with empty MCP/agent_md/hooks. Dashboard
     # reads this via /health.

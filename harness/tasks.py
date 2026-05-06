@@ -6,14 +6,16 @@ import re
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, time as dtime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as dtime
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from bus import Message, MessageBus
 from croniter import croniter
 from events import get_event_stream
 from metrics import (
+    harness_checkpoint_write_errors_total,
+    harness_file_watcher_restarts_total,
     harness_sched_task_checkpoint_stale_total,
     harness_sched_task_duration_seconds,
     harness_sched_task_error_duration_seconds,
@@ -27,8 +29,6 @@ from metrics import (
     harness_sched_task_running_items,
     harness_sched_task_runs_total,
     harness_sched_task_skips_total,
-    harness_checkpoint_write_errors_total,
-    harness_file_watcher_restarts_total,
     harness_watcher_events_total,
 )
 from utils import (
@@ -39,6 +39,7 @@ from utils import (
     parse_frontmatter_raw,
     run_awatch_loop,
 )
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
 

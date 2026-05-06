@@ -19,26 +19,35 @@ from typing import Awaitable, Callable
 # (webhooks, dashboard forensics). Stashing the current session_id in a
 # ContextVar at _run_inner entry lets the shell executor thread it through
 # without plumbing new parameters into the SDK's tool-invocation surface.
-_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "codex_current_session_id", default=""
-)
+_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar("codex_current_session_id", default="")
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
-from agents import Agent, ComputerTool, LocalShellCommandRequest, LocalShellTool, Runner, RunConfig, SQLiteSession, WebSearchTool
+from agents import (
+    Agent,
+    ComputerTool,
+    LocalShellCommandRequest,
+    LocalShellTool,
+    RunConfig,
+    Runner,
+    SQLiteSession,
+    WebSearchTool,
+)
 from agents.items import ToolCallItem, ToolCallOutputItem
-from computer import BrowserPool, PlaywrightComputer
 from agents.models.multi_provider import MultiProvider
+from computer import BrowserPool
+from exceptions import BudgetExceededError, PromptTooLargeError
+from log_utils import _append_log
 from metrics import (
     backend_a2a_last_request_timestamp_seconds,
-    backend_agent_md_revision,
-    backend_hooks_config_errors_total,
     backend_a2a_request_duration_seconds,
     backend_a2a_requests_total,
     backend_active_sessions,
+    backend_agent_md_revision,
     backend_budget_exceeded_total,
+    backend_codex_hooks_denials_total,
     backend_concurrent_queries,
     backend_context_exhaustion_total,
     backend_context_tokens,
@@ -47,25 +56,37 @@ from metrics import (
     backend_context_warnings_total,
     backend_empty_prompts_total,
     backend_empty_responses_total,
-    backend_prompt_too_large_total,
+    backend_file_watcher_restarts_total,
+    backend_hook_session_missing_total,
+    backend_hooks_config_errors_total,
+    backend_hooks_denials_total,
+    backend_hooks_shed_total,
     backend_log_bytes_total,
     backend_log_entries_total,
     backend_log_write_errors_by_logger_total,
     backend_log_write_errors_total,
     backend_lru_cache_utilization_percent,
+    backend_mcp_command_rejected_total,
+    backend_mcp_config_errors_total,
+    backend_mcp_config_reloads_total,
+    backend_mcp_outbound_duration_seconds,
+    backend_mcp_outbound_requests_total,
+    backend_mcp_servers_active,
     backend_model_requests_total,
     backend_prompt_length_bytes,
+    backend_prompt_too_large_total,
     backend_response_length_bytes,
     backend_running_tasks,
-    backend_sdk_messages_per_query,
     backend_sdk_client_errors_total,
     backend_sdk_context_fetch_errors_total,
     backend_sdk_errors_total,
+    backend_sdk_messages_per_query,
     backend_sdk_query_duration_seconds,
     backend_sdk_query_error_duration_seconds,
     backend_sdk_result_errors_total,
     backend_sdk_session_duration_seconds,
     backend_sdk_time_to_first_message_seconds,
+    backend_sdk_tokens_per_query,
     backend_sdk_tool_call_input_size_bytes,
     backend_sdk_tool_calls_per_query,
     backend_sdk_tool_calls_total,
@@ -75,50 +96,39 @@ from metrics import (
     backend_sdk_turns_per_query,
     backend_session_age_seconds,
     backend_session_evictions_total,
+    backend_session_history_save_errors_total,
     backend_session_idle_seconds,
+    backend_session_path_mismatch_total,
     backend_session_starts_total,
     backend_stderr_lines_per_task,
+    backend_streaming_chunks_dropped_total,
+    backend_streaming_events_emitted_total,
     backend_task_cancellations_total,
     backend_task_duration_seconds,
     backend_task_error_duration_seconds,
     backend_task_last_error_timestamp_seconds,
     backend_task_last_success_timestamp_seconds,
     backend_task_timeout_headroom_seconds,
-    backend_session_history_save_errors_total,
     backend_tasks_total,
     backend_tasks_with_stderr_total,
-    backend_mcp_command_rejected_total,
-    backend_mcp_config_errors_total,
-    backend_mcp_config_reloads_total,
-    backend_mcp_servers_active,
-    backend_streaming_events_emitted_total,
-    backend_streaming_chunks_dropped_total,
-    backend_sdk_tokens_per_query,
     backend_text_blocks_per_query,
-    backend_watcher_events_total,
-    backend_file_watcher_restarts_total,
-    backend_codex_hooks_denials_total,
-    backend_hooks_denials_total,
-    backend_hooks_shed_total,
-    backend_hook_session_missing_total,
-    backend_mcp_outbound_duration_seconds,
-    backend_mcp_outbound_requests_total,
     backend_tool_audit_bytes_per_entry,
     backend_tool_audit_entries_total,
     backend_tool_audit_rotation_pressure_total,
-    backend_session_path_mismatch_total,
+    backend_watcher_events_total,
 )
-
-from log_utils import _append_log
+from otel import set_span_error, start_span
+from redact import redact_text, should_redact
 from tool_audit import (  # type: ignore
     ToolAuditContext as _ToolAuditContext,
+)
+from tool_audit import (
     ToolAuditMetrics as _ToolAuditMetrics,
+)
+from tool_audit import (
     log_tool_audit as _shared_log_tool_audit,
 )
-from exceptions import BudgetExceededError, PromptTooLargeError
 from validation import parse_max_tokens, sanitize_model_label
-from otel import start_span, set_span_error
-from redact import redact_text, should_redact
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +147,7 @@ except Exception:  # pragma: no cover
     try:
         from shared.hook_events import schedule_event_post as _schedule_event_post  # type: ignore
     except Exception:
+
         def _schedule_event_post(*_a, **_kw):  # type: ignore
             return False
 
@@ -154,6 +165,8 @@ def _emit_event_safe(event_type: str, payload: dict) -> None:
         _schedule_event_post(event_type, payload, agent_id=AGENT_OWNER or AGENT_NAME)
     except Exception as exc:  # pragma: no cover
         logger.debug("event emit (%s) raised: %r", event_type, exc)
+
+
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 AGENT_MD = "/home/agent/.codex/AGENTS.md"
@@ -173,7 +186,8 @@ MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.codex/mcp.json
 # non-default deployments can override via ``MCP_CONFIG_PATH_ALLOWED_PREFIX``.
 # Mirrors backends/gemini/executor.py:303-304 (#1610).
 _MCP_CONFIG_PATH_ALLOWED_PREFIX = os.environ.get(
-    "MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/",
+    "MCP_CONFIG_PATH_ALLOWED_PREFIX",
+    "/home/agent/",
 )
 
 MAX_SESSIONS = max(1, int(os.environ.get("MAX_SESSIONS", "10000")))
@@ -231,6 +245,7 @@ def _resolve_model_label(model: str | None) -> str:
     """
     return sanitize_model_label(model or CODEX_MODEL or None)
 
+
 _BACKEND_ID = "codex"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
@@ -238,42 +253,44 @@ _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 # Env var keys that must not be overridden by caller-supplied values because
 # they influence binary resolution or dynamic-linker / interpreter behavior
 # and could be used for privilege escalation or code injection.
-_SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
-    "PATH",
-    "LD_PRELOAD",
-    "LD_LIBRARY_PATH",
-    "LD_AUDIT",
-    "LD_DEBUG",
-    "PYTHONPATH",
-    "PYTHONSTARTUP",
-    "PYTHONINSPECT",
-    "RUBYLIB",
-    "RUBYOPT",
-    "PERL5LIB",
-    "PERL5OPT",
-    "NODE_PATH",
-    "DYLD_INSERT_LIBRARIES",
-    "DYLD_LIBRARY_PATH",
-    "DYLD_FRAMEWORK_PATH",
-    # #1054: proxy + TLS trust + key-log env vars. A caller-supplied
-    # override here can silently route all downstream HTTP(S) traffic
-    # through an attacker proxy, swap the CA bundle to one they control
-    # (MITM) or dump TLS pre-master secrets for offline decryption.
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "ALL_PROXY",
-    "NO_PROXY",
-    "http_proxy",
-    "https_proxy",
-    "all_proxy",
-    "no_proxy",
-    "SSL_CERT_FILE",
-    "SSL_CERT_DIR",
-    "REQUESTS_CA_BUNDLE",
-    "CURL_CA_BUNDLE",
-    "NODE_EXTRA_CA_CERTS",
-    "SSLKEYLOGFILE",
-})
+_SHELL_ENV_DENYLIST: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "LD_AUDIT",
+        "LD_DEBUG",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONINSPECT",
+        "RUBYLIB",
+        "RUBYOPT",
+        "PERL5LIB",
+        "PERL5OPT",
+        "NODE_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FRAMEWORK_PATH",
+        # #1054: proxy + TLS trust + key-log env vars. A caller-supplied
+        # override here can silently route all downstream HTTP(S) traffic
+        # through an attacker proxy, swap the CA bundle to one they control
+        # (MITM) or dump TLS pre-master secrets for offline decryption.
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+        "SSLKEYLOGFILE",
+    }
+)
 
 
 # Audit rows share TRACE_LOG with SDK tool events, discriminated by
@@ -327,7 +344,10 @@ _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     ),
     (
         "baseline-git-force-push-main",
-        re.compile(r"\bgit\s+push\b.*\b--force\b.*\b(main|master)\b|\bgit\s+push\b.*\b(main|master)\b.*--force\b|\bgit\s+push\s+-f\b.*\b(main|master)\b", re.IGNORECASE),
+        re.compile(
+            r"\bgit\s+push\b.*\b--force\b.*\b(main|master)\b|\bgit\s+push\b.*\b(main|master)\b.*--force\b|\bgit\s+push\s+-f\b.*\b(main|master)\b",
+            re.IGNORECASE,
+        ),
         "git force-push to main/master",
     ),
     (
@@ -392,7 +412,8 @@ except Exception as _baseline_import_exc:  # noqa: BLE001 — documented single-
     if backend_hooks_config_errors_total is not None:
         try:
             backend_hooks_config_errors_total.labels(
-                **_LABELS, reason="baseline_import",
+                **_LABELS,
+                reason="baseline_import",
             ).inc()
         except Exception:
             # Metric emission must never mask the import failure.
@@ -437,12 +458,14 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
             # so silent swallowing doesn't hide a broken baseline rule.
             logger.warning(
                 "_evaluate_shell_baseline predicate raised for rule=%s: %r",
-                getattr(rule, "name", "?"), _pred_exc,
+                getattr(rule, "name", "?"),
+                _pred_exc,
             )
             if backend_hooks_config_errors_total is not None:
                 try:
                     backend_hooks_config_errors_total.labels(
-                        **_LABELS, reason="predicate_runtime",
+                        **_LABELS,
+                        reason="predicate_runtime",
                     ).inc()
                 except Exception:
                     pass
@@ -495,8 +518,9 @@ def _pre_tool_use_gate(
         from hooks_engine import evaluate_pre_tool_use  # type: ignore
     except Exception as _imp_exc:
         logger.warning(
-            "_pre_tool_use_gate: hooks_engine import failed (%r); "
-            "fail-open for %s.", _imp_exc, tool_name,
+            "_pre_tool_use_gate: hooks_engine import failed (%r); " "fail-open for %s.",
+            _imp_exc,
+            tool_name,
         )
         return None
     _rules = rules if rules is not None else list(_SHARED_BASELINE_RULES or [])
@@ -506,7 +530,8 @@ def _pre_tool_use_gate(
     except Exception as _eval_exc:
         logger.warning(
             "_pre_tool_use_gate: evaluate raised for %s: %r — fail-open.",
-            tool_name, _eval_exc,
+            tool_name,
+            _eval_exc,
         )
         return None
     if str(decision).lower() == "deny" and matched is not None:
@@ -596,18 +621,23 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         if backend_hooks_denials_total is not None:
             try:
                 backend_hooks_denials_total.labels(
-                    **_LABELS, tool="shell", source="baseline", rule=rule,
+                    **_LABELS,
+                    tool="shell",
+                    source="baseline",
+                    rule=rule,
                 ).inc()
             except Exception:
                 pass
-        await _append_tool_audit({
-            "ts": time.time(),
-            "tool": "LocalShell",
-            "decision": "deny",
-            "rule": rule,
-            "reason": reason,
-            "command": cmd,
-        })
+        await _append_tool_audit(
+            {
+                "ts": time.time(),
+                "tool": "LocalShell",
+                "decision": "deny",
+                "rule": rule,
+                "reason": reason,
+                "command": cmd,
+            }
+        )
         # Backend→harness hook.decision side-channel (#779). Claude's
         # executor carries its own equivalent for the full PreToolUse
         # surface; codex emits only on shell-baseline denials today
@@ -615,15 +645,12 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         # blocked on #808 (AFC-disable) before it can emit similarly.
         try:
             import hook_events as _hook_events
+
             # Pass the pre-labelled shed counter so sustained shedding is
             # visible on dashboards (#957). Prior to this commit
             # schedule_post's one-shot WARN fired once and went silent,
             # leaving a cap-reached storm undetectable.
-            _shed_counter = (
-                backend_hooks_shed_total.labels(**_LABELS)
-                if backend_hooks_shed_total is not None
-                else None
-            )
+            _shed_counter = backend_hooks_shed_total.labels(**_LABELS) if backend_hooks_shed_total is not None else None
             _sid = _current_session_id.get()
             if not _sid:
                 # #1052: empty session_id means a baseline check fired
@@ -633,14 +660,15 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                 # the regression class that #937 closed for the primary
                 # path only.
                 logger.warning(
-                    "_shell_executor: emitting hook.decision with empty "
-                    "session_id (edge-dispatch path?) rule=%s",
+                    "_shell_executor: emitting hook.decision with empty " "session_id (edge-dispatch path?) rule=%s",
                     rule,
                 )
                 if backend_hook_session_missing_total is not None:
                     try:
                         backend_hook_session_missing_total.labels(
-                            **_LABELS, tool="shell", source="baseline",
+                            **_LABELS,
+                            tool="shell",
+                            source="baseline",
                         ).inc()
                     except Exception:
                         pass
@@ -671,17 +699,17 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         # Raise so the SDK flags the tool result as is_error=True; the
         # denial counter above still increments before the exception
         # (#670).
-        raise ShellBlockedError(
-            f"Command blocked by shell baseline rule '{rule}': {reason}"
-        )
+        raise ShellBlockedError(f"Command blocked by shell baseline rule '{rule}': {reason}")
 
     # Audit allowed commands too so the log is a complete forensic trail.
-    await _append_tool_audit({
-        "ts": time.time(),
-        "tool": "LocalShell",
-        "decision": "allow",
-        "command": cmd,
-    })
+    await _append_tool_audit(
+        {
+            "ts": time.time(),
+            "tool": "LocalShell",
+            "decision": "allow",
+            "command": cmd,
+        }
+    )
 
     # Strip keys that could be used to hijack binary resolution or loader
     # behavior before merging caller-supplied values into the subprocess env.
@@ -769,7 +797,9 @@ def _load_mcp_config() -> dict:
     if not resolved.startswith(_MCP_CONFIG_PATH_ALLOWED_PREFIX):
         logger.warning(
             "MCP config path %s (resolved %s) is outside allowed prefix %s; skipping load.",
-            MCP_CONFIG_PATH, resolved, _MCP_CONFIG_PATH_ALLOWED_PREFIX,
+            MCP_CONFIG_PATH,
+            resolved,
+            _MCP_CONFIG_PATH_ALLOWED_PREFIX,
         )
         return {}
     try:
@@ -800,14 +830,19 @@ def _load_mcp_config() -> dict:
 # consolidation).
 from mcp_command_allowlist import (  # noqa: E402
     mcp_command_allowed as _codex_mcp_command_allowed,
+)
+from mcp_command_allowlist import (
     mcp_command_args_safe as _codex_mcp_command_args_safe,
 )
 
 _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
 _CODEX_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_CWD_PREFIXES", _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES,
-    ).split(",") if t.strip()
+    t.strip()
+    for t in os.environ.get(
+        "MCP_ALLOWED_CWD_PREFIXES",
+        _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES,
+    ).split(",")
+    if t.strip()
 )
 
 
@@ -876,12 +911,15 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                         "MCP server %r: command %r rejected by allow-list "
                         "(%s) — dropping entry. Set MCP_ALLOWED_COMMANDS "
                         "/ MCP_ALLOWED_COMMAND_PREFIXES to widen. (#720)",
-                        name, cfg["command"], cmd_reason,
+                        name,
+                        cfg["command"],
+                        cmd_reason,
                     )
                     if backend_mcp_command_rejected_total is not None:
                         try:
                             backend_mcp_command_rejected_total.labels(
-                                **_LABELS, reason=cmd_reason,
+                                **_LABELS,
+                                reason=cmd_reason,
                             ).inc()
                         except Exception:
                             pass
@@ -893,12 +931,15 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                             "MCP server %r: cwd %r rejected by allow-list "
                             "(%s) — dropping entry. Set "
                             "MCP_ALLOWED_CWD_PREFIXES to widen. (#720)",
-                            name, cfg["cwd"], cwd_reason,
+                            name,
+                            cfg["cwd"],
+                            cwd_reason,
                         )
                         if backend_mcp_command_rejected_total is not None:
                             try:
                                 backend_mcp_command_rejected_total.labels(
-                                    **_LABELS, reason=cwd_reason,
+                                    **_LABELS,
+                                    reason=cwd_reason,
                                 ).inc()
                             except Exception:
                                 pass
@@ -911,7 +952,8 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                 # arbitrary-code-execution path the README promises is
                 # closed.
                 args_ok, args_reason = _codex_mcp_command_args_safe(
-                    cfg["command"], cfg.get("args"),
+                    cfg["command"],
+                    cfg.get("args"),
                 )
                 if not args_ok:
                     logger.warning(
@@ -921,12 +963,15 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                         "MCP_ALLOWED_CWD_PREFIXES if a positional "
                         "script lives in an operator-vetted tree. "
                         "(#1734)",
-                        name, cfg["command"], args_reason,
+                        name,
+                        cfg["command"],
+                        args_reason,
                     )
                     if backend_mcp_command_rejected_total is not None:
                         try:
                             backend_mcp_command_rejected_total.labels(
-                                **_LABELS, reason=args_reason,
+                                **_LABELS,
+                                reason=args_reason,
                             ).inc()
                         except Exception:
                             pass
@@ -962,10 +1007,7 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                 # mcp.json. Explicit headers still win.
                 raw_headers = dict(cfg.get("headers") or {})
                 _mcp_env_token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()
-                _has_auth = any(
-                    isinstance(k, str) and k.strip().lower() == "authorization"
-                    for k in raw_headers
-                )
+                _has_auth = any(isinstance(k, str) and k.strip().lower() == "authorization" for k in raw_headers)
                 if _mcp_env_token and not _has_auth:
                     raw_headers["Authorization"] = f"Bearer {_mcp_env_token}"
                 if raw_headers:
@@ -988,10 +1030,7 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                             dropped.append(str(hk))
                             continue
                         lowered = hk.strip().lower()
-                        ok = (
-                            lowered in allowed_hdr_names
-                            or any(lowered.startswith(p) for p in allowed_hdr_prefixes)
-                        )
+                        ok = lowered in allowed_hdr_names or any(lowered.startswith(p) for p in allowed_hdr_prefixes)
                         if ok:
                             safe_headers[hk] = hv
                         else:
@@ -1004,7 +1043,9 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                             "MCP server %r: dropped %d disallowed header(s) %s — "
                             "only Authorization/Accept/Content-Type/User-Agent and "
                             "X-* are allowed. (#1056)",
-                            name, len(dropped), sorted(dropped),
+                            name,
+                            len(dropped),
+                            sorted(dropped),
                         )
                     params["headers"] = safe_headers
                 servers.append(MCPServerStreamableHttp(name=name, params=params))
@@ -1054,6 +1095,7 @@ def _get_sessions_lock() -> asyncio.Lock:
     if _sessions_lock is None:
         _sessions_lock = asyncio.Lock()
     return _sessions_lock
+
 
 # Models known to support computer_use_preview
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
@@ -1105,7 +1147,8 @@ async def _release_computer(session_id: str) -> None:
     except Exception as _e:
         logger.warning(
             "Failed to release PlaywrightComputer for session %r: %s",
-            session_id, _e,
+            session_id,
+            _e,
         )
 
 
@@ -1130,6 +1173,7 @@ def _codex_sqlite_connect(db_path: str):
     correctness).
     """
     import sqlite3 as _sqlite3
+
     conn = _sqlite3.connect(db_path, check_same_thread=False)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -1157,6 +1201,7 @@ def _sqlite_session_exists(session_id: str) -> bool:
     if db_path == ":memory:" or not db_path:
         return False
     import os as _os
+
     if not _os.path.exists(db_path):
         return False
     try:
@@ -1214,11 +1259,13 @@ def _session_layout_self_test() -> None:
     target. The sentinel row is guaranteed-deleted at the end so it cannot
     leak into the normal session set.
     """
+
     def _bump(reason: str) -> None:
         if backend_session_path_mismatch_total is not None:
             try:
                 backend_session_path_mismatch_total.labels(
-                    **_LABELS, reason=reason,
+                    **_LABELS,
+                    reason=reason,
                 ).inc()
             except Exception:
                 pass
@@ -1226,8 +1273,8 @@ def _session_layout_self_test() -> None:
     db_path = CODEX_SESSION_DB
     if not db_path or db_path == ":memory:":
         logger.info(
-            "session-layout self-test: CODEX_SESSION_DB is %r — skipping "
-            "probe (in-memory / unset). (#806)", db_path,
+            "session-layout self-test: CODEX_SESSION_DB is %r — skipping " "probe (in-memory / unset). (#806)",
+            db_path,
         )
         return
 
@@ -1241,14 +1288,14 @@ def _session_layout_self_test() -> None:
             logger.error(
                 "session-layout self-test: cannot create parent dir %r (%r) — "
                 "session history will not persist. (#806)",
-                parent, exc,
+                parent,
+                exc,
             )
             _bump("parent_dir_create_failed")
             return
         if not os.access(parent, os.W_OK):
             logger.error(
-                "session-layout self-test: parent dir %r is not writable — "
-                "session history will not persist. (#806)",
+                "session-layout self-test: parent dir %r is not writable — " "session history will not persist. (#806)",
                 parent,
             )
             _bump("parent_dir_not_writable")
@@ -1257,12 +1304,14 @@ def _session_layout_self_test() -> None:
         # (2) Open the configured DB and confirm WAL + busy_timeout apply.
         try:
             import sqlite3 as _sqlite3
+
             conn = _codex_sqlite_connect(db_path)
         except Exception as exc:
             logger.error(
                 "session-layout self-test: sqlite3.connect(%r) failed: %r — "
                 "session history will not persist. (#806)",
-                db_path, exc,
+                db_path,
+                exc,
             )
             _bump("connect_failed")
             return
@@ -1284,15 +1333,12 @@ def _session_layout_self_test() -> None:
             # depend on. If the SDK ever switches schema or splits rows
             # across tables, _delete_sqlite_session would silently no-op.
             try:
-                cursor = conn.execute(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='table' AND name='agent_sessions'"
-                )
+                cursor = conn.execute("SELECT name FROM sqlite_master " "WHERE type='table' AND name='agent_sessions'")
                 have_table = cursor.fetchone() is not None
             except Exception as exc:
                 logger.warning(
-                    "session-layout self-test: sqlite_master query failed: %r "
-                    "(#806)", exc,
+                    "session-layout self-test: sqlite_master query failed: %r " "(#806)",
+                    exc,
                 )
                 _bump("sqlite_master_query_failed")
                 have_table = False
@@ -1303,10 +1349,7 @@ def _session_layout_self_test() -> None:
                 # / migrate on first real session use.
                 try:
                     conn.execute(
-                        "CREATE TABLE IF NOT EXISTS agent_sessions ("
-                        "session_id TEXT PRIMARY KEY, "
-                        "data TEXT"
-                        ")"
+                        "CREATE TABLE IF NOT EXISTS agent_sessions (" "session_id TEXT PRIMARY KEY, " "data TEXT" ")"
                     )
                     conn.commit()
                 except Exception as exc:
@@ -1333,14 +1376,15 @@ def _session_layout_self_test() -> None:
                 logger.info(
                     "session-layout self-test: sentinel INSERT on agent_sessions "
                     "failed (%r); schema has columns beyond session_id. Skipping "
-                    "round-trip probe. (#806)", exc,
+                    "round-trip probe. (#806)",
+                    exc,
                 )
                 _bump("insert_schema_mismatch")
                 return
             except Exception as exc:
                 logger.error(
-                    "session-layout self-test: sentinel INSERT failed: %r — "
-                    "session writes likely broken. (#806)", exc,
+                    "session-layout self-test: sentinel INSERT failed: %r — " "session writes likely broken. (#806)",
+                    exc,
                 )
                 _bump("insert_failed")
                 return
@@ -1358,8 +1402,8 @@ def _session_layout_self_test() -> None:
                     _bump("read_after_insert_missing")
             except Exception as exc:
                 logger.warning(
-                    "session-layout self-test: SELECT after INSERT failed: %r "
-                    "(#806)", exc,
+                    "session-layout self-test: SELECT after INSERT failed: %r " "(#806)",
+                    exc,
                 )
                 _bump("select_failed")
 
@@ -1381,14 +1425,13 @@ def _session_layout_self_test() -> None:
                     _bump("delete_did_not_remove")
             except Exception as exc:
                 logger.warning(
-                    "session-layout self-test: DELETE round-trip failed: %r "
-                    "(#806)", exc,
+                    "session-layout self-test: DELETE round-trip failed: %r " "(#806)",
+                    exc,
                 )
                 _bump("delete_failed")
 
             logger.info(
-                "session-layout self-test: CODEX_SESSION_DB=%r verified "
-                "(write/read/delete round-trip OK). (#806)",
+                "session-layout self-test: CODEX_SESSION_DB=%r verified " "(write/read/delete round-trip OK). (#806)",
                 db_path,
             )
         finally:
@@ -1399,7 +1442,8 @@ def _session_layout_self_test() -> None:
     except Exception as exc:
         # Outer safety net — no probe failure should kill startup.
         logger.warning(
-            "session-layout self-test: probe raised unexpectedly: %r (#806)", exc,
+            "session-layout self-test: probe raised unexpectedly: %r (#806)",
+            exc,
         )
         _bump("probe_exception")
 
@@ -1663,9 +1707,9 @@ async def run_query(
                     if _first_chunk_at is None:
                         _first_chunk_at = time.monotonic()
                         if backend_sdk_time_to_first_message_seconds is not None:
-                            backend_sdk_time_to_first_message_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
-                                _first_chunk_at - _query_start
-                            )
+                            backend_sdk_time_to_first_message_seconds.labels(
+                                **_LABELS, model=sanitize_model_label(resolved_model)
+                            ).observe(_first_chunk_at - _query_start)
                     collected.append(delta.text)
                     # Stream the chunk to the A2A event_queue (#430). Set by
                     # execute(); None when MCP /mcp endpoint or non-streaming
@@ -1703,7 +1747,8 @@ async def run_query(
                                 try:
                                     _lbl = getattr(on_chunk, "label_model", "") or _resolve_model_label(model)
                                     backend_streaming_chunks_dropped_total.labels(
-                                        **_LABELS, model=_lbl,
+                                        **_LABELS,
+                                        model=_lbl,
                                     ).inc()
                                 except Exception:
                                     pass
@@ -1842,7 +1887,8 @@ async def run_query(
                                 _input_for_log = f"{_clipped}\n[truncated {_truncated} bytes]"
                         entry = {
                             "ts": ts,
-                            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                            "agent": AGENT_NAME,
+                            "agent_id": AGENT_ID,
                             "session_id": session_id,
                             "event_type": "tool_use",
                             "model": resolved_model,
@@ -1883,20 +1929,19 @@ async def run_query(
                     full_bytes = len(content_full.encode("utf-8"))
                     if LOG_TRACE_CONTENT_MAX_BYTES > 0 and full_bytes > LOG_TRACE_CONTENT_MAX_BYTES:
                         truncated_bytes = full_bytes - LOG_TRACE_CONTENT_MAX_BYTES
-                        content = content_full.encode("utf-8")[:LOG_TRACE_CONTENT_MAX_BYTES].decode(
-                            "utf-8", errors="replace"
-                        ) + f"\n[truncated {truncated_bytes} bytes]"
+                        content = (
+                            content_full.encode("utf-8")[:LOG_TRACE_CONTENT_MAX_BYTES].decode("utf-8", errors="replace")
+                            + f"\n[truncated {truncated_bytes} bytes]"
+                        )
                     else:
                         content = content_full
-                    is_error = bool(
-                        getattr(item, "is_error", None)
-                        or (isinstance(raw, dict) and raw.get("is_error"))
-                    )
+                    is_error = bool(getattr(item, "is_error", None) or (isinstance(raw, dict) and raw.get("is_error")))
                     try:
                         ts = datetime.now(timezone.utc).isoformat()
                         entry = {
                             "ts": ts,
-                            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                            "agent": AGENT_NAME,
+                            "agent_id": AGENT_ID,
                             "session_id": session_id,
                             "event_type": "tool_result",
                             "model": resolved_model,
@@ -1933,6 +1978,7 @@ async def run_query(
                     # non-mcp__ tool names.
                     try:
                         from mcp_metrics import observe_outbound_mcp_call as _obs_outbound_mcp
+
                         _obs_outbound_mcp(
                             backend_mcp_outbound_requests_total,
                             backend_mcp_outbound_duration_seconds,
@@ -1958,17 +2004,29 @@ async def run_query(
         # tokens, tool-call counts, and context-usage metrics.
         try:
             if backend_sdk_query_duration_seconds is not None:
-                backend_sdk_query_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
+                backend_sdk_query_duration_seconds.labels(
+                    **_LABELS, model=sanitize_model_label(resolved_model)
+                ).observe(time.monotonic() - _query_start)
             if backend_sdk_messages_per_query is not None:
-                backend_sdk_messages_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_message_count)
+                backend_sdk_messages_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+                    _message_count
+                )
             if backend_sdk_turns_per_query is not None:
-                backend_sdk_turns_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_turn_count)
+                backend_sdk_turns_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+                    _turn_count
+                )
             if backend_text_blocks_per_query is not None:
-                backend_text_blocks_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(len(collected))
+                backend_text_blocks_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+                    len(collected)
+                )
             if backend_sdk_tokens_per_query is not None:
-                backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_total_tokens)
+                backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+                    _total_tokens
+                )
             if backend_sdk_tool_calls_per_query is not None:
-                backend_sdk_tool_calls_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_tool_call_count)
+                backend_sdk_tool_calls_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+                    _tool_call_count
+                )
             if _total_tokens:
                 if backend_context_tokens is not None:
                     backend_context_tokens.labels(**_LABELS).observe(_total_tokens)
@@ -1988,9 +2046,9 @@ async def run_query(
     except Exception as _run_exc:
         _stderr_count += 1
         if backend_sdk_query_error_duration_seconds is not None:
-            backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
-                time.monotonic() - _query_start
-            )
+            backend_sdk_query_error_duration_seconds.labels(
+                **_LABELS, model=sanitize_model_label(resolved_model)
+            ).observe(time.monotonic() - _query_start)
         if backend_sdk_session_duration_seconds is not None:
             backend_sdk_session_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                 time.monotonic() - _session_start
@@ -2007,6 +2065,7 @@ async def run_query(
         # generic backend_sdk_errors_total counter.
         try:
             import openai as _openai
+
             if isinstance(_run_exc, _openai.APIConnectionError):
                 if backend_sdk_client_errors_total is not None:
                     backend_sdk_client_errors_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
@@ -2062,13 +2121,13 @@ async def run_query(
                 # and bump a divergence counter so operators can alert on
                 # frequent mismatches.
                 logger.debug(
-                    "final_output differs from streamed deltas — using final_output "
-                    "(len streamed=%d, len final=%d)",
+                    "final_output differs from streamed deltas — using final_output " "(len streamed=%d, len final=%d)",
                     len(streamed),
                     len(final),
                 )
                 try:
                     from metrics import backend_final_output_divergence_total as _bfod
+
                     if _bfod is not None:
                         _bfod.labels(**_LABELS).inc()
                 except Exception:
@@ -2097,17 +2156,27 @@ async def run_query(
             pass
 
     if backend_sdk_query_duration_seconds is not None:
-        backend_sdk_query_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
+        backend_sdk_query_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+            time.monotonic() - _query_start
+        )
     if backend_sdk_messages_per_query is not None:
-        backend_sdk_messages_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_message_count)
+        backend_sdk_messages_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+            _message_count
+        )
     if backend_sdk_turns_per_query is not None:
         backend_sdk_turns_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_turn_count)
     if backend_text_blocks_per_query is not None:
-        backend_text_blocks_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(len(collected))
+        backend_text_blocks_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+            len(collected)
+        )
     if backend_sdk_tokens_per_query is not None:
-        backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_total_tokens)
+        backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+            _total_tokens
+        )
     if backend_sdk_tool_calls_per_query is not None:
-        backend_sdk_tool_calls_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_tool_call_count)
+        backend_sdk_tool_calls_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
+            _tool_call_count
+        )
     if _total_tokens:
         if backend_context_tokens is not None:
             backend_context_tokens.labels(**_LABELS).observe(_total_tokens)
@@ -2127,7 +2196,8 @@ async def run_query(
         ts = datetime.now(timezone.utc).isoformat()
         entry = {
             "ts": ts,
-            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+            "agent": AGENT_NAME,
+            "agent_id": AGENT_ID,
             "session_id": session_id,
             "event_type": "response",
             "model": resolved_model,
@@ -2154,7 +2224,17 @@ async def run(
     if backend_concurrent_queries is not None:
         backend_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers, tool_config=tool_config)
+        return await _run_inner(
+            prompt,
+            session_id,
+            sessions,
+            agent_md_content,
+            model,
+            max_tokens,
+            on_chunk=on_chunk,
+            live_mcp_servers=live_mcp_servers,
+            tool_config=tool_config,
+        )
     finally:
         if backend_concurrent_queries is not None:
             backend_concurrent_queries.labels(**_LABELS).dec()
@@ -2195,7 +2275,11 @@ async def _run_inner(
     if backend_session_starts_total is not None:
         backend_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
-    _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
+    _prompt_preview = (
+        prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "")
+        if LOG_PROMPT_MAX_BYTES > 0
+        else "[redacted]"
+    )
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
     # conversation.turn event (#1110 phase 3). Wrap — never raise.
@@ -2219,7 +2303,16 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers, tool_config=tool_config),
+            run_query(
+                prompt,
+                session_id,
+                agent_md_content,
+                model=model,
+                max_tokens=max_tokens,
+                on_chunk=on_chunk,
+                live_mcp_servers=live_mcp_servers,
+                tool_config=tool_config,
+            ),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -2285,7 +2378,9 @@ async def _run_inner(
     if backend_task_duration_seconds is not None:
         backend_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
     if backend_task_timeout_headroom_seconds is not None:
-        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
+        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(
+            TASK_TIMEOUT_SECONDS - (time.monotonic() - _start)
+        )
 
     response = "".join(collected) if collected else ""
     if not response:
@@ -2353,7 +2448,10 @@ class AgentExecutor(A2AAgentExecutor):
         if previous is not None and previous != current:
             try:
                 backend_agent_md_revision.remove(
-                    _LABELS["agent"], _LABELS["agent_id"], _LABELS["backend"], previous,
+                    _LABELS["agent"],
+                    _LABELS["agent_id"],
+                    _LABELS["backend"],
+                    previous,
                 )
             except (KeyError, ValueError):
                 # Label set never registered / already removed — benign.
@@ -2435,7 +2533,8 @@ class AgentExecutor(A2AAgentExecutor):
             self._tool_config = await asyncio.to_thread(_load_tool_config)
             logger.info(
                 "tool config loaded (initial) from %s: %s",
-                CODEX_CONFIG_TOML, dict(self._tool_config),
+                CODEX_CONFIG_TOML,
+                dict(self._tool_config),
             )
         except Exception as exc:
             logger.warning("tool config initial load failed: %r", exc)
@@ -2448,7 +2547,8 @@ class AgentExecutor(A2AAgentExecutor):
             await asyncio.to_thread(_session_layout_self_test)
         except Exception as exc:
             logger.warning(
-                "session-layout self-test scheduling failed: %r (#806)", exc,
+                "session-layout self-test scheduling failed: %r (#806)",
+                exc,
             )
 
     async def _apply_mcp_config(self, mcp_config: dict) -> None:
@@ -2511,7 +2611,8 @@ class AgentExecutor(A2AAgentExecutor):
                             set_span_error(_mcp_span, _mcp_exc)
                             logger.warning(
                                 "MCP server %r failed to start (%s); proceeding without it.",
-                                getattr(_srv, "name", "?"), _mcp_exc,
+                                getattr(_srv, "name", "?"),
+                                _mcp_exc,
                             )
             except Exception:
                 # If the per-server loop itself raises something unexpected,
@@ -2590,7 +2691,8 @@ class AgentExecutor(A2AAgentExecutor):
                             await old_stack.aclose()
                         except Exception as _close_exc:
                             logger.warning(
-                                "Deferred MCP stack aclose error: %s", _close_exc,
+                                "Deferred MCP stack aclose error: %s",
+                                _close_exc,
                             )
                     else:
                         self._mcp_old_stacks[i] = (old_stack, new_ref)
@@ -2776,24 +2878,25 @@ class AgentExecutor(A2AAgentExecutor):
                 async for changes in _awatch(watch_dir, recursive=False):
                     if backend_watcher_events_total is not None:
                         backend_watcher_events_total.labels(
-                            **_LABELS, watcher="api_key_file",
+                            **_LABELS,
+                            watcher="api_key_file",
                         ).inc()
                     for _, path in changes:
                         if os.path.abspath(path) == os.path.abspath(key_file):
                             logger.info(
-                                "api_key_file_watcher: %r changed — "
-                                "refreshing OPENAI_API_KEY for the next request.",
+                                "api_key_file_watcher: %r changed — " "refreshing OPENAI_API_KEY for the next request.",
                                 key_file,
                             )
                             try:
-                                with open(key_file, "r") as _fh:
+                                with open(key_file) as _fh:
                                     _new_key = _fh.read().strip()
                                 if _new_key:
                                     os.environ["OPENAI_API_KEY"] = _new_key
                             except Exception as _read_exc:
                                 logger.warning(
                                     "api_key_file_watcher: failed to read %r: %r",
-                                    key_file, _read_exc,
+                                    key_file,
+                                    _read_exc,
                                 )
                             break
             except Exception as _w_exc:
@@ -2803,7 +2906,8 @@ class AgentExecutor(A2AAgentExecutor):
                 )
                 if backend_file_watcher_restarts_total is not None:
                     backend_file_watcher_restarts_total.labels(
-                        **_LABELS, watcher="api_key_file",
+                        **_LABELS,
+                        watcher="api_key_file",
                     ).inc()
                 await asyncio.sleep(10)
 
@@ -2818,9 +2922,7 @@ class AgentExecutor(A2AAgentExecutor):
         # transcript. Mirrors the claude implementation.
         if not prompt or not prompt.strip():
             _empty_sid_raw = str(
-                context.context_id
-                or (context.message.metadata or {}).get("session_id")
-                or ""
+                context.context_id or (context.message.metadata or {}).get("session_id") or ""
             ).strip()[:256]
             # Do NOT default the sanitised raw to "unknown" here: the
             # accepted-prompt path below passes "" for the same input,
@@ -2829,9 +2931,7 @@ class AgentExecutor(A2AAgentExecutor):
             # caller onto the same derived id (#990). Route the raw ""
             # through derive_session_id directly so both paths fracture
             # identically under SESSION_ID_SECRET.
-            _empty_sid_sanitized = (
-                "".join(c for c in _empty_sid_raw if c >= " ")
-            )
+            _empty_sid_sanitized = "".join(c for c in _empty_sid_raw if c >= " ")
             # Route through derive_session_id (#880) so log-entries and
             # metric labels use the HMAC-bound id under SESSION_ID_SECRET,
             # matching the accepted-prompt path below. Otherwise the
@@ -2839,13 +2939,13 @@ class AgentExecutor(A2AAgentExecutor):
             # the valid path uses the derived id, splitting rows for the
             # same logical session across two ids.
             from session_binding import derive_session_id as _derive_session_id
+
             _empty_caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
             _empty_sid = _derive_session_id(
-                _empty_sid_sanitized, caller_identity=_empty_caller_id,
+                _empty_sid_sanitized,
+                caller_identity=_empty_caller_id,
             )
-            logger.warning(
-                f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
-            )
+            logger.warning(f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544).")
             if backend_empty_prompts_total is not None:
                 backend_empty_prompts_total.labels(**_LABELS).inc()
             if backend_a2a_requests_total is not None:
@@ -2877,21 +2977,15 @@ class AgentExecutor(A2AAgentExecutor):
         _prompt_bytes = len(prompt.encode("utf-8"))
         if _prompt_bytes > _MAX_PROMPT_BYTES:
             _too_large_sid_raw = str(
-                context.context_id
-                or (context.message.metadata or {}).get("session_id")
-                or ""
+                context.context_id or (context.message.metadata or {}).get("session_id") or ""
             ).strip()[:256]
-            _too_large_sid_sanitized = (
-                "".join(c for c in _too_large_sid_raw if c >= " ")
-            )
+            _too_large_sid_sanitized = "".join(c for c in _too_large_sid_raw if c >= " ")
             from session_binding import derive_session_id as _derive_session_id_tl
-            _too_large_caller_id = (
-                metadata.get("caller_id")
-                if isinstance(metadata.get("caller_id"), str)
-                else None
-            )
+
+            _too_large_caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
             _too_large_sid = _derive_session_id_tl(
-                _too_large_sid_sanitized, caller_identity=_too_large_caller_id,
+                _too_large_sid_sanitized,
+                caller_identity=_too_large_caller_id,
             )
             _too_large_err = PromptTooLargeError(_prompt_bytes, _MAX_PROMPT_BYTES)
             logger.warning(
@@ -2903,9 +2997,7 @@ class AgentExecutor(A2AAgentExecutor):
             if backend_a2a_requests_total is not None:
                 backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
             if backend_a2a_request_duration_seconds is not None:
-                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(
-                    time.monotonic() - _exec_start
-                )
+                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
             if backend_a2a_last_request_timestamp_seconds is not None:
                 backend_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
             await log_entry(
@@ -2914,15 +3006,16 @@ class AgentExecutor(A2AAgentExecutor):
                 f"MAX_PROMPT_BYTES={_MAX_PROMPT_BYTES} (#1620).",
                 _too_large_sid,
             )
-            await event_queue.enqueue_event(
-                new_agent_text_message(f"Error: {_too_large_err}")
-            )
+            await event_queue.enqueue_event(new_agent_text_message(f"Error: {_too_large_err}"))
             return
         # OTel server span continuation (#469).
         from otel import extract_otel_context as _extract_ctx
+
         _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
         _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
-        _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        _raw_sid = "".join(
+            c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " "
+        )
         # Per-caller session_id binding parity with claude (#710) and
         # gemini (#733). The same risk applies to codex: raw session_id
         # is caller-supplied and acts as a bearer secret when left
@@ -2932,9 +3025,14 @@ class AgentExecutor(A2AAgentExecutor):
         # behaviour.
         from session_binding import (
             derive_session_id as _derive_session_id,
+        )
+        from session_binding import (
             derive_session_id_candidates as _derive_session_id_candidates,
+        )
+        from session_binding import (
             note_prev_secret_hit as _note_prev_secret_hit,
         )
+
         _caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
         # Probe-list rotation (#1042). Same pattern as claude executor:
         # candidates[0] is the current-secret derivation; any subsequent
@@ -2997,12 +3095,15 @@ class AgentExecutor(A2AAgentExecutor):
         # The publish_chunk API already accepts an external seq so the
         # per-turn counter can live entirely in this function scope.
         _turn_seq_counter: list[int] = [0]
+
         def _next_seq() -> int:
             n = _turn_seq_counter[0]
             _turn_seq_counter[0] = n + 1
             return n
+
         try:
             from session_stream import get_session_stream as _get_session_stream
+
             _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
             _sess_stream.publish_chunk(
                 role="user",
@@ -3029,9 +3130,7 @@ class AgentExecutor(A2AAgentExecutor):
                         final=False,
                     )
                 except Exception as _s_exc:  # pragma: no cover
-                    logger.warning(
-                        "session_stream: chunk publish failed: %r", _s_exc
-                    )
+                    logger.warning("session_stream: chunk publish failed: %r", _s_exc)
             # Per-chunk A2A event_queue emission removed — see
             # backends/claude/executor.py _emit_chunk for the rationale
             # (A2A SDK's blocking handler returns on first Message event,
@@ -3042,7 +3141,9 @@ class AgentExecutor(A2AAgentExecutor):
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
 
-        from otel import start_span as _start_span, set_span_error as _set_span_error
+        from otel import set_span_error as _set_span_error
+        from otel import start_span as _start_span
+
         _otel_span = None
         try:
             with _start_span(
@@ -3091,9 +3192,7 @@ class AgentExecutor(A2AAgentExecutor):
                             final=True,
                         )
                     except Exception as _f_exc:  # pragma: no cover
-                        logger.warning(
-                            "session_stream: final chunk publish failed: %r", _f_exc
-                        )
+                        logger.warning("session_stream: final chunk publish failed: %r", _f_exc)
                 if backend_a2a_requests_total is not None:
                     backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
@@ -3116,8 +3215,8 @@ class AgentExecutor(A2AAgentExecutor):
                     )
                 except Exception as _ef_exc:  # pragma: no cover
                     logger.warning(
-                        "session_stream: final chunk publish on error "
-                        "path failed: %r", _ef_exc,
+                        "session_stream: final chunk publish on error " "path failed: %r",
+                        _ef_exc,
                     )
             raise
         finally:

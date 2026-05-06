@@ -1,7 +1,6 @@
 """Prometheus metrics for the gemini backend agent."""
 
 import prometheus_client
-
 from env import parse_bool_env
 
 _enabled = parse_bool_env("METRICS_ENABLED")
@@ -706,14 +705,12 @@ if _enabled:
     # rate(backend_mcp_server_exits_total[5m]) > 0.
     backend_mcp_server_up = prometheus_client.Gauge(
         "backend_mcp_server_up",
-        "1 when the MCP stdio ClientSession for this server initialised "
-        "and is live, 0 otherwise.",
+        "1 when the MCP stdio ClientSession for this server initialised " "and is live, 0 otherwise.",
         ["agent", "agent_id", "backend", "server"],
     )
     backend_mcp_server_exits_total = prometheus_client.Counter(
         "backend_mcp_server_exits_total",
-        "Total MCP stdio subprocess exits, partitioned by reason "
-        "(init_failed|normal_close|reload).",
+        "Total MCP stdio subprocess exits, partitioned by reason " "(init_failed|normal_close|reload).",
         ["agent", "agent_id", "backend", "server", "reason"],
     )
     backend_mcp_servers_active = prometheus_client.Gauge(
@@ -796,8 +793,7 @@ if _enabled:
     )
     backend_sdk_context_fetch_errors_total = prometheus_client.Counter(
         "backend_sdk_context_fetch_errors_total",
-        "Total context usage fetch failures (claude-only mechanism — "
-        "placeholder on gemini for parity).",
+        "Total context usage fetch failures (claude-only mechanism — " "placeholder on gemini for parity).",
         ["agent", "agent_id", "backend", "model"],
     )
     backend_session_caller_cardinality = prometheus_client.Gauge(
@@ -822,8 +818,7 @@ if _enabled:
     )
     backend_task_retries_total = prometheus_client.Counter(
         "backend_task_retries_total",
-        "Total task retries due to session already in use (claude-only path — "
-        "placeholder on gemini for parity).",
+        "Total task retries due to session already in use (claude-only path — " "placeholder on gemini for parity).",
         ["agent", "agent_id", "backend"],
     )
     backend_tasks_with_stderr_total = prometheus_client.Counter(

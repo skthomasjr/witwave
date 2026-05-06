@@ -24,7 +24,6 @@ symbol in this module is ``None`` and callers guard with ``if X is not None``.
 from __future__ import annotations
 
 import prometheus_client
-
 from env import parse_bool_env
 
 _LABELS = ("agent", "agent_id", "backend")
@@ -39,6 +38,7 @@ def _metrics_enabled() -> bool:
     call time removes that footgun and costs nothing.
     """
     return parse_bool_env("METRICS_ENABLED")
+
 
 # ---------------------------------------------------------------------------
 # Lifecycle / service-level
@@ -90,13 +90,18 @@ def init_metrics() -> None:
         return
 
     backend_up = prometheus_client.Gauge(
-        "backend_up", "1 when the backend is running and accepting traffic.", _LABELS,
+        "backend_up",
+        "1 when the backend is running and accepting traffic.",
+        _LABELS,
     )
     backend_info = prometheus_client.Info(
-        "backend", "Static metadata about the running backend (version, type).",
+        "backend",
+        "Static metadata about the running backend (version, type).",
     )
     backend_uptime_seconds = prometheus_client.Gauge(
-        "backend_uptime_seconds", "Seconds since the backend process started.", _LABELS,
+        "backend_uptime_seconds",
+        "Seconds since the backend process started.",
+        _LABELS,
     )
     backend_startup_duration_seconds = prometheus_client.Gauge(
         "backend_startup_duration_seconds",

@@ -15,17 +15,11 @@ import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from sqlite_task_store import SqliteTaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
     AgentSkill,
 )
-from continuations import ContinuationRunner
-from jobs import JobRunner
-from tasks import TaskRunner
-from triggers import TriggerItem, TriggerRunner
-from webhooks import WebhookRunner
 from bus import (
     HookDecisionEvent,
     Message,
@@ -34,10 +28,16 @@ from bus import (
     publish_hook_decision,
     subscribe_hook_decision,
 )
-from executor import AgentExecutor, _guarded as _guarded_from_executor, run as executor_run, run_consensus as executor_run_consensus
+from continuations import ContinuationRunner
+from executor import AgentExecutor
+from executor import _guarded as _guarded_from_executor
+from executor import run as executor_run
+from executor import run_consensus as executor_run_consensus
 from heartbeat import heartbeat_runner, load_heartbeat
+from jobs import JobRunner
 from metrics import (
     harness_adhoc_fires_total,
+    harness_backend_reachable,
     harness_bus_consumer_idle_seconds,
     harness_bus_error_processing_duration_seconds,
     harness_bus_errors_total,
@@ -47,17 +47,19 @@ from metrics import (
     harness_bus_wait_seconds,
     harness_event_loop_lag_seconds,
     harness_event_stream_inbound_rejected_total,
-    harness_backend_reachable,
-    harness_backends_config_stale,
     harness_health_checks_total,
     harness_info,
     harness_prompt_env_substitutions_total,
     harness_startup_duration_seconds,
-    harness_task_restarts_total,
     harness_triggers_requests_total,
     harness_up,
     harness_uptime_seconds,
 )
+from sqlite_task_store import SqliteTaskStore
+from tasks import TaskRunner
+from triggers import TriggerItem, TriggerRunner
+from webhooks import WebhookRunner
+
 # Wire shared/prompt_env.substitutions_total (#1089) so every
 # resolve_prompt_env() call feeds the Counter. Idempotent — a None
 # counter (METRICS_ENABLED unset) leaves the module's fallback in
@@ -67,7 +69,6 @@ try:
     _prompt_env_mod.substitutions_total = harness_prompt_env_substitutions_total
 except Exception:
     pass
-from env import parse_bool_env
 from conversations import (
     make_proxy_conversations_handler,
     make_proxy_trace_handler,
@@ -76,6 +77,7 @@ from conversations_proxy import (
     fetch_backend_conversations,
     fetch_backend_trace,
 )
+from env import parse_bool_env
 from metrics_proxy import fetch_backend_metrics
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -1806,7 +1808,7 @@ async def main():
     # GETs to every backend per request; a 2s cache collapses bursts
     # into a single sweep while keeping the list fresh enough for UX.
     OTEL_TRACES_LIST_CACHE_TTL = float(os.environ.get("OTEL_TRACES_LIST_CACHE_TTL", "2"))
-    _otel_traces_list_cache: "tuple[float, list[dict]] | None" = None
+    _otel_traces_list_cache: tuple[float, list[dict]] | None = None
     _otel_traces_list_lock = asyncio.Lock()
 
     def _merge_trace_lists(groups: list[list[dict]]) -> list[dict]:
@@ -1989,7 +1991,9 @@ async def main():
     EVENT_STREAM_KEEPALIVE_SEC = float(os.environ.get("EVENT_STREAM_KEEPALIVE_SEC", "15"))
 
     async def events_stream_handler(request: Request):
-        from starlette.responses import StreamingResponse  # local import keeps startup path identical on older Starlette
+        from starlette.responses import (
+            StreamingResponse,  # local import keeps startup path identical on older Starlette
+        )
 
         # Auth: reuse CONVERSATIONS_AUTH_TOKEN. Fail-closed unless the
         # explicit escape hatch is set, matching the parity pattern used
@@ -2034,7 +2038,7 @@ async def main():
                     f"event: {envelope.type}\n"
                     f"id: {envelope.id}\n"
                     f"data: {_json.dumps(envelope.to_dict(), separators=(',', ':'))}\n\n"
-                ).encode("utf-8")
+                ).encode()
 
             # Live subscription with a keepalive ticker running alongside.
             sub_task: asyncio.Task = asyncio.ensure_future(sub_iter.__anext__())
@@ -2063,7 +2067,7 @@ async def main():
                             f"event: {envelope.type}\n"
                             f"id: {envelope.id}\n"
                             f"data: {_json.dumps(envelope.to_dict(), separators=(',', ':'))}\n\n"
-                        ).encode("utf-8")
+                        ).encode()
                         sub_task = asyncio.ensure_future(sub_iter.__anext__())
                     if ka_task in done:
                         yield b": keepalive\n\n"

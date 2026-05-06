@@ -11,8 +11,6 @@ import time
 import uuid
 
 import httpx
-
-from backends.config import BackendConfig
 from metrics import (
     harness_a2a_backend_circuit_state,
     harness_a2a_backend_circuit_transitions_total,
@@ -22,6 +20,8 @@ from metrics import (
 )
 from tracing import TraceContext, inject_traceparent, set_span_error, start_span
 
+from backends.config import BackendConfig
+
 logger = logging.getLogger(__name__)
 
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
@@ -29,6 +29,7 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # the client call finishes before asyncio cancels the outer coroutine,
 # preventing a dangling connection.
 _HTTP_TIMEOUT_SECONDS = max(TASK_TIMEOUT_SECONDS - 10, 10)
+
 
 # Retry configuration for transient network errors.
 def _resolve_max_retries() -> int:
@@ -43,14 +44,10 @@ def _resolve_max_retries() -> int:
     try:
         val = int(_raw)
     except (TypeError, ValueError):
-        _log.warning(
-            "A2A_BACKEND_MAX_RETRIES=%r is not an int — falling back to 3", _raw
-        )
+        _log.warning("A2A_BACKEND_MAX_RETRIES=%r is not an int — falling back to 3", _raw)
         return 3
     if val < 1:
-        _log.warning(
-            "A2A_BACKEND_MAX_RETRIES=%d < 1 — falling back to 3", val
-        )
+        _log.warning("A2A_BACKEND_MAX_RETRIES=%d < 1 — falling back to 3", val)
         return 3
     if val > 10:
         _log.warning("A2A_BACKEND_MAX_RETRIES=%d is unusually high", val)
@@ -79,16 +76,10 @@ def _resolve_session_context_cache_max() -> int:
             "A2A_SESSION_CONTEXT_CACHE_MAX=%r is not an int — refusing to start",
             _raw,
         )
-        raise ValueError(
-            f"A2A_SESSION_CONTEXT_CACHE_MAX must be a positive int, got {_raw!r}"
-        )
+        raise ValueError(f"A2A_SESSION_CONTEXT_CACHE_MAX must be a positive int, got {_raw!r}")
     if val < 1:
-        _log.critical(
-            "A2A_SESSION_CONTEXT_CACHE_MAX=%d < 1 — refusing to start", val
-        )
-        raise ValueError(
-            f"A2A_SESSION_CONTEXT_CACHE_MAX must be >= 1, got {val}"
-        )
+        _log.critical("A2A_SESSION_CONTEXT_CACHE_MAX=%d < 1 — refusing to start", val)
+        raise ValueError(f"A2A_SESSION_CONTEXT_CACHE_MAX must be >= 1, got {val}")
     _log.info("A2A_SESSION_CONTEXT_CACHE_MAX=%d", val)
     return val
 
@@ -105,6 +96,7 @@ _A2A_MAX_RESPONSE_BYTES = int(os.environ.get("A2A_MAX_RESPONSE_BYTES", str(256 *
 
 # Transient status codes that are safe to retry.
 _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 502, 503, 504})
+
 
 # Retry-policy selector (#1457). The default `fast-only` refuses to
 # retry 5xx responses that came back AFTER A2A_RETRY_FAST_ONLY_MS —
@@ -130,8 +122,8 @@ def _resolve_retry_policy() -> str:
     if _raw in {"fast-only", "always", "never"}:
         return _raw
     _log.warning(
-        "A2A_RETRY_POLICY=%r is not one of fast-only|always|never — "
-        "falling back to fast-only", _raw,
+        "A2A_RETRY_POLICY=%r is not one of fast-only|always|never — " "falling back to fast-only",
+        _raw,
     )
     return "fast-only"
 
@@ -146,16 +138,10 @@ _A2A_RETRY_FAST_ONLY_MS = int(os.environ.get("A2A_RETRY_FAST_ONLY_MS", "5000"))
 # (one probe) — a success closes the circuit, a failure re-opens it.
 _CIRCUIT_THRESHOLD = int(os.environ.get("A2A_BACKEND_CIRCUIT_THRESHOLD", "5"))
 if _CIRCUIT_THRESHOLD < 1:
-    raise ValueError(
-        f"A2A_BACKEND_CIRCUIT_THRESHOLD must be >= 1, got {_CIRCUIT_THRESHOLD}"
-    )
-_CIRCUIT_COOLOFF_SECONDS = float(
-    os.environ.get("A2A_BACKEND_CIRCUIT_COOLOFF_SECONDS", "30")
-)
+    raise ValueError(f"A2A_BACKEND_CIRCUIT_THRESHOLD must be >= 1, got {_CIRCUIT_THRESHOLD}")
+_CIRCUIT_COOLOFF_SECONDS = float(os.environ.get("A2A_BACKEND_CIRCUIT_COOLOFF_SECONDS", "30"))
 if _CIRCUIT_COOLOFF_SECONDS < 0:
-    raise ValueError(
-        f"A2A_BACKEND_CIRCUIT_COOLOFF_SECONDS must be >= 0, got {_CIRCUIT_COOLOFF_SECONDS}"
-    )
+    raise ValueError(f"A2A_BACKEND_CIRCUIT_COOLOFF_SECONDS must be >= 0, got {_CIRCUIT_COOLOFF_SECONDS}")
 
 _CIRCUIT_STATES: tuple[str, ...] = ("closed", "open", "half_open")
 
@@ -170,7 +156,7 @@ _CIRCUIT_STATES: tuple[str, ...] = ("closed", "open", "half_open")
 # clients. Using a WeakSet keeps this from extending backend lifetimes.
 import weakref as _weakref
 
-_pending_backends: "_weakref.WeakSet[A2ABackend]" = _weakref.WeakSet()
+_pending_backends: _weakref.WeakSet[A2ABackend] = _weakref.WeakSet()
 
 
 class _SlowFiveXXPolicyRefusal(ConnectionError):
@@ -201,6 +187,7 @@ class A2ABackend:
         # that differ only in '-' vs '_' (iris-claude vs iris_claude)
         # collide under the upper+replace mapping.
         import re as _re
+
         # #1579: the previous regex ^[a-z0-9][a-z0-9-]*$ permitted a
         # trailing '-', which maps to "A2A_URL_FOO_" — a valid shell
         # env-var name but one the chart/operator never sets, so the
@@ -262,7 +249,8 @@ class A2ABackend:
         # to tens of MB across days. OrderedDict preserves insertion
         # order; we move_to_end on hit, popitem(last=False) on cap.
         from collections import OrderedDict
-        self._session_has_context: "OrderedDict[str, None]" = OrderedDict()
+
+        self._session_has_context: OrderedDict[str, None] = OrderedDict()
         self._session_has_context_max: int = _SESSION_CONTEXT_CACHE_MAX
         # Initialize gauge labels so scrapes see this backend even before its
         # first request — absent series are harder to alert on than 0-valued
@@ -296,9 +284,9 @@ class A2ABackend:
             return
         for _state in _CIRCUIT_STATES:
             try:
-                harness_a2a_backend_circuit_state.labels(
-                    backend=self.id, state=_state
-                ).set(1.0 if _state == self._circuit_state else 0.0)
+                harness_a2a_backend_circuit_state.labels(backend=self.id, state=_state).set(
+                    1.0 if _state == self._circuit_state else 0.0
+                )
             except Exception:
                 pass
 
@@ -322,7 +310,10 @@ class A2ABackend:
         self._publish_circuit_state_gauge()
         logger.info(
             "A2A backend '%s' circuit %s -> %s (consecutive_failures=%d)",
-            self.id, prev, new_state, self._circuit_consecutive_failures,
+            self.id,
+            prev,
+            new_state,
+            self._circuit_consecutive_failures,
         )
         # Invalidate the /health/ready cache when a backend flips
         # unhealthy so the next probe re-sweeps instead of returning
@@ -332,6 +323,7 @@ class A2ABackend:
         if new_state == "open":
             try:
                 from main import invalidate_health_ready_cache
+
                 invalidate_health_ready_cache()
             except Exception:
                 # Best-effort — cache invalidation is a latency optimisation,
@@ -351,9 +343,7 @@ class A2ABackend:
                 elapsed = time.monotonic() - self._circuit_opened_at
                 if elapsed < _CIRCUIT_COOLOFF_SECONDS:
                     remaining = _CIRCUIT_COOLOFF_SECONDS - elapsed
-                    raise ConnectionError(
-                        f"circuit open for {self.id}; retry in {remaining:.1f}s"
-                    )
+                    raise ConnectionError(f"circuit open for {self.id}; retry in {remaining:.1f}s")
                 # Cool-off elapsed — allow a single probe.
                 self._transition_circuit("half_open")
 
@@ -378,10 +368,7 @@ class A2ABackend:
                 self._circuit_opened_at = time.monotonic()
                 self._transition_circuit("open")
                 return
-            if (
-                self._circuit_state == "closed"
-                and self._circuit_consecutive_failures >= _CIRCUIT_THRESHOLD
-            ):
+            if self._circuit_state == "closed" and self._circuit_consecutive_failures >= _CIRCUIT_THRESHOLD:
                 self._circuit_opened_at = time.monotonic()
                 self._transition_circuit("open")
 
@@ -497,8 +484,7 @@ class A2ABackend:
                 # typo masks the real 401 with ConnectionError.
                 _exc_msg = str(_exc)
                 _is_client_side = any(
-                    f"HTTP {code}" in _exc_msg
-                    for code in (400, 401, 403, 404, 405, 406, 409, 410, 413, 414, 415, 422)
+                    f"HTTP {code}" in _exc_msg for code in (400, 401, 403, 404, 405, 406, 409, 410, 413, 414, 415, 422)
                 )
                 # #1576: slow-5xx policy refusals are deliberate non-retries,
                 # not evidence of a hard-down backend; don't let them stack
@@ -551,13 +537,12 @@ class A2ABackend:
                 # a backend SDK update that renamed `artifacts` →
                 # `outputs`) without having to enable debug logging and
                 # reproduce. Keys only — values may contain secrets.
-                _shape = (
-                    sorted(result.keys())[:20] if isinstance(result, dict) else type(result).__name__
-                )
+                _shape = sorted(result.keys())[:20] if isinstance(result, dict) else type(result).__name__
                 logger.warning(
-                    "A2A backend '%s' returned no extractable text for session=%s; "
-                    "top-level result keys=%s",
-                    self.id, session_id, _shape,
+                    "A2A backend '%s' returned no extractable text for session=%s; " "top-level result keys=%s",
+                    self.id,
+                    session_id,
+                    _shape,
                 )
             return texts
 
@@ -570,16 +555,14 @@ class A2ABackend:
         """
         if harness_a2a_backend_requests_total is not None:
             try:
-                harness_a2a_backend_requests_total.labels(
-                    backend=self.id, result=result
-                ).inc()
+                harness_a2a_backend_requests_total.labels(backend=self.id, result=result).inc()
             except Exception:
                 pass
         if harness_a2a_backend_request_duration_seconds is not None:
             try:
-                harness_a2a_backend_request_duration_seconds.labels(
-                    backend=self.id
-                ).observe(time.monotonic() - start_monotonic)
+                harness_a2a_backend_request_duration_seconds.labels(backend=self.id).observe(
+                    time.monotonic() - start_monotonic
+                )
             except Exception:
                 pass
 
@@ -677,9 +660,7 @@ class A2ABackend:
                             f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
                             f"after {_elapsed_ms}ms (attempt {attempt + 1}/{_MAX_RETRIES}) — retrying"
                         )
-                        last_exc = ConnectionError(
-                            f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
-                        )
+                        last_exc = ConnectionError(f"A2A backend '{self.id}' returned HTTP {resp.status_code}")
                         _result_label = "error_status"
                         # Fall through to the shared backoff block below so that
                         # retryable HTTP codes (429, 502, 503, 504) wait the same
@@ -697,9 +678,7 @@ class A2ABackend:
                                         f"A2A_MAX_RESPONSE_BYTES={_A2A_MAX_RESPONSE_BYTES}"
                                     )
                                 chunks.append(chunk)
-                            return b"".join(chunks).decode(
-                                resp.encoding or "utf-8", errors="replace"
-                            )
+                            return b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
                         await resp.aread()
                         return resp.text
             except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
@@ -722,9 +701,7 @@ class A2ABackend:
                 # Non-retryable HTTP error — surface immediately.
                 logger.error(f"A2A backend '{self.id}' HTTP error: {exc!r}")
                 _result_label = "error_status"
-                raise ConnectionError(
-                    f"A2A backend '{self.id}' returned HTTP {exc.response.status_code}"
-                ) from exc
+                raise ConnectionError(f"A2A backend '{self.id}' returned HTTP {exc.response.status_code}") from exc
             except ConnectionError:
                 # #1457: propagate our own deliberate surfaces (slow-5xx
                 # guard, body-size cap) as-is. Labels were set at the
@@ -746,7 +723,7 @@ class A2ABackend:
                 # values (or future tuning) can't produce multi-minute sleeps
                 # that exceed upstream task timeouts. Jitter is preserved.
                 delay = min(
-                    _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, _RETRY_BACKOFF_BASE),
+                    _RETRY_BACKOFF_BASE * (2**attempt) + random.uniform(0, _RETRY_BACKOFF_BASE),
                     30.0,
                 )
                 await asyncio.sleep(delay)

@@ -12,12 +12,12 @@ fix from #1199.
 This test pins the source shape so the bug pattern can't be re-introduced
 without tripping CI.
 """
+
 from __future__ import annotations
 
 import re
 import unittest
 from pathlib import Path
-
 
 _EXECUTOR_PATH = Path(__file__).resolve().parent / "executor.py"
 
@@ -42,11 +42,13 @@ class GeminiEmitChunkMetricOrderTests(unittest.TestCase):
         metric_idx = body.find("backend_streaming_events_emitted_total")
         self.assertGreater(enqueue_idx, 0, "enqueue not found in body")
         self.assertGreater(
-            increment_idx, enqueue_idx,
+            increment_idx,
+            enqueue_idx,
             "_chunks_emitted += 1 must come AFTER awaited enqueue (#1721)",
         )
         self.assertGreater(
-            metric_idx, enqueue_idx,
+            metric_idx,
+            enqueue_idx,
             "backend_streaming_events_emitted_total.inc() must come AFTER awaited enqueue (#1721)",
         )
 

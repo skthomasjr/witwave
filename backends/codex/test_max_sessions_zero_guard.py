@@ -17,6 +17,7 @@ We follow the test_prompt_size_cap.py style: pin the source shape with regex
 heavy deps so we can assert the runtime value of ``MAX_SESSIONS`` after env
 manipulation.
 """
+
 from __future__ import annotations
 
 import os
@@ -85,7 +86,7 @@ class MaxSessionsSourceShapeTests(unittest.TestCase):
     def test_clamp_present(self):
         # Must be exactly max(1, int(...)) on the MAX_SESSIONS env parse.
         pattern = re.compile(
-            r'MAX_SESSIONS\s*=\s*max\(\s*1\s*,\s*int\(\s*os\.environ\.get\('
+            r"MAX_SESSIONS\s*=\s*max\(\s*1\s*,\s*int\(\s*os\.environ\.get\("
             r'\s*"MAX_SESSIONS"\s*,\s*"10000"\s*\)\s*\)\s*\)'
         )
         self.assertRegex(self.executor_source, pattern)
@@ -93,8 +94,7 @@ class MaxSessionsSourceShapeTests(unittest.TestCase):
     def test_metric_division_guarded(self):
         # The eviction-path division must be gated on MAX_SESSIONS > 0.
         pattern = re.compile(
-            r'if\s+backend_lru_cache_utilization_percent\s+is\s+not\s+None\s+'
-            r'and\s+MAX_SESSIONS\s*>\s*0\s*:'
+            r"if\s+backend_lru_cache_utilization_percent\s+is\s+not\s+None\s+" r"and\s+MAX_SESSIONS\s*>\s*0\s*:"
         )
         self.assertRegex(self.executor_source, pattern)
 

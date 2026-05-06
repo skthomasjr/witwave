@@ -153,6 +153,7 @@ def parse_frontmatter_raw(raw: str) -> tuple[dict, str]:
 # recent access. Also tracks an eviction counter so operators can alert
 # on cache thrash (>1024 md files in a watched tree).
 from collections import OrderedDict
+
 _MD_CACHE: "OrderedDict[str, tuple[int, int, str]]" = OrderedDict()
 _MD_CACHE_MAX = int(os.environ.get("PARSE_FRONTMATTER_CACHE_MAX", "1024"))
 _MD_CACHE_EVICTIONS = 0  # read by metrics.py via `read_md_cache_evictions_total`
@@ -198,7 +199,7 @@ def read_md_bounded(path: str) -> str | None:
         return cached[2]
 
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             raw = fh.read(PARSE_FRONTMATTER_MAX_FILE_BYTES + 1)
     except OSError:
         return None

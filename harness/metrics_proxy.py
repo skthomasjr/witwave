@@ -6,13 +6,12 @@ so no relabeling is needed at the proxy layer — raw text is concatenated as-is
 
 import asyncio
 import logging
-import os
 from urllib.parse import urlparse, urlunparse
 
 import httpx
+from metrics import harness_metrics_backend_fetch_errors_total
 
 from backends.config import BackendConfig
-from metrics import harness_metrics_backend_fetch_errors_total
 
 logger = logging.getLogger(__name__)
 

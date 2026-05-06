@@ -52,7 +52,7 @@ _IN_MEMORY_CAP_DEFAULT = 1000
 # single atomic op under CPython's GIL (#662) — the previous list +
 # `del ring[:excess]` composite was not atomic across on_end calls from
 # the BatchSpanProcessor worker thread.
-_span_ring: "deque[Any] | None" = None
+_span_ring: deque[Any] | None = None
 # Capacity snapshot for convenience; set at init time.
 _span_ring_cap: int = 0
 

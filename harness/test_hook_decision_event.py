@@ -71,8 +71,9 @@ class HookDecisionEventHandlerTests(unittest.IsolatedAsyncioTestCase):
         _install_stub_modules()
 
     async def _call(self, *, auth: str | None, body: bytes) -> tuple[int, dict, list]:
-        from starlette.requests import Request
         import importlib
+
+        from starlette.requests import Request
 
         headers = [
             (b"content-type", b"application/json"),

@@ -12,6 +12,8 @@ from bus import Message, MessageBus
 from croniter import croniter
 from events import get_event_stream
 from metrics import (
+    harness_checkpoint_write_errors_total,
+    harness_file_watcher_restarts_total,
     harness_job_checkpoint_stale_total,
     harness_job_duration_seconds,
     harness_job_error_duration_seconds,
@@ -25,8 +27,6 @@ from metrics import (
     harness_job_running_items,
     harness_job_runs_total,
     harness_job_skips_total,
-    harness_checkpoint_write_errors_total,
-    harness_file_watcher_restarts_total,
     harness_watcher_events_total,
 )
 from utils import (

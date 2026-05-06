@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
 
 async def read_capped_body(
-    request: "Request", cap: int
-) -> "tuple[bytes | None, str | None]":
+    request: Request, cap: int
+) -> tuple[bytes | None, str | None]:
     """Stream-read ``request`` body into a bounded buffer.
 
     Returns ``(body_bytes, None)`` on success or ``(None, reason)`` on

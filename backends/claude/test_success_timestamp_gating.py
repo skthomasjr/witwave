@@ -13,13 +13,13 @@ parity with the codex fix from #1662.
 
 Mirrors backends/codex/test_success_timestamp_gating.py.
 """
+
 from __future__ import annotations
 
 import re
 import time
 import unittest
 from pathlib import Path
-
 
 _EXECUTOR_PATH = Path(__file__).resolve().parent / "executor.py"
 
@@ -77,13 +77,13 @@ class ClaudeSuccessTimestampSourceShapeTests(unittest.TestCase):
 
     def test_success_timestamp_is_gated_on_budget_exceeded(self):
         pattern = re.compile(
-            r'if\s+not\s+_budget_exceeded\s+and\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels'
+            r"if\s+not\s+_budget_exceeded\s+and\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels"
         )
         self.assertRegex(self.source, pattern)
 
     def test_success_timestamp_not_set_unconditionally(self):
         bad = re.compile(
-            r'^\s*if\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels\(\*\*_LABELS\)\.set\(time\.time\(\)\)',
+            r"^\s*if\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels\(\*\*_LABELS\)\.set\(time\.time\(\)\)",
             re.MULTILINE,
         )
         self.assertNotRegex(self.source, bad)

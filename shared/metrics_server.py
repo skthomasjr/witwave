@@ -71,7 +71,7 @@ def start_metrics_server_in_thread(
     logger: Optional[logging.Logger] = None,
     port: Optional[int] = None,
     path: str = "/metrics",
-) -> "threading.Thread":
+) -> threading.Thread:
     """Same as :func:`start_metrics_server` but runs in a daemon thread with
     its own asyncio loop. Use this when the caller does not own the main
     event loop (e.g. FastMCP's ``mcp.run()`` which sets up its own loop

@@ -22,7 +22,7 @@ class AgentBackend(Protocol):
         is_new: bool,
         model: str | None = None,
         max_tokens: int | None = None,
-        trace_context: "TraceContext | None" = None,
+        trace_context: TraceContext | None = None,
     ) -> list[str]:
         """Execute a prompt and return a list of collected text responses.
 

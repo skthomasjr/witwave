@@ -23,7 +23,6 @@ sys.path.insert(0, str(_REPO_ROOT / "shared"))
 
 from utils import parse_duration  # noqa: E402
 
-
 # ----- single-unit forms -----
 
 

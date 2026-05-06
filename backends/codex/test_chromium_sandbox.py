@@ -17,6 +17,7 @@ in by ``computer.py`` is heavy and unrelated to the env-gating logic, so
 we stub it out and import the module fresh under each env setting to
 verify ``_chromium_launch_args()`` honours the toggle.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -25,7 +26,6 @@ import sys
 import types
 import unittest
 from pathlib import Path
-
 
 _COMPUTER_DIR = Path(__file__).resolve().parent
 

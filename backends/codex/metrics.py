@@ -1,7 +1,6 @@
 """Prometheus metrics for the codex backend agent."""
 
 import prometheus_client
-
 from env import parse_bool_env
 
 _enabled = parse_bool_env("METRICS_ENABLED")
@@ -12,9 +11,7 @@ _enabled = parse_bool_env("METRICS_ENABLED")
 # after default flips to off, backend_codex_hooks_denials_total will be
 # removed outright. Print the resolved posture at import time so the
 # migration window is visible in kubectl logs.
-_EMIT_DEPRECATED_HOOK_METRICS = parse_bool_env(
-    "EMIT_DEPRECATED_HOOK_METRICS", default=True
-)
+_EMIT_DEPRECATED_HOOK_METRICS = parse_bool_env("EMIT_DEPRECATED_HOOK_METRICS", default=True)
 
 # Service-level metrics
 backend_up: prometheus_client.Gauge | None = None

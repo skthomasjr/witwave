@@ -607,7 +607,7 @@ def _sse_serialise(envelope: SessionStreamEnvelope) -> bytes:
         f"event: {envelope.type}\n"
         f"id: {envelope.id}\n"
         f"data: {body}\n\n"
-    ).encode("utf-8")
+    ).encode()
 
 
 def make_session_stream_handler(
@@ -626,6 +626,7 @@ def make_session_stream_handler(
     import hashlib as _hashlib
     import hmac as _hmac
     import os as _os
+
     from starlette.requests import Request
     from starlette.responses import JSONResponse, StreamingResponse
 
@@ -644,7 +645,7 @@ def make_session_stream_handler(
     _per_caller_max = max(0, int(_os.environ.get("SESSION_STREAM_MAX_PER_CALLER", "8")))
     _per_caller_counts: dict[str, int] = {}
 
-    async def handler(request: "Request"):
+    async def handler(request: Request):
         # Auth — parity with /conversations, /trace, /mcp, /api/traces.
         if not auth_token:
             if not auth_disabled_escape_hatch():

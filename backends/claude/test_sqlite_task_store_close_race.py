@@ -9,6 +9,7 @@ the way down. The fix uses a ``self._closing`` sentinel guarded by the same
 under the lock and raises ``RuntimeError("task store is closing")`` instead
 of resurrecting the DB handle.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,6 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent
@@ -107,7 +107,7 @@ class _StubTask:  # noqa: D401 - stub matching the bits the store touches
         return _json.dumps({"id": self.id, "payload": self.payload})
 
     @classmethod
-    def model_validate_json(cls, raw: str) -> "_StubTask":
+    def model_validate_json(cls, raw: str) -> _StubTask:
         obj = _json.loads(raw)
         return cls(id=obj["id"], payload=obj.get("payload", ""))
 
@@ -252,9 +252,7 @@ class CloseRaceTest(unittest.TestCase):
 
                     def close(self):
                         loop.call_soon_threadsafe(close_started.set)
-                        fut = asyncio.run_coroutine_threadsafe(
-                            release_close.wait(), loop
-                        )
+                        fut = asyncio.run_coroutine_threadsafe(release_close.wait(), loop)
                         fut.result()
                         return self._inner.close()
 

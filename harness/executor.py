@@ -4,28 +4,16 @@ import logging
 import os
 import time
 import uuid
-
-import yaml
 from collections import OrderedDict
 from datetime import datetime, timezone
 
+import yaml
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
-from backends.a2a import A2ABackend
-from backends.config import BACKEND_CONFIG_PATH, BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
 from events import get_event_stream
-from tracing import (
-    TraceContext,
-    context_from_inbound,
-    extract_otel_context,
-    new_context,
-    set_span_error,
-    start_span,
-)
-from utils import ConsensusEntry
 from log_utils import _append_log
 from metrics import (
     harness_a2a_last_request_timestamp_seconds,
@@ -34,10 +22,18 @@ from metrics import (
     harness_a2a_requests_total,
     harness_a2a_traces_received_total,
     harness_active_sessions,
+    harness_backends_config_stale,
+    harness_backends_reload_errors_total,
+    harness_background_tasks,
+    harness_background_tasks_shed_total,
+    harness_background_tasks_timeout_total,
     harness_concurrent_queries,
     harness_consensus_backend_errors_total,
     harness_consensus_runs_total,
     harness_empty_responses_total,
+    harness_log_bytes_total,
+    harness_log_entries_total,
+    harness_log_write_errors_total,
     harness_lru_cache_utilization_percent,
     harness_model_requests_total,
     harness_prompt_length_bytes,
@@ -56,14 +52,24 @@ from metrics import (
     harness_task_restarts_total,
     harness_task_timeout_headroom_seconds,
     harness_tasks_total,
-    harness_log_bytes_total,
-    harness_log_entries_total,
-    harness_log_write_errors_total,
-    harness_background_tasks,
-    harness_background_tasks_shed_total,
-    harness_background_tasks_timeout_total,
-    harness_backends_reload_errors_total,
-    harness_backends_config_stale,
+)
+from tracing import (
+    TraceContext,
+    context_from_inbound,
+    extract_otel_context,
+    new_context,
+    set_span_error,
+    start_span,
+)
+from utils import ConsensusEntry
+
+from backends.a2a import A2ABackend
+from backends.config import (
+    BACKEND_CONFIG_PATH,
+    BackendConfig,
+    RoutingEntry,
+    load_backends_config,
+    load_routing_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -887,8 +893,9 @@ class AgentExecutor(A2AAgentExecutor):
 
     async def backends_watcher(self) -> None:
         """Watch BACKEND_CONFIG_PATH and reload backends on file change."""
-        from backends.config import BACKEND_CONFIG_PATH
         from watchfiles import awatch
+
+        from backends.config import BACKEND_CONFIG_PATH
 
         watch_dir = os.path.dirname(os.path.abspath(BACKEND_CONFIG_PATH))
         logger.info(f"Backends watcher watching {BACKEND_CONFIG_PATH}")

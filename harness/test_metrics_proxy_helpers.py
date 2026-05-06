@@ -40,8 +40,8 @@ def _get_metrics_url():
     # that test before this one, plain `import metrics_proxy` returns the
     # mock and our test gets a MagicMock back from _metrics_url(...).
     # Force a real import by evicting any cached mock first.
-    import sys
     import importlib
+    import sys
     sys.modules.pop("metrics_proxy", None)
     importlib.invalidate_caches()
     from metrics_proxy import _metrics_url
@@ -119,8 +119,8 @@ def _ensure_a2a_stubs():
 
 
 def _get_retry_fn():
-    import sys
     import importlib
+    import sys
     _ensure_a2a_stubs()
     sys.modules.pop("sqlite_task_store", None)
     importlib.invalidate_caches()

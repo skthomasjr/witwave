@@ -18,6 +18,7 @@ Operators upgrading from <=v0.5.0 must repoint their K8s readinessProbe
 from ``/health`` to ``/health/ready`` to retain readiness gating
 semantics — this is the BREAKING change introduced by the split.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,6 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
-
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent
@@ -40,6 +40,7 @@ os.environ.setdefault("AGENT_ID", "codex")
 
 # Redirect log paths off /home/agent so log helpers don't ENOENT-spam.
 import tempfile as _tempfile
+
 _log_tmp_dir = _tempfile.mkdtemp(prefix="codex-test-")
 os.environ.setdefault("CONVERSATION_LOG", os.path.join(_log_tmp_dir, "conversation.jsonl"))
 os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "tool-activity.jsonl"))
@@ -133,6 +134,7 @@ def _install_a2a_stubs() -> None:
 
         def build(self, *a, **kw):
             from starlette.applications import Starlette
+
             return Starlette()
 
     class _DefaultRequestHandler:
@@ -327,6 +329,7 @@ class HealthReadinessSplitTests(unittest.TestCase):
         resp = _run(main.health_ready(_make_request()))
         self.assertEqual(resp.status_code, 200)
         import json
+
         body = json.loads(resp.body)
         self.assertEqual(body["status"], "ready")
 

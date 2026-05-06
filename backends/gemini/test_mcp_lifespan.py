@@ -10,6 +10,7 @@ without a running container. The goal is to verify:
 3. ``run_query`` threads ``live_mcp_servers`` into
    ``GenerateContentConfig(tools=[...])`` on the mocked ``genai.Client``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,7 +21,6 @@ import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 # ---------------------------------------------------------------------------
 # Lightweight shared/ + a2a-sdk shims so importing ``executor`` does not require
@@ -40,6 +40,7 @@ os.environ.setdefault("AGENT_ID", "gemini")
 # log_entry / log_trace writes silently no-op into a tmp file rather than
 # spamming stderr with ENOENT.
 import tempfile as _tempfile
+
 _log_tmp_dir = _tempfile.mkdtemp(prefix="gemini-test-")
 os.environ.setdefault("CONVERSATION_LOG", os.path.join(_log_tmp_dir, "conversation.jsonl"))
 os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "tool-activity.jsonl"))
@@ -247,6 +248,7 @@ class RunQueryPassesToolsTests(unittest.TestCase):
                 async def _gen():
                     return
                     yield  # unreachable
+
                 return _gen()
 
         class _FakeAioChats:
@@ -266,21 +268,23 @@ class RunQueryPassesToolsTests(unittest.TestCase):
         fake_session = MagicMock(name="ClientSession-live")
 
         # Patch _get_client so run_query uses the fake.
-        with patch.object(executor, "_get_client", return_value=fake_client), \
-             patch.object(executor, "_load_history", return_value=[]), \
-             patch.object(executor, "_save_history", new=AsyncMock(return_value=None)):
+        with patch.object(executor, "_get_client", return_value=fake_client), patch.object(
+            executor, "_load_history", return_value=[]
+        ), patch.object(executor, "_save_history", new=AsyncMock(return_value=None)):
             session_locks: dict = {}
-            _run(run_query(
-                prompt="hello",
-                session_id="00000000-0000-0000-0000-000000000001",
-                agent_md_content="",
-                session_locks=session_locks,
-                history_save_failed=set(),
-                model=None,
-                max_tokens=None,
-                on_chunk=None,
-                live_mcp_servers=[fake_session],
-            ))
+            _run(
+                run_query(
+                    prompt="hello",
+                    session_id="00000000-0000-0000-0000-000000000001",
+                    agent_md_content="",
+                    session_locks=session_locks,
+                    history_save_failed=set(),
+                    model=None,
+                    max_tokens=None,
+                    on_chunk=None,
+                    live_mcp_servers=[fake_session],
+                )
+            )
 
         self.assertEqual(len(captured_configs), 1)
         cfg = captured_configs[0]

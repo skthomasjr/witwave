@@ -21,11 +21,10 @@ import os
 import sqlite3
 import time
 
+import metrics as _metrics  # noqa: F401 — histograms are registered on import
 from a2a.server.context import ServerCallContext
 from a2a.server.tasks.task_store import TaskStore
 from a2a.types import Task
-
-import metrics as _metrics  # noqa: F401 — histograms are registered on import
 
 logger = logging.getLogger(__name__)
 
@@ -141,9 +140,7 @@ class SqliteTaskStore(TaskStore):
             logger.info("SqliteTaskStore opened at %s", self._path)
         return self._conn
 
-    async def save(
-        self, task: Task, context: ServerCallContext | None = None
-    ) -> None:
+    async def save(self, task: Task, context: ServerCallContext | None = None) -> None:
         data = task.model_dump_json()
         _wait_start = time.perf_counter()
         async with self._lock:
@@ -151,9 +148,7 @@ class SqliteTaskStore(TaskStore):
             await asyncio.to_thread(_db_save, self._get_conn(), task.id, data)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
-    async def get(
-        self, task_id: str, context: ServerCallContext | None = None
-    ) -> Task | None:
+    async def get(self, task_id: str, context: ServerCallContext | None = None) -> Task | None:
         _wait_start = time.perf_counter()
         async with self._lock:
             _observe_lock_wait("get", time.perf_counter() - _wait_start)
@@ -165,9 +160,7 @@ class SqliteTaskStore(TaskStore):
         logger.debug("Task %s retrieved from SQLite store.", task_id)
         return task
 
-    async def delete(
-        self, task_id: str, context: ServerCallContext | None = None
-    ) -> None:
+    async def delete(self, task_id: str, context: ServerCallContext | None = None) -> None:
         _wait_start = time.perf_counter()
         async with self._lock:
             _observe_lock_wait("delete", time.perf_counter() - _wait_start)

@@ -40,10 +40,9 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from starlette.testclient import TestClient  # noqa: E402
-
 import main  # noqa: E402
 import metrics  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -69,6 +68,7 @@ def client(app):
 # Agent card
 # ---------------------------------------------------------------------------
 
+
 def test_agent_card_exposed(client: TestClient) -> None:
     """The A2A SDK auto-serves /.well-known/agent-card.json.
 
@@ -88,6 +88,7 @@ def test_agent_card_exposed(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 # Health lifecycle
 # ---------------------------------------------------------------------------
+
 
 def test_health_ready(client: TestClient) -> None:
     """Once _ready flips, /health returns 200 with the expected shape."""
@@ -122,6 +123,7 @@ def test_health_starting(app) -> None:
 # ---------------------------------------------------------------------------
 # A2A contract
 # ---------------------------------------------------------------------------
+
 
 def _a2a_send(client: TestClient, text: str, message_id: str = "m1") -> dict:
     payload = {
@@ -165,6 +167,7 @@ def test_message_send_empty_prompt(client: TestClient) -> None:
 # Metrics baseline
 # ---------------------------------------------------------------------------
 
+
 def test_metrics_baseline_declared() -> None:
     """The common backend_* series are declared after init_metrics()."""
     main.build_app()  # idempotent; ensures init_metrics has run
@@ -186,6 +189,7 @@ def test_metrics_endpoint_exposes_series(client: TestClient) -> None:
 
     # Render the Prometheus exposition via the same handler main.py mounts.
     import prometheus_client
+
     body = prometheus_client.generate_latest().decode("utf-8")
 
     assert "backend_up" in body
@@ -211,8 +215,9 @@ def test_metrics_handler_http_surface() -> None:
     pytest-asyncio dependency.
     """
     import asyncio
-    from starlette.requests import Request
+
     import prometheus_client as _pc
+    from starlette.requests import Request
 
     main.build_app()  # idempotent; ensures metrics are initialised
 

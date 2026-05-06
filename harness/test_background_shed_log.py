@@ -14,7 +14,6 @@ the session_id + caller_identity passed to ``track_background``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 import types

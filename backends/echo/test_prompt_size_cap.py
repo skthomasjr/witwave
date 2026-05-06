@@ -26,7 +26,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Set env BEFORE importing main/metrics so init_metrics() declares the
 # counter at module import. test_echo.py uses the same idiom.
 os.environ.setdefault("METRICS_ENABLED", "1")
@@ -37,10 +36,9 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from starlette.testclient import TestClient  # noqa: E402
-
 import main  # noqa: E402
 import metrics  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -96,15 +94,18 @@ def _counter_value(counter, **extra_labels) -> float:
 # Default cap is 1 MiB
 # ---------------------------------------------------------------------------
 
+
 def test_default_cap_is_one_mib() -> None:
     """The module-level cap defaults to 1 MiB when MAX_PROMPT_BYTES is unset."""
     import executor  # local import — module already on sys.path
+
     assert executor._MAX_PROMPT_BYTES == 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
 # Boundary cases mandated by cycle-2 spec
 # ---------------------------------------------------------------------------
+
 
 def test_1mib_plus_one_byte_rejected(client: TestClient) -> None:
     """A prompt of 1 MiB + 1 byte is rejected with the cap error text and

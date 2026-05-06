@@ -120,7 +120,7 @@ def _hmac_derive(raw_sid: str, caller_identity: str, secret: str) -> str:
     caller_hash = _hash_caller(caller_identity)
     mac = hmac.new(
         secret.encode("utf-8"),
-        msg=f"{caller_hash}\x00{raw_sid}".encode("utf-8"),
+        msg=f"{caller_hash}\x00{raw_sid}".encode(),
         digestmod=hashlib.sha256,
     ).digest()
     # Fold HMAC bytes back into a uuid so downstream code (session file

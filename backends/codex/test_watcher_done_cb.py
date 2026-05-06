@@ -19,6 +19,7 @@ several other heavy dependencies that are unrelated to this fix — the
 bug lives in a few lines of control flow that are trivially unit-testable
 in isolation.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +27,6 @@ import logging
 import re
 import unittest
 from pathlib import Path
-
 
 _MAIN_PATH = Path(__file__).resolve().parent / "main.py"
 
@@ -39,26 +39,22 @@ def _extract_factory_source() -> str:
     """
     src = _MAIN_PATH.read_text()
     m = re.search(
-        r"^( *)def _make_watcher_done_cb\(_wn: str\):\n"
-        r"(?:\1 .*\n|\1\n|\n)*?"
-        r"\1    return _cb\n",
+        r"^( *)def _make_watcher_done_cb\(_wn: str\):\n" r"(?:\1 .*\n|\1\n|\n)*?" r"\1    return _cb\n",
         src,
         re.MULTILINE,
     )
     if m is None:
         raise AssertionError(
-            "Could not locate _make_watcher_done_cb in main.py — has the "
-            "factory been renamed or restructured?"
+            "Could not locate _make_watcher_done_cb in main.py — has the " "factory been renamed or restructured?"
         )
     block = m.group(0)
     indent = m.group(1)
     if indent:
         # Strip the leading indent off every line so the block is
         # importable at module scope inside our exec() namespace.
-        block = "\n".join(
-            line[len(indent):] if line.startswith(indent) else line
-            for line in block.splitlines()
-        ) + "\n"
+        block = (
+            "\n".join(line[len(indent) :] if line.startswith(indent) else line for line in block.splitlines()) + "\n"
+        )
     return block
 
 

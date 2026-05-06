@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
-import types
 import unittest
 from pathlib import Path
 
@@ -59,11 +57,13 @@ class GeminiAgentMdRevisionTests(unittest.TestCase):
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
-            "_gemini_exec_partial", _HERE / "executor.py",
+            "_gemini_exec_partial",
+            _HERE / "executor.py",
         )
         # Skip executor full-load since it imports many heavy deps; instead
         # parse the function directly.
         import hashlib
+
         # Re-implement the contract here to assert parity with the
         # function's documented behaviour.
         sample = "you are a helpful assistant"
@@ -83,6 +83,7 @@ class GeminiAgentMdRevisionTests(unittest.TestCase):
         if "metrics" in sys.modules:
             del sys.modules["metrics"]
         import metrics
+
         self.assertIn("backend_agent_md_revision", dir(metrics))
 
     def test_metrics_module_constructs_gauge_when_enabled(self):

@@ -27,19 +27,17 @@ When the variable is unset, fall back to ``InMemoryTaskStore``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sqlite3
 import threading
 import time
 
+import metrics as _metrics
 from a2a.server.context import ServerCallContext
 from a2a.server.tasks.task_store import TaskStore
 from a2a.types import Task
-
-import asyncio
-
-import metrics as _metrics
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +73,7 @@ def _observe_lock_wait(op: str, wait_seconds: float) -> None:
         hist.labels(**_metric_labels(), op=op).observe(wait_seconds)
     except Exception:  # pragma: no cover — never let metrics break persistence
         logger.debug("backend_sqlite_task_store_lock_wait_seconds observe failed", exc_info=True)
+
 
 # Default SQLite busy_timeout. Tunable per-deployment via env so a slow NFS
 # volume or a pathological batch of writes can be given more headroom
@@ -148,9 +147,9 @@ class SqliteTaskStore(TaskStore):
                 _ensure_schema(conn)
                 self._initialised = True
                 logger.info(
-                    "SqliteTaskStore opened at %s (WAL, busy_timeout=%sms, "
-                    "per-thread connection pool)",
-                    self._path, _BUSY_TIMEOUT_MS,
+                    "SqliteTaskStore opened at %s (WAL, busy_timeout=%sms, " "per-thread connection pool)",
+                    self._path,
+                    _BUSY_TIMEOUT_MS,
                 )
             else:
                 # Still verify schema from this thread's connection.
@@ -162,17 +161,14 @@ class SqliteTaskStore(TaskStore):
     def _save_sync(self, task_id: str, data: str) -> None:
         conn = self._get_conn()
         conn.execute(
-            "INSERT INTO tasks (id, data) VALUES (?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+            "INSERT INTO tasks (id, data) VALUES (?, ?) " "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
             (task_id, data),
         )
         conn.commit()
 
     def _get_sync(self, task_id: str) -> str | None:
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT data FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
+        row = conn.execute("SELECT data FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return row[0] if row else None
 
     def _delete_sync(self, task_id: str) -> None:
@@ -180,9 +176,7 @@ class SqliteTaskStore(TaskStore):
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
 
-    async def save(
-        self, task: Task, context: ServerCallContext | None = None
-    ) -> None:
+    async def save(self, task: Task, context: ServerCallContext | None = None) -> None:
         data = task.model_dump_json()
         # #1753: record threadpool-queue + SQLite busy_timeout wait by
         # measuring from before to_thread dispatch until the worker
@@ -191,19 +185,21 @@ class SqliteTaskStore(TaskStore):
         # synchronous function rather than total round-trip so the
         # histogram represents waiting (not the SQL op's own duration).
         _wait_start = time.perf_counter()
+
         def _save_with_wait(task_id: str, payload: str) -> None:
             _observe_lock_wait("save", time.perf_counter() - _wait_start)
             self._save_sync(task_id, payload)
+
         await asyncio.to_thread(_save_with_wait, task.id, data)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
-    async def get(
-        self, task_id: str, context: ServerCallContext | None = None
-    ) -> Task | None:
+    async def get(self, task_id: str, context: ServerCallContext | None = None) -> Task | None:
         _wait_start = time.perf_counter()
+
         def _get_with_wait(tid: str) -> str | None:
             _observe_lock_wait("get", time.perf_counter() - _wait_start)
             return self._get_sync(tid)
+
         raw = await asyncio.to_thread(_get_with_wait, task_id)
         if raw is None:
             logger.debug("Task %s not found in SQLite store.", task_id)
@@ -212,12 +208,12 @@ class SqliteTaskStore(TaskStore):
         logger.debug("Task %s retrieved from SQLite store.", task_id)
         return task
 
-    async def delete(
-        self, task_id: str, context: ServerCallContext | None = None
-    ) -> None:
+    async def delete(self, task_id: str, context: ServerCallContext | None = None) -> None:
         _wait_start = time.perf_counter()
+
         def _delete_with_wait(tid: str) -> None:
             _observe_lock_wait("delete", time.perf_counter() - _wait_start)
             self._delete_sync(tid)
+
         await asyncio.to_thread(_delete_with_wait, task_id)
         logger.debug("Task %s deleted from SQLite store.", task_id)

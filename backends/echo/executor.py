@@ -22,13 +22,11 @@ what echo is for without them needing to read docs first.
 import os
 import time
 
+import metrics
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
-
-import metrics
-
 
 # Hard cap on inbound prompt UTF-8 byte length (#1650, cross-ref #1620).
 # Mirrors the codex cycle-1 fix: a pathological caller could otherwise ship
@@ -51,14 +49,10 @@ _CANNED_RESPONSE_TEMPLATE = (
     "in a real backend (claude, codex, or gemini), see `ww agent backend set --help`."
 )
 
-_EMPTY_PROMPT_RESPONSE = (
-    "echo backend — received an empty prompt. "
-    "Send text and I'll echo it back."
-)
+_EMPTY_PROMPT_RESPONSE = "echo backend — received an empty prompt. " "Send text and I'll echo it back."
 
 _PROMPT_TOO_LARGE_RESPONSE = (
-    "echo backend — prompt of {size} bytes exceeds MAX_PROMPT_BYTES limit "
-    "of {limit} bytes. Send a smaller prompt."
+    "echo backend — prompt of {size} bytes exceeds MAX_PROMPT_BYTES limit " "of {limit} bytes. Send a smaller prompt."
 )
 
 
@@ -109,7 +103,8 @@ class EchoAgentExecutor(A2AAgentExecutor):
                 if metrics.backend_prompt_too_large_total is not None:
                     metrics.backend_prompt_too_large_total.labels(**self._labels).inc()
                 text = _PROMPT_TOO_LARGE_RESPONSE.format(
-                    size=prompt_bytes, limit=_MAX_PROMPT_BYTES,
+                    size=prompt_bytes,
+                    limit=_MAX_PROMPT_BYTES,
                 )
             else:
                 text = _CANNED_RESPONSE_TEMPLATE.format(prompt=prompt)

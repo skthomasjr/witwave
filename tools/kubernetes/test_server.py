@@ -37,7 +37,6 @@ sys.path.insert(0, str(_SHARED))
 # pure helpers under test.
 import server  # type: ignore  # noqa: E402
 
-
 # ----- _redact_secret_payload (#775, #916, #917) -------------------
 
 
@@ -114,8 +113,7 @@ def test_delete_resource_dry_run_passes_string_not_list():
     fake_api = mock.MagicMock()
     fake_instance = mock.MagicMock()
 
-    with mock.patch.object(server, "_api") as mock_api, \
-            mock.patch.object(server, "client") as mock_client:
+    with mock.patch.object(server, "_api") as mock_api, mock.patch.object(server, "client") as mock_client:
         mock_api.return_value = fake_api
         mock_client.CoreV1Api.return_value = fake_instance
         # Any kind that routes through CoreV1Api works for this call-shape test.
@@ -133,17 +131,12 @@ def test_delete_resource_dry_run_passes_string_not_list():
 
         # Find any outbound kubernetes client call that carries the
         # dry_run kwarg and assert its shape.
-        all_calls = [
-            c for c in mock_instance.mock_calls
-            for mock_instance in (fake_instance,)
-            if c.kwargs
-        ]
+        all_calls = [c for c in mock_instance.mock_calls for mock_instance in (fake_instance,) if c.kwargs]
         dry_run_calls = [c for c in all_calls if "dry_run" in c.kwargs]
         if dry_run_calls:  # graceful when the mock graph deflected all calls
             for call in dry_run_calls:
                 assert call.kwargs["dry_run"] == "All", (
-                    f"dry_run kwarg must be the string 'All' per #917; "
-                    f"got {call.kwargs['dry_run']!r}"
+                    f"dry_run kwarg must be the string 'All' per #917; " f"got {call.kwargs['dry_run']!r}"
                 )
 
 
@@ -154,9 +147,9 @@ def test_describe_preserves_resource_on_non_api_exception_events_error():
     """When the events fetch raises a non-ApiException (urllib3 timeout,
     generic network error), describe() must still return the resource
     view with an empty events list instead of aborting (#1029)."""
-    with mock.patch.object(server, "_resolve") as mock_resolve, \
-            mock.patch.object(server, "_api"), \
-            mock.patch.object(server, "client") as mock_client:
+    with mock.patch.object(server, "_resolve") as mock_resolve, mock.patch.object(server, "_api"), mock.patch.object(
+        server, "client"
+    ) as mock_client:
         fake_resource = mock.MagicMock()
         # .get(**kwargs) returns a dict-like DynamicClient response
         fake_resource.get.return_value = {
@@ -168,9 +161,7 @@ def test_describe_preserves_resource_on_non_api_exception_events_error():
 
         fake_core = mock.MagicMock()
         # Simulate a urllib3 read-timeout — definitely not ApiException.
-        fake_core.list_namespaced_event.side_effect = RuntimeError(
-            "simulated urllib3 read timeout"
-        )
+        fake_core.list_namespaced_event.side_effect = RuntimeError("simulated urllib3 read timeout")
         mock_client.CoreV1Api.return_value = fake_core
 
         fn = server.describe.fn if hasattr(server.describe, "fn") else server.describe
@@ -179,8 +170,7 @@ def test_describe_preserves_resource_on_non_api_exception_events_error():
         assert isinstance(result, dict)
         assert "object" in result
         assert result["events"] == [], (
-            "events must be [] when the events fetch fails with a "
-            "non-ApiException (#1029)"
+            "events must be [] when the events fetch fails with a " "non-ApiException (#1029)"
         )
 
 
@@ -235,10 +225,11 @@ def test_describe_routes_through_with_kube_retry_and_timeout(monkeypatch):
         retry_calls["n"] += 1
         return real_retry(fn, *a, **kw)
 
-    with mock.patch.object(server, "_resolve", return_value=fake_resource), \
-            mock.patch.object(server, "_api"), \
-            mock.patch.object(server, "client") as mock_client, \
-            mock.patch.object(server, "with_kube_retry", side_effect=_spy_retry):
+    with mock.patch.object(server, "_resolve", return_value=fake_resource), mock.patch.object(
+        server, "_api"
+    ), mock.patch.object(server, "client") as mock_client, mock.patch.object(
+        server, "with_kube_retry", side_effect=_spy_retry
+    ):
         mock_client.CoreV1Api.return_value = fake_core
 
         fn = server.describe.fn if hasattr(server.describe, "fn") else server.describe
@@ -246,9 +237,7 @@ def test_describe_routes_through_with_kube_retry_and_timeout(monkeypatch):
             fn(kind="Pod", name="p", namespace="default")
 
     # The primary resource.get must be wrapped (#1641).
-    assert retry_calls["n"] >= 1, (
-        "describe() must route resource.get through with_kube_retry (#1641)"
-    )
+    assert retry_calls["n"] >= 1, "describe() must route resource.get through with_kube_retry (#1641)"
     # The configured per-call timeout must be forwarded verbatim.
     assert seen_kwargs["get"].get("_request_timeout") == 0.05, (
         "describe() must forward _MCP_REQUEST_TIMEOUT_SECONDS as "
@@ -290,10 +279,11 @@ def test_describe_events_call_routes_through_with_kube_retry(monkeypatch):
         retry_call_targets.append(fn)
         return real_retry(fn, *a, **kw)
 
-    with mock.patch.object(server, "_resolve", return_value=fake_resource), \
-            mock.patch.object(server, "_api"), \
-            mock.patch.object(server, "client") as mock_client, \
-            mock.patch.object(server, "with_kube_retry", side_effect=_spy_retry):
+    with mock.patch.object(server, "_resolve", return_value=fake_resource), mock.patch.object(
+        server, "_api"
+    ), mock.patch.object(server, "client") as mock_client, mock.patch.object(
+        server, "with_kube_retry", side_effect=_spy_retry
+    ):
         mock_client.CoreV1Api.return_value = fake_core
 
         fn = server.describe.fn if hasattr(server.describe, "fn") else server.describe
@@ -309,8 +299,7 @@ def test_describe_events_call_routes_through_with_kube_retry(monkeypatch):
         f"call in with_kube_retry (#1641); saw {len(retry_call_targets)}"
     )
     assert seen_events_kwargs.get("_request_timeout") == 0.05, (
-        "describe()'s list_namespaced_event must forward "
-        "_MCP_REQUEST_TIMEOUT_SECONDS as _request_timeout (#1641)"
+        "describe()'s list_namespaced_event must forward " "_MCP_REQUEST_TIMEOUT_SECONDS as _request_timeout (#1641)"
     )
 
 
@@ -348,9 +337,7 @@ def test_redacted_sentinel_is_nonempty_string():
 
 def test_k8s_api_call_duration_seconds_is_registered():
     assert server.k8s_api_call_duration_seconds is not None
-    sample = server.k8s_api_call_duration_seconds.labels(
-        verb="list", resource="Pod", outcome="ok"
-    )
+    sample = server.k8s_api_call_duration_seconds.labels(verb="list", resource="Pod", outcome="ok")
     assert sample is not None
 
 

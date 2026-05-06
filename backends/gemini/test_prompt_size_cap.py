@@ -19,6 +19,7 @@ without importing the full ``executor`` module — its SDK chain
 (``google-genai``, ``mcp``, …) is far too heavy for a focused unit
 test.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -27,7 +28,6 @@ import re
 import sys
 import unittest
 from pathlib import Path
-
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parents[1]
@@ -68,11 +68,10 @@ class PromptSizeCapMetricRegistrationTests(unittest.TestCase):
             del sys.modules["metrics"]
         try:
             import prometheus_client
+
             for name in list(prometheus_client.REGISTRY._names_to_collectors.keys()):
                 try:
-                    prometheus_client.REGISTRY.unregister(
-                        prometheus_client.REGISTRY._names_to_collectors[name]
-                    )
+                    prometheus_client.REGISTRY.unregister(prometheus_client.REGISTRY._names_to_collectors[name])
                 except Exception:
                     pass
         except Exception:
@@ -108,29 +107,23 @@ class PromptSizeCapSourceShapeTests(unittest.TestCase):
         # Default must be 10 MiB exactly. Bigger defaults defeat the point.
         pattern = re.compile(
             r'_MAX_PROMPT_BYTES\s*=\s*int\(\s*os\.environ\.get\(\s*"MAX_PROMPT_BYTES"\s*,'
-            r'\s*str\(\s*10\s*\*\s*1024\s*\*\s*1024\s*\)\s*\)\s*\)'
+            r"\s*str\(\s*10\s*\*\s*1024\s*\*\s*1024\s*\)\s*\)\s*\)"
         )
         self.assertRegex(self.executor_source, pattern)
 
     def test_size_check_present(self):
         # The check must compute UTF-8 byte length, not str length.
-        pattern = re.compile(
-            r'_prompt_bytes\s*=\s*len\(\s*prompt\.encode\(\s*"utf-8"\s*\)\s*\)'
-        )
+        pattern = re.compile(r'_prompt_bytes\s*=\s*len\(\s*prompt\.encode\(\s*"utf-8"\s*\)\s*\)')
         self.assertRegex(self.executor_source, pattern)
-        guard = re.compile(r'if\s+_prompt_bytes\s*>\s*_MAX_PROMPT_BYTES\s*:')
+        guard = re.compile(r"if\s+_prompt_bytes\s*>\s*_MAX_PROMPT_BYTES\s*:")
         self.assertRegex(self.executor_source, guard)
 
     def test_counter_bumped_on_overflow(self):
-        bump = re.compile(
-            r'backend_prompt_too_large_total\.labels\(\*\*_LABELS\)\.inc\(\)'
-        )
+        bump = re.compile(r"backend_prompt_too_large_total\.labels\(\*\*_LABELS\)\.inc\(\)")
         self.assertRegex(self.executor_source, bump)
 
     def test_a2a_error_returned(self):
-        ctor = re.compile(
-            r'PromptTooLargeError\(\s*_prompt_bytes\s*,\s*_MAX_PROMPT_BYTES\s*\)'
-        )
+        ctor = re.compile(r"PromptTooLargeError\(\s*_prompt_bytes\s*,\s*_MAX_PROMPT_BYTES\s*\)")
         self.assertRegex(self.executor_source, ctor)
         msg = re.compile(r'new_agent_text_message\(\s*f"Error:\s*\{_too_large_err\}"\s*\)')
         self.assertRegex(self.executor_source, msg)
@@ -141,9 +134,7 @@ class PromptSizeCapSourceShapeTests(unittest.TestCase):
         self.assertGreaterEqual(self.executor_source.count("#1620"), 2)
 
     def test_metric_registered_in_metrics_py(self):
-        decl = re.compile(
-            r'backend_prompt_too_large_total\s*=\s*prometheus_client\.Counter\('
-        )
+        decl = re.compile(r"backend_prompt_too_large_total\s*=\s*prometheus_client\.Counter\(")
         self.assertRegex(self.metrics_source, decl)
 
 

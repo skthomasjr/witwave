@@ -30,20 +30,19 @@ import os
 import time
 from datetime import datetime, timezone
 
+import metrics
 import prometheus_client
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
+from env import parse_bool_env
+from executor import EchoAgentExecutor
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
-
-import metrics
-from executor import EchoAgentExecutor
-from env import parse_bool_env
 
 logging.basicConfig(
     level=logging.INFO,
@@ -125,11 +124,13 @@ def build_app() -> Starlette:
     """Construct the Starlette app used by both main() and the test suite."""
     metrics.init_metrics()
     if metrics.backend_info is not None:
-        metrics.backend_info.info({
-            "version": AGENT_VERSION,
-            "backend": _BACKEND_ID,
-            "agent": AGENT_OWNER,
-        })
+        metrics.backend_info.info(
+            {
+                "version": AGENT_VERSION,
+                "backend": _BACKEND_ID,
+                "agent": AGENT_OWNER,
+            }
+        )
     if metrics.backend_up is not None:
         metrics.backend_up.labels(**_LABELS).set(1)
 
@@ -159,6 +160,7 @@ async def main() -> None:
 
     if _metrics_enabled:
         from metrics_server import start_metrics_server
+
         start_metrics_server(metrics_handler, logger=logger)
 
     async def mark_ready_when_started() -> None:

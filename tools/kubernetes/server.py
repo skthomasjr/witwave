@@ -24,10 +24,10 @@ import threading
 from typing import Any
 
 import yaml
+from env import parse_bool_env
 from kubernetes import client, config, dynamic
 from kubernetes.client.rest import ApiException
 from mcp.server.fastmcp import FastMCP
-from env import parse_bool_env
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported as a
 # top-level module. Falls back to no-op shims if the shared module isn't on
@@ -35,11 +35,11 @@ from env import parse_bool_env
 sys.path.insert(0, "/home/tool/shared")
 try:
     from otel import (  # type: ignore
-        init_otel_if_enabled,
-        start_span,
-        set_span_error,
-        SPAN_KIND_SERVER,
         SPAN_KIND_INTERNAL,
+        SPAN_KIND_SERVER,
+        init_otel_if_enabled,
+        set_span_error,
+        start_span,
     )
 except Exception:  # pragma: no cover - defensive fallback
     SPAN_KIND_SERVER = "server"
@@ -57,6 +57,7 @@ except Exception:  # pragma: no cover - defensive fallback
     def set_span_error(*_a: Any, **_kw: Any) -> None:  # type: ignore
         return None
 
+
 try:
     from mcp_metrics import record_tool_call  # type: ignore
 except Exception:  # pragma: no cover - defensive fallback
@@ -66,11 +67,14 @@ except Exception:  # pragma: no cover - defensive fallback
     def record_tool_call(*_a: Any, **_kw: Any):
         yield None
 
+
 try:
     from mcp_audit import audit as _audit  # type: ignore
 except Exception:  # pragma: no cover - defensive fallback
+
     def _audit(*_a: Any, **_kw: Any) -> None:  # type: ignore
         return None
+
 
 log = logging.getLogger("tools.kubernetes")
 
@@ -99,6 +103,7 @@ def _refuse_if_read_only(tool: str) -> None:
             "Unset the env var or restart the pod without it to allow mutations."
         )
 
+
 FIELD_MANAGER = "witwave-mcp-kubernetes"
 
 # Per-call network timeout applied to Kubernetes API requests (#778).
@@ -109,34 +114,26 @@ FIELD_MANAGER = "witwave-mcp-kubernetes"
 # parity with the helm tool (the knob applies to apiserver round-trips
 # here rather than a subprocess, but the operator contract is the same:
 # "no single MCP call blocks longer than this").
-_MCP_REQUEST_TIMEOUT_SECONDS = float(
-    os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "120"
-)
+_MCP_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "120")
 
 # Per-response byte cap on tool output (#778). Log fetches and large
 # object returns are the two footguns the original issue flagged.
 # 0 or negative disables the cap.
-_MCP_RESPONSE_MAX_BYTES = int(
-    os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024)
-)
+_MCP_RESPONSE_MAX_BYTES = int(os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024))
 
 # #1526: upper bound on the caller-supplied ``limit`` in list_resources.
 # Without a cap, an LLM-supplied ``limit=1000000`` makes the apiserver
 # build a response body we'll only truncate client-side, wasting
 # apiserver CPU and etcd bandwidth. 500 is the Kubernetes-project
 # default chunk size; operators can raise or lower via env.
-_MCP_LIST_LIMIT_MAX = int(
-    os.environ.get("MCP_LIST_LIMIT_MAX") or "500"
-)
+_MCP_LIST_LIMIT_MAX = int(os.environ.get("MCP_LIST_LIMIT_MAX") or "500")
 
 # Hard ceiling on the tail_lines argument for logs() (#778). Even when
 # the byte cap is disabled, the apiserver should not be asked for an
 # unbounded log tail — the worst case is a multi-GB streaming fetch that
 # holds kubelet and apiserver resources open. 50k lines is comfortably
 # larger than any reasonable diagnostic window.
-_LOGS_TAIL_LINES_MAX = int(
-    os.environ.get("MCP_LOGS_TAIL_LINES_MAX") or "50000"
-)
+_LOGS_TAIL_LINES_MAX = int(os.environ.get("MCP_LOGS_TAIL_LINES_MAX") or "50000")
 
 
 def _truncate_text(value: str, *, tool: str) -> str:
@@ -151,8 +148,7 @@ def _truncate_text(value: str, *, tool: str) -> str:
         return value
     head = encoded[:cap].decode("utf-8", errors="replace")
     return (
-        head
-        + f"\n\n# [mcp-kubernetes:{tool}] response truncated: "
+        head + f"\n\n# [mcp-kubernetes:{tool}] response truncated: "
         f"{len(encoded)} bytes exceeded MCP_RESPONSE_MAX_BYTES={cap}."
     )
 
@@ -164,6 +160,7 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
     truncation behaviour across MCP servers.
     """
     import json as _json
+
     cap = _MCP_RESPONSE_MAX_BYTES
     if cap <= 0 or value is None:
         return value
@@ -247,10 +244,10 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
         "_truncated": True,
         "_cap_bytes": cap,
         "_note": (
-            f"mcp-kubernetes:{tool} response exceeded "
-            f"MCP_RESPONSE_MAX_BYTES ({cap}); raw payload suppressed."
+            f"mcp-kubernetes:{tool} response exceeded " f"MCP_RESPONSE_MAX_BYTES ({cap}); raw payload suppressed."
         ),
     }
+
 
 # Maximum length of a server-side-apply field manager string. The
 # apiserver caps manager names at 128 characters; we truncate rather
@@ -283,6 +280,7 @@ def _resolve_field_manager(caller_id: str | None) -> str:
         combined = combined[:_FIELD_MANAGER_MAX]
     return combined
 
+
 # Positive allow-match patterns for values that flow into the Event
 # field-selector (#773). The field-selector is comma/equals delimited and
 # we want to prevent *any* character that could smuggle extra clauses,
@@ -290,9 +288,7 @@ def _resolve_field_manager(caller_id: str | None) -> str:
 # forbidden characters, we assert the grammar the apiserver actually
 # accepts: DNS-1123 subdomain for metadata.name and PascalCase
 # identifier for kind. Anything else is rejected.
-_DNS1123_SUBDOMAIN_RE = re.compile(
-    r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
-)
+_DNS1123_SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")
 _KIND_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
 _api_client: client.ApiClient | None = None
@@ -310,8 +306,7 @@ try:
     )
     mcp_discovery_reload_total = _Counter(
         "mcp_discovery_reload_total",
-        "Count of DynamicClient discovery-cache refreshes triggered by a "
-        "ResourceNotFound / 404 during _resolve.",
+        "Count of DynamicClient discovery-cache refreshes triggered by a " "ResourceNotFound / 404 during _resolve.",
         ["outcome"],
     )
     # Inner-work histogram for apiserver latency (#1126). Distinct from
@@ -447,6 +442,7 @@ def _resolve(kind: str, api_version: str | None = None):
     CRD installed after this pod started. Invalidate the cache and
     retry once before raising (#1083).
     """
+
     def _do():
         if api_version:
             return _dyn().resources.get(api_version=api_version, kind=kind)
@@ -457,10 +453,7 @@ def _resolve(kind: str, api_version: str | None = None):
     except Exception as exc:
         exc_name = type(exc).__name__
         status = getattr(exc, "status", None)
-        is_missing = (
-            exc_name in ("ResourceNotFoundError", "ResourceNotUniqueError")
-            or status == 404
-        )
+        is_missing = exc_name in ("ResourceNotFoundError", "ResourceNotUniqueError") or status == 404
         if not is_missing:
             raise
         global _dyn_client
@@ -485,9 +478,7 @@ def _resolve(kind: str, api_version: str | None = None):
                 mcp_discovery_reload_total.labels(outcome="ok").inc()
             except Exception:
                 pass
-        log.info(
-            "kube discovery miss (%s); reloaded DynamicClient and retried", exc_name
-        )
+        log.info("kube discovery miss (%s); reloaded DynamicClient and retried", exc_name)
         return result
 
 
@@ -555,12 +546,11 @@ def _api_span(verb: str, resource: str, attributes: dict[str, Any] | None = None
     if attributes:
         attrs.update({k: v for k, v in attributes.items() if v is not None})
     import time as _t
+
     start = _t.monotonic()
     outcome = "ok"
     try:
-        with start_span(
-            "k8s.api.call", kind=SPAN_KIND_INTERNAL, attributes=attrs
-        ) as span:
+        with start_span("k8s.api.call", kind=SPAN_KIND_INTERNAL, attributes=attrs) as span:
             try:
                 yield span
             except BaseException:
@@ -570,7 +560,9 @@ def _api_span(verb: str, resource: str, attributes: dict[str, Any] | None = None
         if k8s_api_call_duration_seconds is not None:
             try:
                 k8s_api_call_duration_seconds.labels(
-                    verb=verb, resource=resource, outcome=outcome,
+                    verb=verb,
+                    resource=resource,
+                    outcome=outcome,
                 ).observe(_t.monotonic() - start)
             except Exception:
                 pass
@@ -638,9 +630,9 @@ def list_resources(
                 # pay for bytes the caller will discard.
                 if limit > _MCP_LIST_LIMIT_MAX:
                     log.info(
-                        "list_resources: coercing limit %d down to "
-                        "MCP_LIST_LIMIT_MAX=%d (#1526)",
-                        limit, _MCP_LIST_LIMIT_MAX,
+                        "list_resources: coercing limit %d down to " "MCP_LIST_LIMIT_MAX=%d (#1526)",
+                        limit,
+                        _MCP_LIST_LIMIT_MAX,
                     )
                     limit = _MCP_LIST_LIMIT_MAX
                 kwargs["limit"] = limit
@@ -667,10 +659,7 @@ def list_resources(
             # per-item .kind (dynamic-client list responses strip it) are
             # still redacted (#916).
             payload = {
-                "items": [
-                    _redact_secret_payload(_to_dict(item), outer_kind=kind)
-                    for item in items
-                ],
+                "items": [_redact_secret_payload(_to_dict(item), outer_kind=kind) for item in items],
                 "continue": next_token,
             }
             # Byte-cap the response (#778). Large list responses trim
@@ -738,13 +727,9 @@ def describe(
             # is a DNS-1123 subdomain and kind is a PascalCase identifier
             # — the grammars the apiserver itself validates.
             if not isinstance(name, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(name):
-                raise ValueError(
-                    f"describe: 'name' must be a DNS-1123 subdomain (got {name!r})"
-                )
+                raise ValueError(f"describe: 'name' must be a DNS-1123 subdomain (got {name!r})")
             if not isinstance(kind, str) or not _KIND_RE.fullmatch(kind):
-                raise ValueError(
-                    f"describe: 'kind' must be PascalCase [A-Z][A-Za-z0-9]* (got {kind!r})"
-                )
+                raise ValueError(f"describe: 'kind' must be PascalCase [A-Z][A-Za-z0-9]* (got {kind!r})")
 
             resource = _resolve(kind, api_version)
             kwargs: dict[str, Any] = {"name": name}
@@ -756,9 +741,7 @@ def describe(
             # parity with the other read paths.
             kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
-                obj = _redact_secret_payload(
-                    _to_dict(with_kube_retry(lambda: resource.get(**kwargs)))
-                )
+                obj = _redact_secret_payload(_to_dict(with_kube_retry(lambda: resource.get(**kwargs))))
 
             events: list[dict] = []
             # #1680: surface event-fetch failures to the caller via an
@@ -782,7 +765,8 @@ def describe(
                         # resource.get above.
                         ev_resp = with_kube_retry(
                             lambda: core.list_namespaced_event(
-                                namespace=namespace, field_selector=selector,
+                                namespace=namespace,
+                                field_selector=selector,
                                 _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
                             )
                         )
@@ -801,9 +785,7 @@ def describe(
                 # are immediately visible without grep'ing pod logs.
                 _status = getattr(e, "status", None)
                 _reason = getattr(e, "reason", None) or "ApiException"
-                events_fetch_error = (
-                    f"{_status} {_reason}" if _status else str(_reason)
-                )
+                events_fetch_error = f"{_status} {_reason}" if _status else str(_reason)
             except Exception as e:
                 # Degraded-apiserver or urllib3/HTTP errors must not nuke
                 # the primary resource view — demote to a warning and
@@ -852,7 +834,10 @@ def read_secret_value(
     # but Secret material off-limits. Checked first so we refuse
     # without touching the apiserver.
     if os.environ.get("MCP_K8S_READ_SECRETS_DISABLED", "").strip().lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }:
         raise PermissionError(
             "read_secret_value: refused because MCP_K8S_READ_SECRETS_DISABLED "
@@ -861,13 +846,9 @@ def read_secret_value(
             "without it to allow this tool."
         )
     if not isinstance(name, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(name):
-        raise ValueError(
-            f"read_secret_value: 'name' must be a DNS-1123 subdomain (got {name!r})"
-        )
+        raise ValueError(f"read_secret_value: 'name' must be a DNS-1123 subdomain (got {name!r})")
     if not isinstance(namespace, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(namespace):
-        raise ValueError(
-            f"read_secret_value: 'namespace' must be a DNS-1123 subdomain (got {namespace!r})"
-        )
+        raise ValueError(f"read_secret_value: 'namespace' must be a DNS-1123 subdomain (got {namespace!r})")
     if not confirm:
         raise ValueError(
             "read_secret_value: call requires confirm=True — this tool exposes "
@@ -875,7 +856,8 @@ def read_secret_value(
             "when the caller genuinely needs the payload."
         )
     _audit(
-        "mcp-kubernetes", "read_secret_value",
+        "mcp-kubernetes",
+        "read_secret_value",
         args={"name": name, "namespace": namespace},
         outcome="invoked",
     )
@@ -889,7 +871,8 @@ def read_secret_value(
                 # #1208: retry once on 401.
                 sec = with_kube_retry(
                     lambda: core.read_namespaced_secret(
-                        name=name, namespace=namespace,
+                        name=name,
+                        namespace=namespace,
                         _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
                     )
                 )
@@ -921,19 +904,11 @@ def logs(
     # at the tool boundary so every Pod/namespace string hitting the
     # apiserver from MCP has the same validated shape.
     if not isinstance(pod, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(pod):
-        raise ValueError(
-            f"logs: 'pod' must be a DNS-1123 subdomain (got {pod!r})"
-        )
+        raise ValueError(f"logs: 'pod' must be a DNS-1123 subdomain (got {pod!r})")
     if not isinstance(namespace, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(namespace):
-        raise ValueError(
-            f"logs: 'namespace' must be a DNS-1123 subdomain (got {namespace!r})"
-        )
-    if container is not None and (
-        not isinstance(container, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(container)
-    ):
-        raise ValueError(
-            f"logs: 'container' must be a DNS-1123 subdomain (got {container!r})"
-        )
+        raise ValueError(f"logs: 'namespace' must be a DNS-1123 subdomain (got {namespace!r})")
+    if container is not None and (not isinstance(container, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(container)):
+        raise ValueError(f"logs: 'container' must be a DNS-1123 subdomain (got {container!r})")
     with _handler_span(
         "logs",
         {"k8s.pod": pod, "k8s.namespace": namespace, "k8s.container": container},
@@ -964,19 +939,14 @@ def logs(
                 if not isinstance(since_seconds, int) or isinstance(since_seconds, bool):
                     raise ValueError("logs: 'since_seconds' must be an int")
                 if since_seconds < 1 or since_seconds > 604800:
-                    raise ValueError(
-                        "logs: 'since_seconds' must be between 1 and 604800 "
-                        "(one week) (#1210)"
-                    )
+                    raise ValueError("logs: 'since_seconds' must be between 1 and 604800 " "(one week) (#1210)")
                 kwargs["since_seconds"] = since_seconds
             # Per-call network timeout (#778). Prevents a wedged pod
             # log stream from pinning the handler indefinitely.
             kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("logs", "Pod", {"k8s.pod": pod, "k8s.namespace": namespace}):
                 # #1208: retry once on 401.
-                raw = with_kube_retry(
-                    lambda: core.read_namespaced_pod_log(**kwargs)
-                )
+                raw = with_kube_retry(lambda: core.read_namespaced_pod_log(**kwargs))
             # Byte-cap the log payload (#778). Even at a bounded line
             # count a single line can carry arbitrary bytes, so measure
             # the final string rather than trusting tail_lines alone.
@@ -1014,9 +984,9 @@ def apply(
     _refuse_if_read_only("apply")
     field_manager = _resolve_field_manager(caller_id)
     _audit(
-        "mcp-kubernetes", "apply",
-        args={"manifest": manifest, "caller_id": caller_id,
-              "field_manager": field_manager},
+        "mcp-kubernetes",
+        "apply",
+        args={"manifest": manifest, "caller_id": caller_id, "field_manager": field_manager},
         caller=caller_id,
         dry_run=dry_run,
     )
@@ -1078,8 +1048,7 @@ def apply(
                     with _api_span(
                         "apply",
                         span_attrs.get("k8s.api_version", ""),
-                        {**span_attrs, "k8s.dry_run": True,
-                         "k8s.apply_phase": "preflight"},
+                        {**span_attrs, "k8s.dry_run": True, "k8s.apply_phase": "preflight"},
                     ):
                         resource.patch(**dry_kwargs)
 
@@ -1099,8 +1068,7 @@ def apply(
                 with _api_span(
                     "apply",
                     span_attrs.get("k8s.api_version", ""),
-                    {**span_attrs, "k8s.dry_run": dry_run,
-                     "k8s.apply_phase": "commit"},
+                    {**span_attrs, "k8s.dry_run": dry_run, "k8s.apply_phase": "commit"},
                 ):
                     try:
                         applied = with_kube_retry(lambda: resource.patch(**live_kwargs))
@@ -1136,15 +1104,20 @@ def delete(
     """
     _refuse_if_read_only("delete")
     _audit(
-        "mcp-kubernetes", "delete",
-        args={"kind": kind, "name": name, "namespace": namespace,
-              "api_version": api_version, "propagation_policy": propagation_policy},
+        "mcp-kubernetes",
+        "delete",
+        args={
+            "kind": kind,
+            "name": name,
+            "namespace": namespace,
+            "api_version": api_version,
+            "propagation_policy": propagation_policy,
+        },
         dry_run=dry_run,
     )
     with _handler_span(
         "delete",
-        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace,
-         "k8s.dry_run": dry_run},
+        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace, "k8s.dry_run": dry_run},
     ) as _h:
         try:
             resource = _resolve(kind, api_version)
@@ -1175,13 +1148,11 @@ def _get_info_doc() -> dict[str, Any]:
     call that would leak cluster state.
     """
     image_version = (
-        os.environ.get("IMAGE_VERSION")
-        or os.environ.get("IMAGE_TAG")
-        or os.environ.get("VERSION")
-        or "unknown"
+        os.environ.get("IMAGE_VERSION") or os.environ.get("IMAGE_TAG") or os.environ.get("VERSION") or "unknown"
     )
     try:
         import kubernetes as _k8s  # type: ignore
+
         kube_client_version = getattr(_k8s, "__version__", "unknown")
     except Exception:
         kube_client_version = "unavailable"
@@ -1205,8 +1176,8 @@ def _get_info_doc() -> dict[str, Any]:
             # Log the attribute shape change so operators notice, rather
             # than silently emitting an empty tool list.
             log.warning(
-                'mcp server: FastMCP internal _tool_manager._tools attr missing — '
-                'falling back to empty tool_names (#1400/#1404). Upgrade guard needed.'
+                "mcp server: FastMCP internal _tool_manager._tools attr missing — "
+                "falling back to empty tool_names (#1400/#1404). Upgrade guard needed."
             )
             tool_names = []
     except Exception:
@@ -1260,9 +1231,7 @@ if __name__ == "__main__":
                 logger=logging.getLogger("mcp-kubernetes.metrics"),
             )
         except Exception as _e:  # pragma: no cover - defensive
-            logging.getLogger(__name__).warning(
-                "metrics listener failed to start — continuing without it: %r", _e
-            )
+            logging.getLogger(__name__).warning("metrics listener failed to start — continuing without it: %r", _e)
 
     _load_kube_config()
     # Eagerly initialise the shared ApiClient and DynamicClient at startup
@@ -1286,6 +1255,7 @@ if __name__ == "__main__":
     try:
         import uvicorn  # type: ignore
         from mcp_auth import require_bearer_token  # type: ignore
+
         _app = mcp.streamable_http_app()
         _app = require_bearer_token(_app, info_provider=_get_info_doc)
         uvicorn.run(

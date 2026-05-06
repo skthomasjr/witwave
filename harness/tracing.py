@@ -32,9 +32,7 @@ import contextvars
 import logging
 import os
 import re
-from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +69,7 @@ class TraceContext:
         """Format as a W3C traceparent header value."""
         return f"{self.version}-{self.trace_id}-{self.parent_id}-{self.flags}"
 
-    def child(self) -> "TraceContext":
+    def child(self) -> TraceContext:
         """Return a new context for an outbound call: same trace_id, fresh parent_id (span)."""
         return TraceContext(
             trace_id=self.trace_id,

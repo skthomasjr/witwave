@@ -1,7 +1,6 @@
 """Prometheus metrics for the autonomous agent."""
 
 import prometheus_client
-
 from env import parse_bool_env
 
 _enabled = parse_bool_env("METRICS_ENABLED")

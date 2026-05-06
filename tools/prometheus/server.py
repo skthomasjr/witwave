@@ -34,11 +34,11 @@ import logging
 import os
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 from env import parse_bool_env
-from urllib.parse import urlparse
+from mcp.server.fastmcp import FastMCP
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported
 # as a top-level module. Falls back to no-op shims if the shared module
@@ -46,11 +46,11 @@ from urllib.parse import urlparse
 sys.path.insert(0, "/home/tool/shared")
 try:
     from otel import (  # type: ignore
-        init_otel_if_enabled,
-        start_span,
-        set_span_error,
-        SPAN_KIND_SERVER,
         SPAN_KIND_INTERNAL,
+        SPAN_KIND_SERVER,
+        init_otel_if_enabled,
+        set_span_error,
+        start_span,
     )
 except Exception:  # pragma: no cover - defensive fallback
     SPAN_KIND_SERVER = "server"
@@ -68,6 +68,7 @@ except Exception:  # pragma: no cover - defensive fallback
     def set_span_error(*_a: Any, **_kw: Any) -> None:  # type: ignore
         return None
 
+
 try:
     from mcp_metrics import record_tool_call  # type: ignore
 except Exception:  # pragma: no cover - defensive fallback
@@ -76,6 +77,7 @@ except Exception:  # pragma: no cover - defensive fallback
     @_cm  # type: ignore
     def record_tool_call(*_a: Any, **_kw: Any):
         yield None
+
 
 log = logging.getLogger("tools.prometheus")
 
@@ -109,11 +111,10 @@ if _PROMETHEUS_URL:
 if _PROMETHEUS_URL:
     import ipaddress as _ipaddress
     import logging as _logging
+
     _prom_hostname = (_parsed_prom_url.hostname or "").lower().rstrip(".")
     _prom_allowlist_raw = os.environ.get("MCP_PROM_URL_ALLOWLIST", "")
-    _prom_allowlist = {
-        h.strip().lower() for h in _prom_allowlist_raw.split(",") if h.strip()
-    }
+    _prom_allowlist = {h.strip().lower() for h in _prom_allowlist_raw.split(",") if h.strip()}
     _prom_log = _logging.getLogger("tools.prometheus")
     if _prom_allowlist and _prom_hostname not in _prom_allowlist:
         raise RuntimeError(
@@ -128,10 +129,7 @@ if _PROMETHEUS_URL:
             _prom_ip = _ipaddress.ip_address(_prom_hostname)
         except ValueError:
             _prom_ip = None
-        if _prom_ip is not None and (
-            _prom_ip.is_link_local
-            or str(_prom_ip) in {"169.254.169.254", "fd00:ec2::254"}
-        ):
+        if _prom_ip is not None and (_prom_ip.is_link_local or str(_prom_ip) in {"169.254.169.254", "fd00:ec2::254"}):
             _prom_log.warning(
                 "mcp-prometheus: PROMETHEUS_URL points at a link-local / "
                 "cloud-metadata host (%s). Any bearer token will be sent "
@@ -143,9 +141,7 @@ if _PROMETHEUS_URL:
 # abort once the cap is exceeded so one pathological query cannot pin
 # the pod's memory. Default 1MiB — Prometheus query results that exceed
 # this either need narrower selectors or a shorter time range.
-_MCP_PROM_MAX_RESPONSE_BYTES = int(
-    os.environ.get("MCP_PROM_MAX_RESPONSE_BYTES") or str(1 * 1024 * 1024)
-)
+_MCP_PROM_MAX_RESPONSE_BYTES = int(os.environ.get("MCP_PROM_MAX_RESPONSE_BYTES") or str(1 * 1024 * 1024))
 
 # Optional bearer token for the Prometheus endpoint itself (distinct
 # from the MCP_TOOL_AUTH_TOKEN that gates callers coming *into* this
@@ -174,14 +170,13 @@ _METADATA_HOSTS = {
 # genuinely trusted in-cluster link (mesh with mTLS, loopback-only
 # topology) can opt in via PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true; the
 # startup log stays loud so the decision is auditable.
-_PROMETHEUS_ALLOW_PLAINTEXT_BEARER = os.environ.get(
-    "PROMETHEUS_ALLOW_PLAINTEXT_BEARER", ""
-).strip().lower() in {"1", "true", "yes", "on"}
-if (
-    _PROMETHEUS_BEARER_TOKEN
-    and _PROMETHEUS_URL
-    and urlparse(_PROMETHEUS_URL).scheme == "http"
-):
+_PROMETHEUS_ALLOW_PLAINTEXT_BEARER = os.environ.get("PROMETHEUS_ALLOW_PLAINTEXT_BEARER", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+if _PROMETHEUS_BEARER_TOKEN and _PROMETHEUS_URL and urlparse(_PROMETHEUS_URL).scheme == "http":
     if not _PROMETHEUS_ALLOW_PLAINTEXT_BEARER:
         raise RuntimeError(
             "mcp-prometheus: PROMETHEUS_BEARER_TOKEN is set but "
@@ -208,8 +203,7 @@ if (
 if (
     _PROMETHEUS_BEARER_TOKEN
     and _PROMETHEUS_URL
-    and (urlparse(_PROMETHEUS_URL).hostname or "").lower().rstrip(".")
-    in _METADATA_HOSTS
+    and (urlparse(_PROMETHEUS_URL).hostname or "").lower().rstrip(".") in _METADATA_HOSTS
 ):
     log.critical(
         "mcp-prometheus: PROMETHEUS_BEARER_TOKEN is set but "
@@ -230,9 +224,7 @@ if (
 # own query budget is already short; a slow query usually means the
 # server is genuinely struggling or the operator supplied a pathological
 # expression. Keep the default tight and let operators raise it.
-_MCP_REQUEST_TIMEOUT_SECONDS = float(
-    os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "30"
-)
+_MCP_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "30")
 
 
 # #1398: module-level shared httpx.Client so TLS handshakes + connection
@@ -241,30 +233,28 @@ _MCP_REQUEST_TIMEOUT_SECONDS = float(
 # #1407: double-checked locking so concurrent first-touches from the
 # FastMCP thread-pool can't each build + orphan a client.
 import threading as _threading
-_SHARED_HTTPX_CLIENT: "httpx.Client | None" = None
+
+_SHARED_HTTPX_CLIENT: httpx.Client | None = None
 _SHARED_HTTPX_CLIENT_LOCK = _threading.Lock()
 
 
-def _get_shared_httpx_client() -> "httpx.Client":
+def _get_shared_httpx_client() -> httpx.Client:
     global _SHARED_HTTPX_CLIENT
     if _SHARED_HTTPX_CLIENT is None:
         with _SHARED_HTTPX_CLIENT_LOCK:
             if _SHARED_HTTPX_CLIENT is None:
                 _SHARED_HTTPX_CLIENT = httpx.Client(
                     timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
-                    limits=httpx.Limits(
-                        max_connections=50, max_keepalive_connections=10
-                    ),
+                    limits=httpx.Limits(max_connections=50, max_keepalive_connections=10),
                 )
     return _SHARED_HTTPX_CLIENT
+
 
 # Per-response byte cap on tool output (#778 parity). Prometheus query
 # results can be arbitrarily large (a range query over a long window
 # with high-cardinality labels returns MBs of JSON); cap so one bad
 # query cannot OOM the pod.
-_MCP_RESPONSE_MAX_BYTES = int(
-    os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024)
-)
+_MCP_RESPONSE_MAX_BYTES = int(os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024))
 
 
 class PrometheusError(RuntimeError):
@@ -342,7 +332,8 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
                 "prom._prom_get: caller supplied empty-string param %r "
                 "on %s — forwarding to prometheus so the misuse surfaces "
                 "as a 400 instead of a silent success (#1529).",
-                k, endpoint,
+                k,
+                endpoint,
             )
         clean_params[k] = v
     with start_span(
@@ -362,34 +353,32 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             # construction defeats keep-alive and burns CPU on concurrent
             # load. Lazy-init keeps import-time cheap.
             _client = _get_shared_httpx_client()
-            with _client.stream(
-                "GET", url, params=clean_params, headers=headers
-            ) as resp:
-                    status = resp.status_code
-                    buf = bytearray()
-                    truncated = False
-                    for chunk in resp.iter_bytes():
-                        if not chunk:
-                            continue
-                        remaining = cap - len(buf)
-                        if remaining <= 0:
-                            truncated = True
-                            break
-                        if len(chunk) > remaining:
-                            buf.extend(chunk[:remaining])
-                            truncated = True
-                            break
-                        buf.extend(chunk)
-                    if truncated:
-                        err = PrometheusError(
-                            f"prometheus {endpoint} response exceeded "
-                            f"MCP_PROM_MAX_RESPONSE_BYTES ({cap} bytes); "
-                            "aborted before full body was received. Narrow "
-                            "the time range, lower `step`, or add label "
-                            "filters."
-                        )
-                        set_span_error(_exec_span, err)
-                        raise err
+            with _client.stream("GET", url, params=clean_params, headers=headers) as resp:
+                status = resp.status_code
+                buf = bytearray()
+                truncated = False
+                for chunk in resp.iter_bytes():
+                    if not chunk:
+                        continue
+                    remaining = cap - len(buf)
+                    if remaining <= 0:
+                        truncated = True
+                        break
+                    if len(chunk) > remaining:
+                        buf.extend(chunk[:remaining])
+                        truncated = True
+                        break
+                    buf.extend(chunk)
+                if truncated:
+                    err = PrometheusError(
+                        f"prometheus {endpoint} response exceeded "
+                        f"MCP_PROM_MAX_RESPONSE_BYTES ({cap} bytes); "
+                        "aborted before full body was received. Narrow "
+                        "the time range, lower `step`, or add label "
+                        "filters."
+                    )
+                    set_span_error(_exec_span, err)
+                    raise err
         except PrometheusError:
             raise
         except httpx.TimeoutException as exc:
@@ -413,7 +402,9 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             # full bodies from Prometheus directly.
             log.warning(
                 "prometheus %s upstream HTTP %d (%d bytes)",
-                endpoint, status, len(buf),
+                endpoint,
+                status,
+                len(buf),
             )
             err = PrometheusError(f"prometheus returned HTTP {status}")
             set_span_error(_exec_span, err)
@@ -426,18 +417,15 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             except Exception:
                 snippet = "<undecodable>"
             log.warning(
-                "prometheus %s non-JSON body snippet: %s", endpoint, snippet,
+                "prometheus %s non-JSON body snippet: %s",
+                endpoint,
+                snippet,
             )
-            err = PrometheusError(
-                f"prometheus {endpoint} returned non-JSON body"
-            )
+            err = PrometheusError(f"prometheus {endpoint} returned non-JSON body")
             set_span_error(_exec_span, err)
             raise err from exc
         if body.get("status") != "success":
-            err = PrometheusError(
-                f"prometheus {endpoint} error: "
-                f"{body.get('errorType')}: {body.get('error')}"
-            )
+            err = PrometheusError(f"prometheus {endpoint} error: " f"{body.get('errorType')}: {body.get('error')}")
             set_span_error(_exec_span, err)
             raise err
         return body
@@ -519,9 +507,7 @@ def series(
         raise ValueError("prometheus: 'match' must be a non-empty list of selectors")
     for i, item in enumerate(match):
         if not isinstance(item, str) or not item:
-            raise ValueError(
-                f"prometheus: match[{i}] must be a non-empty string (got {item!r})"
-            )
+            raise ValueError(f"prometheus: match[{i}] must be a non-empty string (got {item!r})")
     with _handler_span("series", {"prom.match": ",".join(match)}) as _h:
         try:
             # Prometheus HTTP API expects multiple match[]=... params;
@@ -552,9 +538,7 @@ def labels(
             raise ValueError("prometheus: 'match' must be a list of selectors")
         for i, item in enumerate(match):
             if not isinstance(item, str) or not item:
-                raise ValueError(
-                    f"prometheus: match[{i}] must be a non-empty string (got {item!r})"
-                )
+                raise ValueError(f"prometheus: match[{i}] must be a non-empty string (got {item!r})")
     with _handler_span("labels") as _h:
         try:
             params: dict[str, Any] = {"start": start, "end": end}
@@ -585,18 +569,15 @@ def label_values(
     # Prometheus label-name grammar — conservative allow-list prevents
     # path-escape via encoded slashes / newlines.
     import re as _re
+
     if not _re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label):
-        raise ValueError(
-            f"prometheus: 'label' must match [A-Za-z_][A-Za-z0-9_]* (got {label!r})"
-        )
+        raise ValueError(f"prometheus: 'label' must match [A-Za-z_][A-Za-z0-9_]* (got {label!r})")
     if match is not None:
         if not isinstance(match, list):
             raise ValueError("prometheus: 'match' must be a list of selectors")
         for i, item in enumerate(match):
             if not isinstance(item, str) or not item:
-                raise ValueError(
-                    f"prometheus: match[{i}] must be a non-empty string (got {item!r})"
-                )
+                raise ValueError(f"prometheus: match[{i}] must be a non-empty string (got {item!r})")
     with _handler_span("label_values", {"prom.label": label}) as _h:
         try:
             params: dict[str, Any] = {"start": start, "end": end}
@@ -612,10 +593,7 @@ def label_values(
 def _get_info_doc() -> dict[str, Any]:
     """Build the /info document for the prometheus tool server (#1122 parity)."""
     image_version = (
-        os.environ.get("IMAGE_VERSION")
-        or os.environ.get("IMAGE_TAG")
-        or os.environ.get("VERSION")
-        or "unknown"
+        os.environ.get("IMAGE_VERSION") or os.environ.get("IMAGE_TAG") or os.environ.get("VERSION") or "unknown"
     )
     try:
         # #1400: defensive lookup — try multiple known paths so a FastMCP minor
@@ -628,8 +606,8 @@ def _get_info_doc() -> dict[str, Any]:
             # Log the attribute shape change so operators notice, rather
             # than silently emitting an empty tool list.
             log.warning(
-                'mcp server: FastMCP internal _tool_manager._tools attr missing — '
-                'falling back to empty tool_names (#1400/#1404). Upgrade guard needed.'
+                "mcp server: FastMCP internal _tool_manager._tools attr missing — "
+                "falling back to empty tool_names (#1400/#1404). Upgrade guard needed."
             )
             tool_names = []
     except Exception:
@@ -677,9 +655,7 @@ if __name__ == "__main__":
                 logger=logging.getLogger("mcp-prometheus.metrics"),
             )
         except Exception as _e:  # pragma: no cover - defensive
-            logging.getLogger(__name__).warning(
-                "metrics listener failed to start — continuing without it: %r", _e
-            )
+            logging.getLogger(__name__).warning("metrics listener failed to start — continuing without it: %r", _e)
 
     if not _PROMETHEUS_URL:
         log.warning(
@@ -693,6 +669,7 @@ if __name__ == "__main__":
     try:
         import uvicorn  # type: ignore
         from mcp_auth import require_bearer_token  # type: ignore
+
         _app = mcp.streamable_http_app()
         _app = require_bearer_token(_app, info_provider=_get_info_doc)
         uvicorn.run(

@@ -17,7 +17,6 @@ sys.path.insert(0, str(_SHARED))
 
 from mcp_command_allowlist import mcp_command_allowed, mcp_command_args_safe  # type: ignore
 
-
 BASELINE = frozenset({"mcp-kubernetes", "mcp-helm", "python3", "node", "uv"})
 PREFIXES = ("/home/agent/mcp-bin/", "/usr/local/bin/")
 

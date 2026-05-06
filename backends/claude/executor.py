@@ -5,7 +5,6 @@ import logging
 import os
 import threading
 import time
-import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,18 +16,18 @@ from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, TextBlock, ToolResultBlock, ToolUseBlock
+from exceptions import BudgetExceededError
 from hooks import (
     BASELINE_RULES,
-    DECISION_ALLOW,
     DECISION_DENY,
     DECISION_WARN,
     HOOKS_BASELINE_ENABLED,
     HOOKS_CONFIG_PATH,
     HookState,
     evaluate_pre_tool_use,
-    load_extension_rules,
     load_hooks_config_sync,
 )
+from log_utils import _append_log
 from metrics import (
     backend_a2a_last_request_timestamp_seconds,
     backend_a2a_request_duration_seconds,
@@ -36,20 +35,6 @@ from metrics import (
     backend_active_sessions,
     backend_budget_exceeded_total,
     backend_concurrent_queries,
-    backend_hooks_active_rules,
-    backend_hooks_blocked_total,
-    backend_hooks_denials_total,
-    backend_hooks_shed_total,
-    backend_hooks_config_errors_total,
-    backend_hooks_config_reloads_total,
-    backend_hooks_evaluations_total,
-    backend_hooks_warnings_total,
-    backend_log_write_errors_by_logger_total,
-    backend_mcp_outbound_duration_seconds,
-    backend_mcp_outbound_requests_total,
-    backend_tool_audit_bytes_per_entry,
-    backend_tool_audit_entries_total,
-    backend_tool_audit_rotation_pressure_total,
     backend_context_exhaustion_total,
     backend_context_tokens,
     backend_context_tokens_remaining,
@@ -58,13 +43,24 @@ from metrics import (
     backend_empty_prompts_total,
     backend_empty_responses_total,
     backend_file_watcher_restarts_total,
+    backend_hooks_active_rules,
+    backend_hooks_blocked_total,
+    backend_hooks_config_errors_total,
+    backend_hooks_config_reloads_total,
+    backend_hooks_denials_total,
+    backend_hooks_evaluations_total,
+    backend_hooks_shed_total,
+    backend_hooks_warnings_total,
     backend_log_bytes_total,
     backend_log_entries_total,
+    backend_log_write_errors_by_logger_total,
     backend_log_write_errors_total,
     backend_lru_cache_utilization_percent,
     backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
     backend_mcp_config_reloads_total,
+    backend_mcp_outbound_duration_seconds,
+    backend_mcp_outbound_requests_total,
     backend_mcp_servers_active,
     backend_model_requests_total,
     backend_prompt_length_bytes,
@@ -95,6 +91,8 @@ from metrics import (
     backend_session_path_mismatch_total,
     backend_session_starts_total,
     backend_stderr_lines_per_task,
+    backend_streaming_chunks_dropped_total,
+    backend_streaming_events_emitted_total,
     backend_task_cancellations_total,
     backend_task_duration_seconds,
     backend_task_error_duration_seconds,
@@ -104,28 +102,32 @@ from metrics import (
     backend_task_timeout_headroom_seconds,
     backend_tasks_total,
     backend_tasks_with_stderr_total,
-    backend_streaming_chunks_dropped_total,
-    backend_streaming_events_emitted_total,
     backend_text_blocks_per_query,
+    backend_tool_audit_bytes_per_entry,
+    backend_tool_audit_entries_total,
+    backend_tool_audit_rotation_pressure_total,
     backend_watcher_events_total,
 )
-from watchfiles import awatch
-from log_utils import _append_log
+from otel import start_span
+from redact import redact_text, should_redact
 from tool_audit import (  # type: ignore
     ToolAuditContext as _ToolAuditContext,
+)
+from tool_audit import (
     ToolAuditMetrics as _ToolAuditMetrics,
+)
+from tool_audit import (
     log_tool_audit as _shared_log_tool_audit,
 )
-from redact import redact_text, should_redact
-from exceptions import BudgetExceededError
 from validation import sanitize_model_label
-from otel import start_span, set_span_error
+from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
 
 
 try:
     import unicodedata as _unicodedata_startup
+
     _STARTUP_CWD = _unicodedata_startup.normalize("NFC", os.getcwd())
 except Exception:
     _STARTUP_CWD = None
@@ -197,16 +199,15 @@ def _session_file_path(session_id: str) -> "pathlib.Path | None":
         if live_cwd != _STARTUP_CWD:
             if backend_session_path_mismatch_total is not None:
                 try:
-                    backend_session_path_mismatch_total.labels(
-                        **_LABELS, reason="cwd_drift"
-                    ).inc()
+                    backend_session_path_mismatch_total.labels(**_LABELS, reason="cwd_drift").inc()
                 except Exception:
                     pass
             if not getattr(_session_file_path, "_logged_cwd_drift", False):
                 logger.warning(
                     "session-path: cwd drifted since startup (startup=%r live=%r) — "
                     "refusing to resolve session file path. See #1047.",
-                    _STARTUP_CWD, live_cwd,
+                    _STARTUP_CWD,
+                    live_cwd,
                 )
                 try:
                     _session_file_path._logged_cwd_drift = True  # type: ignore[attr-defined]
@@ -292,7 +293,8 @@ def _session_path_self_test() -> None:
             logger.error(
                 "session-path self-test: _session_file_path returned %r (type=%s) — "
                 "expected pathlib.Path. See #530.",
-                resolved, type(resolved).__name__,
+                resolved,
+                type(resolved).__name__,
             )
             _bump("resolver_wrong_type")
             return
@@ -318,7 +320,8 @@ def _session_path_self_test() -> None:
             logger.warning(
                 "session-path self-test: resolved stem %r does not match probe id %r — "
                 "session-id handling has changed. See #530.",
-                resolved.stem, probe_id,
+                resolved.stem,
+                probe_id,
             )
             _bump("stem_mismatch")
 
@@ -344,7 +347,8 @@ def _session_path_self_test() -> None:
                         "but sibling project dirs %r do — sanitizer may have drifted "
                         "from the CLI. Eviction/timeout unlinks will target the wrong "
                         "location. See #530.",
-                        str(sessions_dir), peers[:5],
+                        str(sessions_dir),
+                        peers[:5],
                     )
                     _bump("sanitized_cwd_not_found")
 
@@ -354,6 +358,7 @@ def _session_path_self_test() -> None:
         # startup instead so operators have a clean signal.
         try:
             import claude_agent_sdk as _sdk
+
             for _symbol in ("ClaudeAgentOptions", "ClaudeSDKClient", "HookMatcher"):
                 if not hasattr(_sdk, _symbol):
                     logger.error(
@@ -368,8 +373,7 @@ def _session_path_self_test() -> None:
             pass
 
         logger.info(
-            "session-path self-test: ok — resolver layout matches documented conventions "
-            "(%r).",
+            "session-path self-test: ok — resolver layout matches documented conventions " "(%r).",
             str(resolved),
         )
     except Exception as exc:
@@ -379,6 +383,7 @@ def _session_path_self_test() -> None:
             exc,
         )
         _bump("probe_exception")
+
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "claude")
 AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
@@ -394,6 +399,7 @@ except Exception:  # pragma: no cover - defensive path
     try:
         from shared.hook_events import schedule_event_post as _schedule_event_post  # type: ignore
     except Exception:
+
         def _schedule_event_post(*_a, **_kw):  # type: ignore
             return False
 
@@ -411,6 +417,8 @@ def _emit_event_safe(event_type: str, payload: dict) -> None:
         _schedule_event_post(event_type, payload, agent_id=AGENT_OWNER or AGENT_NAME)
     except Exception as exc:  # pragma: no cover - defensive path
         logger.debug("event emit (%s) raised: %r", event_type, exc)
+
+
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
@@ -489,6 +497,8 @@ def _resolve_harness_events_auth_token() -> tuple[str, str]:
             f" (was {previous!r})" if previous is not None else "",
         )
     return token, source
+
+
 # Tight timeout — the hook is synchronous with tool execution; we never block
 # on the POST (fire-and-forget via asyncio.create_task) but still want any
 # connection the client opens to fail fast when the harness is unreachable.
@@ -562,7 +572,8 @@ if _tools_source == "env":
 elif _tools_source == "settings":
     logger.info(
         "ALLOWED_TOOLS resolved to: %s (from %s permissions.allow).",
-        ",".join(ALLOWED_TOOLS), _SETTINGS_PATH,
+        ",".join(ALLOWED_TOOLS),
+        _SETTINGS_PATH,
     )
 else:
     logger.warning(
@@ -589,24 +600,26 @@ _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 # or poorly-audited ``mcp.json``. Mirrors the denylist codex applies to
 # both ``_shell_executor`` (#248) and ``_build_mcp_servers`` (#519); lifted
 # here verbatim so the two backends stay in lockstep (#606).
-_SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
-    "PATH",
-    "LD_PRELOAD",
-    "LD_LIBRARY_PATH",
-    "LD_AUDIT",
-    "LD_DEBUG",
-    "PYTHONPATH",
-    "PYTHONSTARTUP",
-    "PYTHONINSPECT",
-    "RUBYLIB",
-    "RUBYOPT",
-    "PERL5LIB",
-    "PERL5OPT",
-    "NODE_PATH",
-    "DYLD_INSERT_LIBRARIES",
-    "DYLD_LIBRARY_PATH",
-    "DYLD_FRAMEWORK_PATH",
-})
+_SHELL_ENV_DENYLIST: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "LD_AUDIT",
+        "LD_DEBUG",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONINSPECT",
+        "RUBYLIB",
+        "RUBYOPT",
+        "PERL5LIB",
+        "PERL5OPT",
+        "NODE_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FRAMEWORK_PATH",
+    }
+)
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL") or None
 
@@ -807,6 +820,7 @@ async def _get_hook_http_client() -> "httpx.AsyncClient":  # noqa: F821
             entry = _HOOK_HTTP_CLIENTS.get(key)
             if entry is None:
                 import httpx
+
                 client = httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT)
                 entry = (client, asyncio.Lock())
                 _HOOK_HTTP_CLIENTS[key] = entry
@@ -866,8 +880,8 @@ try:
     _HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
 except (TypeError, ValueError):
     logger.warning(
-        "HOOK_POST_MAX_INFLIGHT could not be parsed as int; "
-        "forcing safe default %d (#1196).", _HOOK_POST_MAX_INFLIGHT_DEFAULT,
+        "HOOK_POST_MAX_INFLIGHT could not be parsed as int; " "forcing safe default %d (#1196).",
+        _HOOK_POST_MAX_INFLIGHT_DEFAULT,
     )
     _HOOK_POST_MAX_INFLIGHT = _HOOK_POST_MAX_INFLIGHT_DEFAULT
 if _HOOK_POST_MAX_INFLIGHT <= 0:
@@ -878,7 +892,8 @@ if _HOOK_POST_MAX_INFLIGHT <= 0:
     logger.warning(
         "HOOK_POST_MAX_INFLIGHT=%d is non-positive; forcing safe default %d "
         "to avoid infinite hook-post shedding (#1196).",
-        _HOOK_POST_MAX_INFLIGHT, _HOOK_POST_MAX_INFLIGHT_DEFAULT,
+        _HOOK_POST_MAX_INFLIGHT,
+        _HOOK_POST_MAX_INFLIGHT_DEFAULT,
     )
     _HOOK_POST_MAX_INFLIGHT = _HOOK_POST_MAX_INFLIGHT_DEFAULT
 # One-shot warning guard for the "shed because at cap" log so bursts
@@ -944,7 +959,9 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
 
 
-def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None, state_lock: "threading.Lock | None" = None):
+def _make_pre_tool_use_hook(
+    state: HookState, session_id_ref: dict | None = None, state_lock: "threading.Lock | None" = None
+):
     """Build the PreToolUse hook callable bound to *state*.
 
     The callable is closed over *state* so it always sees the latest rule
@@ -985,7 +1002,9 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
         # branch returns so all three paths contribute.
         if backend_hooks_evaluations_total is not None:
             backend_hooks_evaluations_total.labels(
-                **_LABELS, tool=tool_name or "unknown", decision=decision,
+                **_LABELS,
+                tool=tool_name or "unknown",
+                decision=decision,
             ).inc()
 
         # Emit a span event on the current OTel span for allow/warn/deny so
@@ -996,6 +1015,7 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
         _traceparent: str | None = None
         try:
             from opentelemetry import trace as _otel_trace
+
             _span = _otel_trace.get_current_span()
             if _span is not None and _span.is_recording():
                 _attrs = {
@@ -1012,10 +1032,10 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                 # so the harness can forward it on to webhook receivers.
                 try:
                     _ctx = _span.get_span_context()
-                    if getattr(_ctx, "is_valid", False) or (getattr(_ctx, "trace_id", 0) and getattr(_ctx, "span_id", 0)):
-                        _traceparent = "00-{:032x}-{:016x}-{:02x}".format(
-                            _ctx.trace_id, _ctx.span_id, int(_ctx.trace_flags) & 0xFF,
-                        )
+                    if getattr(_ctx, "is_valid", False) or (
+                        getattr(_ctx, "trace_id", 0) and getattr(_ctx, "span_id", 0)
+                    ):
+                        _traceparent = f"00-{_ctx.trace_id:032x}-{_ctx.span_id:016x}-{int(_ctx.trace_flags) & 0xFF:02x}"
                 except Exception:
                     _traceparent = None
         except Exception:
@@ -1088,7 +1108,8 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                 if _over_cap and not _HOOK_POST_SHED_WARNED:
                     logger.warning(
                         "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
-                        _size_before, _HOOK_POST_MAX_INFLIGHT,
+                        _size_before,
+                        _HOOK_POST_MAX_INFLIGHT,
                     )
                     _HOOK_POST_SHED_WARNED = True
             if _over_cap:
@@ -1100,9 +1121,7 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
             else:
                 _t_created: asyncio.Task | None = None
                 try:
-                    _t_created = asyncio.create_task(
-                        _post_hook_event_to_harness(_event_dict)
-                    )
+                    _t_created = asyncio.create_task(_post_hook_event_to_harness(_event_dict))
                 except RuntimeError as _rt_exc:
                     # Event loop closing / no running loop. Not fatal —
                     # the span event above already captured the decision.
@@ -1139,6 +1158,7 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                             global _HOOK_POST_SHED_WARNED
                             with _HOOK_POST_SHED_WARNED_LOCK:
                                 _HOOK_POST_SHED_WARNED = False
+
                     _t_created.add_done_callback(_done)
         except Exception as _transport_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
@@ -1146,19 +1166,26 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
         if decision == DECISION_DENY and matched is not None:
             if backend_hooks_blocked_total is not None:
                 backend_hooks_blocked_total.labels(
-                    **_LABELS, tool=tool_name or "unknown",
-                    source=matched.source, rule=matched.name,
+                    **_LABELS,
+                    tool=tool_name or "unknown",
+                    source=matched.source,
+                    rule=matched.name,
                 ).inc()
             # Canonical cross-backend name (#789). Increment alongside
             # the legacy series so dashboards can migrate incrementally.
             if backend_hooks_denials_total is not None:
                 backend_hooks_denials_total.labels(
-                    **_LABELS, tool=tool_name or "unknown",
-                    source=matched.source, rule=matched.name,
+                    **_LABELS,
+                    tool=tool_name or "unknown",
+                    source=matched.source,
+                    rule=matched.name,
                 ).inc()
             logger.warning(
                 "PreToolUse DENY: tool=%r rule=%r source=%r reason=%r",
-                tool_name, matched.name, matched.source, matched.reason,
+                tool_name,
+                matched.name,
+                matched.source,
+                matched.reason,
             )
             return {
                 "hookSpecificOutput": {
@@ -1171,12 +1198,17 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
         if decision == DECISION_WARN and matched is not None:
             if backend_hooks_warnings_total is not None:
                 backend_hooks_warnings_total.labels(
-                    **_LABELS, tool=tool_name or "unknown",
-                    source=matched.source, rule=matched.name,
+                    **_LABELS,
+                    tool=tool_name or "unknown",
+                    source=matched.source,
+                    rule=matched.name,
                 ).inc()
             logger.info(
                 "PreToolUse WARN: tool=%r rule=%r source=%r reason=%r",
-                tool_name, matched.name, matched.source, matched.reason,
+                tool_name,
+                matched.name,
+                matched.source,
+                matched.reason,
             )
 
         return {}
@@ -1237,16 +1269,27 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
         ts = datetime.now(timezone.utc).isoformat()
         if event_type == "tool_use":
             entry = {
-                "ts": ts, "agent": AGENT_NAME, "agent_id": AGENT_ID,
-                "session_id": session_id, "event_type": event_type,
-                "model": model, "id": block.id, "name": block.name, "input": block.input,
+                "ts": ts,
+                "agent": AGENT_NAME,
+                "agent_id": AGENT_ID,
+                "session_id": session_id,
+                "event_type": event_type,
+                "model": model,
+                "id": block.id,
+                "name": block.name,
+                "input": block.input,
             }
         else:
             entry = {
-                "ts": ts, "agent": AGENT_NAME, "agent_id": AGENT_ID,
-                "session_id": session_id, "event_type": event_type,
-                "model": model, "tool_use_id": block.tool_use_id,
-                "content": block.content, "is_error": block.is_error,
+                "ts": ts,
+                "agent": AGENT_NAME,
+                "agent_id": AGENT_ID,
+                "session_id": session_id,
+                "event_type": event_type,
+                "model": model,
+                "tool_use_id": block.tool_use_id,
+                "content": block.content,
+                "is_error": block.is_error,
             }
         await log_trace(json.dumps(entry))
     except Exception as e:
@@ -1276,6 +1319,8 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
 # don't need to touch their import paths.
 from mcp_command_allowlist import (  # noqa: E402
     mcp_command_allowed as _mcp_command_allowed,
+)
+from mcp_command_allowlist import (
     mcp_command_args_safe as _mcp_command_args_safe,
 )
 
@@ -1336,12 +1381,15 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
                     "MCP server %r: command %r rejected by allow-list (%s) — "
                     "dropping entry. Set MCP_ALLOWED_COMMANDS / "
                     "MCP_ALLOWED_COMMAND_PREFIXES to widen. (#711)",
-                    name, cmd, reason,
+                    name,
+                    cmd,
+                    reason,
                 )
                 if backend_mcp_command_rejected_total is not None:
                     try:
                         backend_mcp_command_rejected_total.labels(
-                            **_LABELS, reason=reason,
+                            **_LABELS,
+                            reason=reason,
                         ).inc()
                     except Exception:
                         pass
@@ -1362,12 +1410,15 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
                     "config or set MCP_ALLOWED_CWD_PREFIXES if a "
                     "positional script lives in an operator-vetted "
                     "tree. (#1734)",
-                    name, cmd, args_reason,
+                    name,
+                    cmd,
+                    args_reason,
                 )
                 if backend_mcp_command_rejected_total is not None:
                     try:
                         backend_mcp_command_rejected_total.labels(
-                            **_LABELS, reason=args_reason,
+                            **_LABELS,
+                            reason=args_reason,
                         ).inc()
                     except Exception:
                         pass
@@ -1402,9 +1453,7 @@ def _load_mcp_config() -> dict:
         # mcp.json may be in Claude's native format {"mcpServers": {...}}.
         # The SDK expects the inner servers dict directly, not the wrapper object.
         if not isinstance(data, dict):
-            raise ValueError(
-                f"mcp.json must be a JSON object (got {type(data).__name__})"
-            )
+            raise ValueError(f"mcp.json must be a JSON object (got {type(data).__name__})")
         if "mcpServers" in data:
             # Wrapper shape: the inner value must be a dict. Previously a
             # malformed value (e.g. a list) fell through to the else-branch
@@ -1422,7 +1471,8 @@ def _load_mcp_config() -> dict:
             logger.warning(
                 "MCP server %r: rejected by shape validation (%s) — "
                 "dropping entry so executor view matches SDK runtime. (#1051)",
-                name, reason,
+                name,
+                reason,
             )
         return valid
     except Exception as e:
@@ -1607,7 +1657,9 @@ async def _run_query_inner(
         ):
             async with ClaudeSDKClient(options=options) as client:
                 if backend_sdk_subprocess_spawn_duration_seconds is not None:
-                    backend_sdk_subprocess_spawn_duration_seconds.labels(**_sdk_labels).observe(time.monotonic() - _spawn_start)
+                    backend_sdk_subprocess_spawn_duration_seconds.labels(**_sdk_labels).observe(
+                        time.monotonic() - _spawn_start
+                    )
                 await client.query(prompt)
                 _query_sent_at = time.monotonic()
                 async for message in client.receive_response():
@@ -1615,7 +1667,9 @@ async def _run_query_inner(
                     if isinstance(message, AssistantMessage):
                         if _assistant_turn_count == 0:
                             if backend_sdk_time_to_first_message_seconds is not None:
-                                backend_sdk_time_to_first_message_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_sent_at)
+                                backend_sdk_time_to_first_message_seconds.labels(**_sdk_labels).observe(
+                                    time.monotonic() - _query_sent_at
+                                )
                         _assistant_turn_count += 1
                         _text_blocks: list[str] = []
                         for block in message.content:
@@ -1661,24 +1715,29 @@ async def _run_query_inner(
                                             logger.warning(
                                                 "Session %r: on_chunk separator timed out after %.3fs; "
                                                 "dropping separator and continuing stream (#1091/#1484)",
-                                                session_id, STREAM_CHUNK_TIMEOUT_SECONDS,
+                                                session_id,
+                                                STREAM_CHUNK_TIMEOUT_SECONDS,
                                             )
                                             if backend_streaming_chunks_dropped_total is not None:
                                                 try:
                                                     backend_streaming_chunks_dropped_total.labels(
-                                                        **_LABELS, model=_chunk_label_model,
+                                                        **_LABELS,
+                                                        model=_chunk_label_model,
                                                     ).inc()
                                                 except Exception:
                                                     pass
                                         except Exception as _e:
                                             logger.warning(
                                                 "Session %r: on_chunk separator raised: %s",
-                                                session_id, _e, exc_info=True,
+                                                session_id,
+                                                _e,
+                                                exc_info=True,
                                             )
                                             if backend_streaming_chunks_dropped_total is not None:
                                                 try:
                                                     backend_streaming_chunks_dropped_total.labels(
-                                                        **_LABELS, model=_chunk_label_model,
+                                                        **_LABELS,
+                                                        model=_chunk_label_model,
                                                     ).inc()
                                                 except Exception:
                                                     pass
@@ -1698,12 +1757,14 @@ async def _run_query_inner(
                                         logger.warning(
                                             "Session %r: on_chunk callback timed out after %.3fs; "
                                             "dropping chunk and continuing stream (#1091)",
-                                            session_id, STREAM_CHUNK_TIMEOUT_SECONDS,
+                                            session_id,
+                                            STREAM_CHUNK_TIMEOUT_SECONDS,
                                         )
                                         if backend_streaming_chunks_dropped_total is not None:
                                             try:
                                                 backend_streaming_chunks_dropped_total.labels(
-                                                    **_LABELS, model=_chunk_label_model,
+                                                    **_LABELS,
+                                                    model=_chunk_label_model,
                                                 ).inc()
                                             except Exception:
                                                 pass
@@ -1718,12 +1779,15 @@ async def _run_query_inner(
                                         # with the WARNING log line.
                                         logger.warning(
                                             "Session %r: on_chunk callback raised: %s",
-                                            session_id, _e, exc_info=True,
+                                            session_id,
+                                            _e,
+                                            exc_info=True,
                                         )
                                         if backend_streaming_chunks_dropped_total is not None:
                                             try:
                                                 backend_streaming_chunks_dropped_total.labels(
-                                                    **_LABELS, model=_chunk_label_model,
+                                                    **_LABELS,
+                                                    model=_chunk_label_model,
                                                 ).inc()
                                             except Exception:
                                                 pass
@@ -1777,12 +1841,15 @@ async def _run_query_inner(
                                 _t_start = _tool_start_times.pop(block.tool_use_id, None)
                                 _tool_dur = (time.monotonic() - _t_start) if _t_start is not None else 0.0
                                 if _t_start is not None and backend_sdk_tool_duration_seconds is not None:
-                                    backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_dur)
+                                    backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(
+                                        _tool_dur
+                                    )
                                 # Outbound MCP tool metric family (#1104) —
                                 # no-op for non-mcp__ tools so we don't
                                 # inflate series with SDK-internal tools.
                                 try:
                                     from mcp_metrics import observe_outbound_mcp_call as _obs_outbound_mcp
+
                                     _obs_outbound_mcp(
                                         backend_mcp_outbound_requests_total,
                                         backend_mcp_outbound_duration_seconds,
@@ -1802,7 +1869,9 @@ async def _run_query_inner(
                                 # Fire-and-forget; never let emit failure
                                 # interrupt the tool dispatch path.
                                 try:
-                                    _result_size = _utf8_byte_length(str(block.content)) if block.content is not None else 0
+                                    _result_size = (
+                                        _utf8_byte_length(str(block.content)) if block.content is not None else 0
+                                    )
                                     _emit_event_safe(
                                         "tool.use",
                                         {
@@ -1847,7 +1916,9 @@ async def _run_query_inner(
                                 backend_sdk_context_fetch_errors_total.labels(**_sdk_labels).inc()
                             logger.warning(f"Session {session_id!r}: get_context_usage failed: {e}")
                         for _text in _text_blocks:
-                            await log_entry("agent", _text, session_id, model=effective_model, tokens=_last_total_tokens or None)
+                            await log_entry(
+                                "agent", _text, session_id, model=effective_model, tokens=_last_total_tokens or None
+                            )
                             # conversation.turn event (#1110 phase 3).
                             # Fire-and-forget; never let emit failure
                             # interrupt the streaming response path.
@@ -1870,11 +1941,17 @@ async def _run_query_inner(
                         if backend_sdk_result_errors_total is not None:
                             backend_sdk_result_errors_total.labels(**_sdk_labels).inc()
                         if backend_sdk_query_error_duration_seconds is not None:
-                            backend_sdk_query_error_duration_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_start)
+                            backend_sdk_query_error_duration_seconds.labels(**_sdk_labels).observe(
+                                time.monotonic() - _query_start
+                            )
                         error_parts = list(message.errors or [])
                         if not error_parts and message.result:
                             error_parts = [message.result]
-                        raise RuntimeError("\n".join(str(e) for e in error_parts) if error_parts else "Claude SDK returned an error result with no details")
+                        raise RuntimeError(
+                            "\n".join(str(e) for e in error_parts)
+                            if error_parts
+                            else "Claude SDK returned an error result with no details"
+                        )
     except (OSError, ConnectionError):
         if backend_sdk_client_errors_total is not None:
             backend_sdk_client_errors_total.labels(**_sdk_labels).inc()
@@ -1926,7 +2003,15 @@ async def run_query(
     try:
         return await _run_query_inner(
             prompt,
-            _make_options(ctx.session_id, resume=not is_new, stderr_fn=capture_stderr, mcp_servers=ctx.mcp_servers, model=ctx.model, agent_md_content=ctx.agent_md_content, hook_state=hook_state),
+            _make_options(
+                ctx.session_id,
+                resume=not is_new,
+                stderr_fn=capture_stderr,
+                mcp_servers=ctx.mcp_servers,
+                model=ctx.model,
+                agent_md_content=ctx.agent_md_content,
+                hook_state=hook_state,
+            ),
             ctx.session_id,
             effective_model=effective_model,
             max_tokens=max_tokens,
@@ -1937,8 +2022,7 @@ async def run_query(
         raise
     except Exception:
         _collision_lines = [
-            line for line in stderr_lines
-            if "session" in line.lower() and "already in use" in line.lower()
+            line for line in stderr_lines if "session" in line.lower() and "already in use" in line.lower()
         ]
         if is_new and _collision_lines:
             # If the failed attempt already executed at least one tool_use,
@@ -1968,7 +2052,15 @@ async def run_query(
             # from the inner call's pre-computed _sdk_labels.
             return await _run_query_inner(
                 prompt,
-                _make_options(ctx.session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=ctx.mcp_servers, model=ctx.model, agent_md_content=ctx.agent_md_content, hook_state=hook_state),
+                _make_options(
+                    ctx.session_id,
+                    resume=True,
+                    stderr_fn=capture_stderr,
+                    mcp_servers=ctx.mcp_servers,
+                    model=ctx.model,
+                    agent_md_content=ctx.agent_md_content,
+                    hook_state=hook_state,
+                ),
                 ctx.session_id,
                 effective_model=effective_model,
                 max_tokens=max_tokens,
@@ -2057,7 +2149,11 @@ async def _run_inner(
     if backend_session_starts_total is not None:
         backend_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
-    _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
+    _prompt_preview = (
+        prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "")
+        if LOG_PROMPT_MAX_BYTES > 0
+        else "[redacted]"
+    )
     logger.info(f"Session {ctx.session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, ctx.session_id, model=ctx.model)
     # conversation.turn event (#1110 phase 3). Wrap — never raise.
@@ -2164,7 +2260,9 @@ async def _run_inner(
     if backend_task_duration_seconds is not None:
         backend_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
     if backend_task_timeout_headroom_seconds is not None:
-        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
+        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(
+            TASK_TIMEOUT_SECONDS - (time.monotonic() - _start)
+        )
 
     response = "\n\n".join(collected) if collected else ""
     if not response:
@@ -2263,12 +2361,17 @@ class AgentExecutor(A2AAgentExecutor):
             if old_keys != new_keys:
                 logger.info(
                     "MCP config swapped (%s, gen=%d): %s -> %s",
-                    source, self._mcp_generation, old_keys, new_keys,
+                    source,
+                    self._mcp_generation,
+                    old_keys,
+                    new_keys,
                 )
             else:
                 logger.info(
                     "MCP config reloaded (%s, gen=%d, keys unchanged): %s",
-                    source, self._mcp_generation, new_keys,
+                    source,
+                    self._mcp_generation,
+                    new_keys,
                 )
 
     async def perform_initial_loads(self) -> None:
@@ -2321,9 +2424,7 @@ class AgentExecutor(A2AAgentExecutor):
         else:
             self._initial_hooks_loaded = True
         if backend_hooks_active_rules is not None:
-            backend_hooks_active_rules.labels(**_LABELS, source="extension").set(
-                len(self._hook_state.extensions)
-            )
+            backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(self._hook_state.extensions))
         logger.info(
             "Hooks config loaded (initial): baseline=%s (rules=%d) extensions=%d",
             self._hook_state.baseline_enabled,
@@ -2495,7 +2596,8 @@ class AgentExecutor(A2AAgentExecutor):
                             logger.warning("hooks.yaml reload failed — keeping previous rules: %s", exc)
                             if backend_hooks_config_errors_total is not None:
                                 backend_hooks_config_errors_total.labels(
-                                    **_LABELS, reason="yaml_reload_failed",
+                                    **_LABELS,
+                                    reason="yaml_reload_failed",
                                 ).inc()
                         break
             logger.warning("hooks.yaml directory watcher exited — retrying in 10s.")
@@ -2547,7 +2649,8 @@ class AgentExecutor(A2AAgentExecutor):
                     if os.path.abspath(path) == os.path.abspath(_SETTINGS_PATH):
                         try:
                             new_allow = await asyncio.to_thread(
-                                _load_allowed_from_settings, _SETTINGS_PATH,
+                                _load_allowed_from_settings,
+                                _SETTINGS_PATH,
                             )
                         except Exception as exc:
                             logger.warning(
@@ -2596,6 +2699,7 @@ class AgentExecutor(A2AAgentExecutor):
                             ALLOWED_TOOLS = list(new_list)
                             try:
                                 from metrics import backend_allowed_tools_reload_total as _bar
+
                                 if _bar is not None:
                                     _bar.labels(**_LABELS, direction=direction).inc()
                             except Exception:
@@ -2625,14 +2729,10 @@ class AgentExecutor(A2AAgentExecutor):
         # pattern used for max_tokens further down.
         if not prompt or not prompt.strip():
             _empty_sid_raw = str(
-                context.context_id
-                or (context.message.metadata or {}).get("session_id")
-                or ""
+                context.context_id or (context.message.metadata or {}).get("session_id") or ""
             ).strip()[:256]
             _empty_sid = "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
-            logger.warning(
-                f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
-            )
+            logger.warning(f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544).")
             if backend_empty_prompts_total is not None:
                 backend_empty_prompts_total.labels(**_LABELS).inc()
             if backend_a2a_requests_total is not None:
@@ -2656,9 +2756,12 @@ class AgentExecutor(A2AAgentExecutor):
         # traceparent into metadata; when OTel is on we use it as the parent
         # context so the backend span joins the end-to-end trace.
         from otel import extract_otel_context as _extract_ctx
+
         _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
         _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
-        _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        _raw_sid = "".join(
+            c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " "
+        )
         # Per-caller session_id binding (#710). When SESSION_ID_SECRET is
         # set on this backend and the upstream harness stamps
         # metadata.caller_id (a principal fingerprint), the shared helper
@@ -2668,9 +2771,14 @@ class AgentExecutor(A2AAgentExecutor):
         # unset the derivation is identical to the legacy uuid5 path.
         from session_binding import (
             derive_session_id as _derive_session_id,
+        )
+        from session_binding import (
             derive_session_id_candidates as _derive_session_id_candidates,
+        )
+        from session_binding import (
             note_prev_secret_hit as _note_prev_secret_hit,
         )
+
         _caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
         # Probe-list rotation (#1042). When SESSION_ID_SECRET_PREV is set
         # we compute candidate ids under both the current and previous
@@ -2694,9 +2802,7 @@ class AgentExecutor(A2AAgentExecutor):
             try:
                 _parsed = int(_max_tokens_raw)
                 if _parsed <= 0:
-                    logger.warning(
-                        f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428)."
-                    )
+                    logger.warning(f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428).")
                 else:
                     max_tokens = _parsed
             except (ValueError, TypeError):
@@ -2728,6 +2834,7 @@ class AgentExecutor(A2AAgentExecutor):
         # alongside the assistant chunks.
         try:
             from session_stream import get_session_stream as _get_session_stream
+
             _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
             # Per-turn seq covers user+assistant chunks (#1139) so
             # observers see monotonic seq across roles; the user chunk
@@ -2759,9 +2866,7 @@ class AgentExecutor(A2AAgentExecutor):
                         final=False,
                     )
                 except Exception as _s_exc:  # pragma: no cover
-                    logger.warning(
-                        "session_stream: chunk publish failed: %r", _s_exc
-                    )
+                    logger.warning("session_stream: chunk publish failed: %r", _s_exc)
             # Per-chunk A2A event_queue emission removed (was: #430).
             # The A2A SDK's ResultAggregator.consume_and_break_on_interrupt
             # treats every Message event as terminal and returns on the
@@ -2781,7 +2886,9 @@ class AgentExecutor(A2AAgentExecutor):
             # consumer doesn't treat as terminal) plus one final Message
             # at the end.
 
-        from otel import start_span as _start_span, set_span_error as _set_span_error
+        from otel import set_span_error as _set_span_error
+        from otel import start_span as _start_span
+
         try:
             with _start_span(
                 "claude.execute",
@@ -2827,9 +2934,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 final=True,
                             )
                         except Exception as _f_exc:  # pragma: no cover
-                            logger.warning(
-                                "session_stream: final chunk publish failed: %r", _f_exc
-                            )
+                            logger.warning("session_stream: final chunk publish failed: %r", _f_exc)
                     if backend_a2a_requests_total is not None:
                         backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
                 except Exception as _exc:
@@ -2861,8 +2966,8 @@ class AgentExecutor(A2AAgentExecutor):
                             )
                         except Exception as _ef_exc:  # pragma: no cover
                             logger.warning(
-                                "session_stream: final chunk publish on "
-                                "error path failed: %r", _ef_exc,
+                                "session_stream: final chunk publish on " "error path failed: %r",
+                                _ef_exc,
                             )
                     raise
         finally:

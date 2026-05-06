@@ -13,9 +13,8 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from starlette.requests import Request
-
 from mcp_body_cap import read_capped_body
+from starlette.requests import Request
 
 
 def _make_request(

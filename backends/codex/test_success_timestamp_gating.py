@@ -15,13 +15,13 @@ This test follows the same shape as ``test_budget_check.py``: a behavioral
 test against an extracted predicate, plus a source-shape guard so the
 ``or`` (ungated) form can't be re-introduced silently.
 """
+
 from __future__ import annotations
 
 import re
 import time
 import unittest
 from pathlib import Path
-
 
 _EXECUTOR_PATH = Path(__file__).resolve().parent / "executor.py"
 
@@ -90,7 +90,7 @@ class CodexSuccessTimestampSourceShapeTests(unittest.TestCase):
     def test_success_timestamp_is_gated_on_budget_exceeded(self):
         # The post-fix line collapses both predicates into a single ``if``.
         pattern = re.compile(
-            r'if\s+not\s+_budget_exceeded\s+and\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels'
+            r"if\s+not\s+_budget_exceeded\s+and\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels"
         )
         self.assertRegex(self.source, pattern)
 
@@ -99,7 +99,7 @@ class CodexSuccessTimestampSourceShapeTests(unittest.TestCase):
         # immediately followed by the ``.set(time.time())`` line, with no
         # ``_budget_exceeded`` guard anywhere on the ``if`` line.
         bad = re.compile(
-            r'^\s*if\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels\(\*\*_LABELS\)\.set\(time\.time\(\)\)',
+            r"^\s*if\s+backend_task_last_success_timestamp_seconds\s+is\s+not\s+None\s*:\s*\n\s*backend_task_last_success_timestamp_seconds\.labels\(\*\*_LABELS\)\.set\(time\.time\(\)\)",
             re.MULTILINE,
         )
         self.assertNotRegex(self.source, bad)

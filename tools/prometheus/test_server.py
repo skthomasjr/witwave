@@ -31,14 +31,12 @@ os.environ.setdefault("PROMETHEUS_URL", "http://prom.example.test:9090")
 
 import server  # type: ignore  # noqa: E402
 
-
 # Sensitive payload the upstream might return — internal stack trace,
 # tenancy ids, anything an operator wouldn't want copied into agent log
 # infrastructure. The redaction guarantee under test is: no substring of
 # this string appears in any captured log record.
 _SENSITIVE_BODY = (
-    "PrometheusInternalError: tenant=acme-corp shard=42 "
-    "trace=abc123def456 stack: at promql.eval (line 9001)"
+    "PrometheusInternalError: tenant=acme-corp shard=42 " "trace=abc123def456 stack: at promql.eval (line 9001)"
 )
 
 
@@ -49,7 +47,7 @@ class _FakeStreamResponse:
         self.status_code = status_code
         self._body = body
 
-    def __enter__(self) -> "_FakeStreamResponse":
+    def __enter__(self) -> _FakeStreamResponse:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -83,9 +81,7 @@ def test_non_200_log_excludes_body_content(monkeypatch, caplog):
         server._prom_get("/api/v1/query", {"query": "up"})
 
     # At least one WARNING was emitted for the upstream non-200.
-    warning_records = [
-        r for r in caplog.records if r.levelno >= logging.WARNING
-    ]
+    warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert warning_records, "expected a WARNING log on non-200 upstream"
 
     # The redaction guarantee: no piece of the sensitive body, nor any
@@ -104,14 +100,8 @@ def test_non_200_log_excludes_body_content(monkeypatch, caplog):
         # Also stringify the raw args tuple in case the formatter never ran.
         args_repr = repr(record.args) if record.args else ""
         for needle in sensitive_substrings:
-            assert needle not in rendered, (
-                f"sensitive substring {needle!r} leaked into log message: "
-                f"{rendered!r}"
-            )
-            assert needle not in args_repr, (
-                f"sensitive substring {needle!r} leaked into log args: "
-                f"{args_repr!r}"
-            )
+            assert needle not in rendered, f"sensitive substring {needle!r} leaked into log message: " f"{rendered!r}"
+            assert needle not in args_repr, f"sensitive substring {needle!r} leaked into log args: " f"{args_repr!r}"
 
 
 def test_non_200_log_keeps_diagnostic_fields(monkeypatch, caplog):
@@ -159,9 +149,9 @@ def test_bearer_to_cloud_metadata_endpoint_refuses_to_start_even_with_plaintext_
 
     msg = str(excinfo.value)
     assert "1652" in msg, f"error message must cite #1652: {msg!r}"
-    assert "metadata" in msg.lower() or "169.254.169.254" in msg, (
-        f"error message must identify the metadata endpoint: {msg!r}"
-    )
+    assert (
+        "metadata" in msg.lower() or "169.254.169.254" in msg
+    ), f"error message must identify the metadata endpoint: {msg!r}"
 
     # Restore a healthy server module for any subsequent tests in the
     # session, so test isolation is preserved.

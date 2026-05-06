@@ -40,11 +40,10 @@ from urllib.parse import urlsplit
 
 import httpx
 import yaml
-
 from events import get_event_stream
-from tracing import inject_traceparent, set_span_error, start_span
 from metrics import (
     harness_file_watcher_restarts_total,
+    harness_watcher_events_total,
     harness_webhooks_body_truncated_total,
     harness_webhooks_delivery_shed_total,
     harness_webhooks_delivery_total,
@@ -54,9 +53,9 @@ from metrics import (
     harness_webhooks_retry_bytes_budget_bytes,
     harness_webhooks_retry_bytes_in_flight,
     harness_webhooks_retry_bytes_in_flight_total,
-    harness_watcher_events_total,
 )
-from utils import parse_duration, parse_frontmatter, run_awatch_loop
+from tracing import inject_traceparent, set_span_error, start_span
+from utils import parse_duration, run_awatch_loop
 
 logger = logging.getLogger(__name__)
 

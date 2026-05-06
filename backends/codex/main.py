@@ -8,12 +8,12 @@ import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
+import executor as _executor_module
 import prometheus_client
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from sqlite_task_store import SqliteTaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
@@ -24,29 +24,30 @@ from conversations import (
     make_conversations_handler,
     make_trace_handler,
 )
-import executor as _executor_module
+from env import parse_bool_env
 from executor import AgentExecutor
 from mcp_body_cap import read_capped_body  # #1673
-from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
-from env import parse_bool_env
-from validation import parse_max_tokens
 from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
     backend_info,
-    backend_sdk_info,
-    backend_session_binding_fallback_total,
     backend_mcp_request_duration_seconds,
     backend_mcp_requests_total,
+    backend_sdk_info,
+    backend_session_binding_fallback_total,
     backend_startup_duration_seconds,
     backend_task_restarts_total,
     backend_up,
     backend_uptime_seconds,
 )
+from session_binding import derive_session_id
+from session_binding import set_fallback_counter as _set_session_binding_fallback_counter
+from sqlite_task_store import SqliteTaskStore
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
+from validation import parse_max_tokens
 
 logging.basicConfig(
     level=logging.INFO,
@@ -111,7 +112,9 @@ async def health_start(request: Request) -> JSONResponse:
     # with {"status": "starting"} while warming up. Closes the
     # three-probe parity gap with the harness (docs/product-vision.md:74).
     if backend_health_checks_total is not None:
-        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start").inc()
+        backend_health_checks_total.labels(
+            agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start"
+        ).inc()
     if _ready:
         return JSONResponse({"status": "ok"})
     return JSONResponse({"status": "starting"}, status_code=503)
@@ -127,18 +130,22 @@ async def health(request: Request) -> JSONResponse:
     # universal route but only claude implemented it; codex had the
     # readiness flag flip path in #1630 but no route to surface it.
     if backend_health_checks_total is not None:
-        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
+        backend_health_checks_total.labels(
+            agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health"
+        ).inc()
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     # #1341: surface agent_owner + agent_id for metric-label parity.
     # #1672: /health is liveness-only and stays 200 once the process is
     # up; the previous "503 while starting" semantic moved to /health/ready.
-    return JSONResponse({
-        "status": "ok" if _ready else "starting",
-        "agent": AGENT_NAME,
-        "agent_owner": AGENT_OWNER,
-        "agent_id": AGENT_ID,
-        "uptime_seconds": elapsed,
-    })
+    return JSONResponse(
+        {
+            "status": "ok" if _ready else "starting",
+            "agent": AGENT_NAME,
+            "agent_owner": AGENT_OWNER,
+            "agent_id": AGENT_ID,
+            "uptime_seconds": elapsed,
+        }
+    )
 
 
 async def health_ready(request: Request) -> JSONResponse:
@@ -150,17 +157,21 @@ async def health_ready(request: Request) -> JSONResponse:
     # the readiness-drop branch (#1630) but no route to surface it, so
     # K8s readinessProbe could never observe the degraded state.
     if backend_health_checks_total is not None:
-        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready").inc()
+        backend_health_checks_total.labels(
+            agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready"
+        ).inc()
     if not _ready:
         return JSONResponse({"status": "starting"}, status_code=503)
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-    return JSONResponse({
-        "status": "ready",
-        "agent": AGENT_NAME,
-        "agent_owner": AGENT_OWNER,
-        "agent_id": AGENT_ID,
-        "uptime_seconds": elapsed,
-    })
+    return JSONResponse(
+        {
+            "status": "ready",
+            "agent": AGENT_NAME,
+            "agent_owner": AGENT_OWNER,
+            "agent_id": AGENT_ID,
+            "uptime_seconds": elapsed,
+        }
+    )
 
 
 @asynccontextmanager
@@ -265,11 +276,17 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
             if time.monotonic() - _attempt_start >= restart_delay:
                 consecutive_restarts = 0
             consecutive_restarts += 1
-            logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
+            logger.error(
+                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+            )
             if backend_task_restarts_total is not None:
-                backend_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
+                backend_task_restarts_total.labels(
+                    agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__
+                ).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
-                logger.error(f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready")
+                logger.error(
+                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"
+                )
                 _ready = False
             await asyncio.sleep(restart_delay)
 
@@ -281,7 +298,9 @@ async def _event_loop_monitor() -> None:
         await asyncio.sleep(_interval)
         lag = time.monotonic() - _before - _interval
         if lag > 0 and backend_event_loop_lag_seconds is not None:
-            backend_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(lag)
+            backend_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(
+                lag
+            )
 
 
 async def _set_ready_when_started(server: uvicorn.Server) -> None:
@@ -290,7 +309,9 @@ async def _set_ready_when_started(server: uvicorn.Server) -> None:
     global _ready
     _ready = True
     if backend_startup_duration_seconds is not None:
-        backend_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(time.monotonic() - _startup_mono)
+        backend_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(
+            time.monotonic() - _startup_mono
+        )
     logger.info(f"Backend agent {AGENT_NAME} is ready")
 
 
@@ -317,13 +338,17 @@ async def main():
     # ``asyncio.get_running_loop`` raising on a worker thread (#1144).
     try:
         from hook_events import bind_event_loop as _bind_event_loop
+
         _bind_event_loop(asyncio.get_running_loop())
     except Exception as _bind_exc:  # pragma: no cover — best-effort
         logger.warning("hook_events.bind_event_loop failed: %r", _bind_exc)
 
     # Initialise OTel before the executor (#469). No-op when OTEL_ENABLED is falsy.
     from otel import init_otel_if_enabled
-    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or f"codex-{os.environ.get('AGENT_OWNER', 'unknown')}")
+
+    init_otel_if_enabled(
+        service_name=os.environ.get("OTEL_SERVICE_NAME") or f"codex-{os.environ.get('AGENT_OWNER', 'unknown')}"
+    )
 
     agent_card = build_agent_card()
     executor = AgentExecutor()
@@ -353,7 +378,9 @@ async def main():
         if backend_up is not None:
             backend_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
         if backend_info is not None:
-            backend_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
+            backend_info.info(
+                {"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
+            )
         # Register the shared session-binding fallback counter (#1103).
         if backend_session_binding_fallback_total is not None:
             _set_session_binding_fallback_counter(
@@ -364,7 +391,9 @@ async def main():
         # dashboards can catch openai-agents drift without shelling in.
         if backend_sdk_info is not None:
             try:
-                from importlib.metadata import version as _pkg_version, PackageNotFoundError
+                from importlib.metadata import PackageNotFoundError
+                from importlib.metadata import version as _pkg_version
+
                 try:
                     _sdk_ver = _pkg_version("openai-agents")
                 except PackageNotFoundError:
@@ -373,7 +402,9 @@ async def main():
             except Exception as _exc:
                 logger.warning("backend_sdk_info: failed to resolve openai-agents version: %r", _exc)
         if backend_uptime_seconds is not None:
-            backend_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
+            backend_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(
+                lambda: (datetime.now(timezone.utc) - start_time).total_seconds()
+            )
         logger.info("Prometheus metrics enabled at /metrics")
     else:
         logger.warning(
@@ -389,9 +420,8 @@ async def main():
     trace_handler = make_trace_handler(CONVERSATIONS_AUTH_TOKEN, TRACE_LOG)
     # Per-session SSE drill-down stream (#1110 phase 4).
     from session_stream import make_session_stream_handler
-    session_stream_handler = make_session_stream_handler(
-        CONVERSATIONS_AUTH_TOKEN, agent_id=AGENT_OWNER
-    )
+
+    session_stream_handler = make_session_stream_handler(CONVERSATIONS_AUTH_TOKEN, agent_id=AGENT_OWNER)
 
     _agent_description = load_agent_description()
 
@@ -417,6 +447,7 @@ async def main():
         use for claude and gemini.
         """
         import time as _time_for_mcp
+
         _mcp_start = _time_for_mcp.monotonic()
         _method_box: list[str] = ["unknown"]
         _status_box: list[str] = ["ok"]
@@ -491,13 +522,18 @@ async def main():
             )
         if _reason == "parse_error" or _raw is None:
             _status_box[0] = "parse_error"
-            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400
+            )
         try:
             import json as _json_for_mcp
+
             body = _json_for_mcp.loads(_raw.decode("utf-8"))
         except Exception:
             _status_box[0] = "parse_error"
-            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400
+            )
         rpc_id = body.get("id")
         method = body.get("method", "")
         # #1345: parity with claude — only capture string methods so
@@ -520,51 +556,55 @@ async def main():
                 _negotiated_version = _client_version
             else:
                 _negotiated_version = SUPPORTED_MCP_VERSIONS[-1]
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "protocolVersion": _negotiated_version,
-                    "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
-                },
-            })
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {
+                        "protocolVersion": _negotiated_version,
+                        "capabilities": {"tools": {"listChanged": False}},
+                        "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
+                    },
+                }
+            )
 
         if method == "tools/list":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "tools": [
-                        {
-                            "name": "ask_agent",
-                            "description": _agent_description,
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "prompt": {"type": "string", "description": "The prompt to send to the agent."},
-                                    # Advertise session_id + max_tokens parity with claude (#1090) so
-                                    # generic MCP clients don't silently drop continuation / budget
-                                    # controls when switching backends.
-                                    "session_id": {
-                                        "type": "string",
-                                        "description": "Optional session identifier for conversation continuity. "
-                                                       "A valid UUID is passed through verbatim; any other string is "
-                                                       "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "ask_agent",
+                                "description": _agent_description,
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "prompt": {"type": "string", "description": "The prompt to send to the agent."},
+                                        # Advertise session_id + max_tokens parity with claude (#1090) so
+                                        # generic MCP clients don't silently drop continuation / budget
+                                        # controls when switching backends.
+                                        "session_id": {
+                                            "type": "string",
+                                            "description": "Optional session identifier for conversation continuity. "
+                                            "A valid UUID is passed through verbatim; any other string is "
+                                            "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
+                                        },
+                                        "max_tokens": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "description": "Optional per-call token budget. Positive integers only; "
+                                            "non-positive or invalid values are logged and ignored.",
+                                        },
                                     },
-                                    "max_tokens": {
-                                        "type": "integer",
-                                        "minimum": 1,
-                                        "description": "Optional per-call token budget. Positive integers only; "
-                                                       "non-positive or invalid values are logged and ignored.",
-                                    },
+                                    "required": ["prompt"],
                                 },
-                                "required": ["prompt"],
-                            },
-                        }
-                    ]
-                },
-            })
+                            }
+                        ]
+                    },
+                }
+            )
 
         if method == "tools/call":
             tool_name = params.get("name", "")
@@ -572,22 +612,26 @@ async def main():
                 # #1282: tool-level failures use result.isError=true with
                 # a content block, not a JSON-RPC error envelope. Keeps
                 # the MCP contract uniform across claude/codex/gemini.
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "result": {
-                        "isError": True,
-                        "content": [{"type": "text", "text": f"Unknown tool: {tool_name!r}"}],
-                    },
-                })
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "result": {
+                            "isError": True,
+                            "content": [{"type": "text", "text": f"Unknown tool: {tool_name!r}"}],
+                        },
+                    }
+                )
             arguments = params.get("arguments") or {}
             prompt = arguments.get("prompt", "")
             if not prompt:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "error": {"code": -32602, "message": "Missing required argument: prompt"},
-                })
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "error": {"code": -32602, "message": "Missing required argument: prompt"},
+                    }
+                )
             # Optional max_tokens — same parsing semantics as the A2A path
             # (positive int; non-positive or invalid is logged and dropped).
             # Shared helper lives in shared/validation.py (#537, #460, #555).
@@ -604,20 +648,10 @@ async def main():
             # entrypoint. Route through derive_session_id with a bearer
             # fingerprint caller_identity so the multi-tenant invariant
             # holds uniformly with the A2A path and with claude/gemini /mcp.
-            _raw_sid = "".join(
-                c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
-            )
+            _raw_sid = "".join(c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " ")
             _bearer_header = request.headers.get("Authorization", "")
-            _bearer_token = (
-                _bearer_header[len("Bearer "):]
-                if _bearer_header.startswith("Bearer ")
-                else ""
-            )
-            _caller_identity = (
-                hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
-                if _bearer_token
-                else None
-            )
+            _bearer_token = _bearer_header[len("Bearer ") :] if _bearer_header.startswith("Bearer ") else ""
+            _caller_identity = hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest() if _bearer_token else None
             # #1096: multi-turn /mcp parity with claude. When a caller
             # provides an explicit session_id, honour it as a continuation
             # — skip the single-shot nonce-mix and the post-call cleanup
@@ -634,9 +668,7 @@ async def main():
                 # matching the pre-#1096 single-shot semantics.
                 _request_nonce = uuid.uuid4().hex
                 _raw_sid_for_derive = f"\x00{_request_nonce}"
-            session_id = derive_session_id(
-                _raw_sid_for_derive, caller_identity=_caller_identity
-            )
+            session_id = derive_session_id(_raw_sid_for_derive, caller_identity=_caller_identity)
             response: str | None = None
             _failed = False
             # #966: Named span nested under the inbound traceparent so
@@ -644,6 +676,7 @@ async def main():
             # than a dead-ended request-span.
             from otel import set_span_error as _set_span_error
             from otel import start_span as _start_span
+
             try:
                 with _start_span(
                     "backend.mcp.tools_call",
@@ -665,6 +698,7 @@ async def main():
                     _mcp_servers_snapshot, _mcp_stack_held = await executor._acquire_mcp_stack()
                     try:
                         from executor import run as _run_for_mcp
+
                         response = await _run_for_mcp(
                             prompt,
                             session_id,
@@ -712,14 +746,17 @@ async def main():
                     # (tests, reload paths) the cleanup would run against
                     # a DIFFERENT path than the writes.
                     from executor import CODEX_SESSION_DB as _db_path
+
                     if _db_path and _db_path != ":memory:":
                         try:
                             from executor import _delete_sqlite_session as _del_mcp
+
                             await asyncio.to_thread(_del_mcp, session_id, _db_path)
                         except Exception as _cleanup_exc:
                             logger.warning(
                                 "MCP tools/call: failed to clean up session row for %r: %s",
-                                session_id, _cleanup_exc,
+                                session_id,
+                                _cleanup_exc,
                             )
             if _failed:
                 _status_box[0] = "error"
@@ -727,26 +764,32 @@ async def main():
                 # report as result.isError=true with a generic text block.
                 # Full exception detail is logged server-side (above) but
                 # not leaked to MCP clients (#455).
-                return JSONResponse({
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "result": {
+                            "isError": True,
+                            "content": [{"type": "text", "text": "Internal server error"}],
+                        },
+                    }
+                )
+            return JSONResponse(
+                {
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    "result": {
-                        "isError": True,
-                        "content": [{"type": "text", "text": "Internal server error"}],
-                    },
-                })
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {"content": [{"type": "text", "text": response}]},
-            })
+                    "result": {"content": [{"type": "text", "text": response}]},
+                }
+            )
 
         _status_box[0] = "method_not_found"
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "error": {"code": -32601, "message": f"Method not found: {method!r}"},
-        })
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "error": {"code": -32601, "message": f"Method not found: {method!r}"},
+            }
+        )
 
     # OTel in-memory span store (#otel-in-cluster). Serves the Jaeger v1
     # shape so the harness's fan-out aggregator can merge backend spans.
@@ -799,15 +842,18 @@ async def main():
             offset = 0
         try:
             from otel import get_in_memory_traces  # type: ignore
+
             traces = get_in_memory_traces()
         except Exception:
             traces = []
-        return JSONResponse({
-            "data": traces[offset:offset + limit],
-            "total": len(traces),
-            "offset": offset,
-            "limit": limit,
-        })
+        return JSONResponse(
+            {
+                "data": traces[offset : offset + limit],
+                "total": len(traces),
+                "offset": offset,
+                "limit": limit,
+            }
+        )
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
         unauthorized = _require_traces_auth(request)
@@ -816,6 +862,7 @@ async def main():
         trace_id = request.path_params.get("trace_id") or ""
         try:
             from otel import get_in_memory_traces  # type: ignore
+
             traces = get_in_memory_traces()
         except Exception:
             traces = []
@@ -868,6 +915,7 @@ async def main():
     # so the A2A SDK's @trace_class spans become children of the harness
     # trace rather than orphaned roots (#otel-cross-pod).
     from otel import TraceparentASGIMiddleware
+
     full_app = TraceparentASGIMiddleware(full_app)
 
     logger.info(f"Starting {AGENT_NAME} on {AGENT_HOST}:{BACKEND_PORT}")
@@ -879,9 +927,7 @@ async def main():
     # ~100ms after bind doesn't observe empty executor state. Mirrors
     # claude #869. Bounded so a slow/stuck filesystem can't indefinitely
     # delay startup — the watchers will fill in asynchronously on timeout.
-    _INITIAL_LOADS_TIMEOUT_S = float(
-        os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10")
-    )
+    _INITIAL_LOADS_TIMEOUT_S = float(os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10"))
     try:
         await asyncio.wait_for(
             executor.perform_initial_loads(),
@@ -909,7 +955,9 @@ async def main():
             exc = t.exception()
             if exc is not None:
                 logger.error(
-                    "MCP watcher %r exited unexpectedly with exception: %r", _wn, exc,
+                    "MCP watcher %r exited unexpectedly with exception: %r",
+                    _wn,
+                    exc,
                 )
             else:
                 # #1630: non-exception, non-cancelled exit means the
@@ -927,6 +975,7 @@ async def main():
                 )
                 global _ready
                 _ready = False
+
         return _cb
 
     for _w in executor._mcp_watchers():

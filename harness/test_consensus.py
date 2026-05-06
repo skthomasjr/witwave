@@ -84,7 +84,7 @@ def _get_classify_binary():
 
 def _get_binary_keyword_sets():
     _stub_a2a_if_needed()
-    from executor import _BINARY_YES, _BINARY_NO
+    from executor import _BINARY_NO, _BINARY_YES
     return _BINARY_YES, _BINARY_NO
 
 

@@ -15,6 +15,7 @@ further plumbing. Until then the engine is effectively a no-op for gemini.
 See ``shared/hooks_engine.py`` for the full matching semantics and the
 ``hooks.yaml`` schema.
 """
+
 from __future__ import annotations
 
 import os
@@ -31,10 +32,7 @@ from hooks_engine import (  # noqa: F401  (re-exported public API)
     set_config_error_reporter,
 )
 
-
-HOOKS_CONFIG_PATH = os.environ.get(
-    "HOOKS_CONFIG_PATH", "/home/agent/.gemini/hooks.yaml"
-)
+HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.gemini/hooks.yaml")
 HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in (
     "0",
     "false",
@@ -51,6 +49,7 @@ def _bump_config_error(reason: str) -> None:
     """
     try:
         from metrics import backend_hooks_config_errors_total
+
         if backend_hooks_config_errors_total is None:
             return
         labels = {

@@ -20,12 +20,12 @@ SDK chain (agents, computer, etc.) that isn't useful here — the bug lives
 in three lines of attribute access that are trivially unit-testable in
 isolation.
 """
+
 from __future__ import annotations
 
 import re
 import unittest
 from pathlib import Path
-
 
 _EXECUTOR_PATH = Path(__file__).resolve().parent / "executor.py"
 
@@ -84,16 +84,14 @@ class CodexBudgetSourceShapeTests(unittest.TestCase):
 
     def test_candidate_uses_only_total_tokens(self):
         # Match the post-fix line tolerant of whitespace.
-        pattern = re.compile(
-            r'_candidate\s*=\s*getattr\(\s*_usage\s*,\s*"total_tokens"\s*,\s*None\s*\)'
-        )
+        pattern = re.compile(r'_candidate\s*=\s*getattr\(\s*_usage\s*,\s*"total_tokens"\s*,\s*None\s*\)')
         self.assertRegex(self.source, pattern)
 
     def test_candidate_does_not_fall_back_to_output_tokens(self):
         # The bug was the ``or getattr(..., "output_tokens", None)`` tail.
         # If anyone reintroduces it, this guard fires.
         bad = re.compile(
-            r'_candidate\s*=\s*getattr\(.*?total_tokens.*?\)\s*or\s*getattr\(.*?output_tokens',
+            r"_candidate\s*=\s*getattr\(.*?total_tokens.*?\)\s*or\s*getattr\(.*?output_tokens",
             re.DOTALL,
         )
         self.assertNotRegex(self.source, bad)

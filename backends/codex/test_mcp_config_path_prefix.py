@@ -15,6 +15,7 @@ style: pin the source shape with regex (so the prefix gate can't silently
 regress) and re-evaluate the equivalent guard in isolation rather than
 importing the full executor module — its SDK chain is too heavy.
 """
+
 from __future__ import annotations
 
 import os
@@ -68,7 +69,7 @@ class McpConfigPathSourceShapeTests(unittest.TestCase):
     def test_module_constant_present(self):
         # Default must be the documented /home/agent/ prefix.
         pattern = re.compile(
-            r'_MCP_CONFIG_PATH_ALLOWED_PREFIX\s*=\s*os\.environ\.get\(\s*'
+            r"_MCP_CONFIG_PATH_ALLOWED_PREFIX\s*=\s*os\.environ\.get\(\s*"
             r'"MCP_CONFIG_PATH_ALLOWED_PREFIX"\s*,\s*"/home/agent/"\s*,?\s*\)'
         )
         self.assertRegex(self.executor_source, pattern)
@@ -76,13 +77,9 @@ class McpConfigPathSourceShapeTests(unittest.TestCase):
     def test_realpath_check_present(self):
         # The check must use os.path.realpath (defeats symlink-bypass) and
         # gate on startswith against the module constant.
-        pattern = re.compile(
-            r'resolved\s*=\s*os\.path\.realpath\(\s*MCP_CONFIG_PATH\s*\)'
-        )
+        pattern = re.compile(r"resolved\s*=\s*os\.path\.realpath\(\s*MCP_CONFIG_PATH\s*\)")
         self.assertRegex(self.executor_source, pattern)
-        guard = re.compile(
-            r'if\s+not\s+resolved\.startswith\(\s*_MCP_CONFIG_PATH_ALLOWED_PREFIX\s*\)\s*:'
-        )
+        guard = re.compile(r"if\s+not\s+resolved\.startswith\(\s*_MCP_CONFIG_PATH_ALLOWED_PREFIX\s*\)\s*:")
         self.assertRegex(self.executor_source, guard)
 
     def test_out_of_prefix_returns_empty_dict(self):
@@ -99,8 +96,8 @@ class McpConfigPathSourceShapeTests(unittest.TestCase):
         # check that the rejection block is followed (within ~5 lines)
         # by ``return {}``.
         m = re.search(
-            r'if\s+not\s+resolved\.startswith\(\s*_MCP_CONFIG_PATH_ALLOWED_PREFIX\s*\)\s*:'
-            r'(?:[^\n]*\n){1,8}?\s*return\s*\{\}',
+            r"if\s+not\s+resolved\.startswith\(\s*_MCP_CONFIG_PATH_ALLOWED_PREFIX\s*\)\s*:"
+            r"(?:[^\n]*\n){1,8}?\s*return\s*\{\}",
             self.executor_source,
         )
         self.assertIsNotNone(m, "out-of-prefix branch must return {}")

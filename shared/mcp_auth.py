@@ -40,6 +40,7 @@ _FAIL_CLOSED_COUNT_SINCE_WARN: int = 0
 # protect the full sequence with a threading.Lock so concurrent
 # rejects can't double-fire or skip the 500-threshold warn.
 import threading as _threading
+
 _FAIL_CLOSED_LOCK = _threading.Lock()
 
 
@@ -255,7 +256,7 @@ async def _send_400_invalid_bearer_encoding(
 
 
 async def _send_401(send: Callable[[dict], Awaitable[None]], reason: str) -> None:
-    body = f'{{"error": "{reason}"}}'.encode("utf-8")
+    body = f'{{"error": "{reason}"}}'.encode()
     await send({
         "type": "http.response.start",
         "status": 401,
