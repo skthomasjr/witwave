@@ -1,0 +1,19 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Project shell-script default. 7 of 9 scripts in scripts/ already use
+# 2-space; this pins the choice so shfmt + nova's code-format stop
+# treating it as ambiguous and reverting.
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Two scripts deliberately use 4-space and predate this config. Keep
+# them as-is rather than forcing a ~700-line reflow on each.
+[scripts/{install,smoke-ww-agent}.sh]
+indent_size = 4

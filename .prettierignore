@@ -16,6 +16,14 @@
 # separately by the existing chart-sync CI guard.
 clients/ww/internal/operator/embedded/
 
+# controller-gen output. Regenerated from operator/api/v1alpha1 Go
+# types via `make manifests` (CRD schemas + ClusterRole). Touching
+# the rendered output creates a per-pass revert cycle for nova's
+# code-format.
+charts/witwave-operator/crds/
+operator/config/crd/bases/
+operator/config/rbac/role.yaml
+
 # Python tooling caches
 **/__pycache__/
 **/.pytest_cache/
