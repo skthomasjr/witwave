@@ -1,16 +1,18 @@
 ---
-description: Verifies that custom headers (including {{env.VAR}} values) are sent with the webhook POST and delivery succeeds.
+description:
+  Verifies that custom headers (including {{env.VAR}} values) are sent with the webhook POST and delivery succeeds.
 enabled: true
 ---
 
 This test verifies that a webhook with a `headers:` map — including a header whose value contains
-`{{env.WEBHOOK_TEST_TOKEN}}` — delivers successfully. Correct header transmission is confirmed indirectly: the
-trigger endpoint returns 202 (meaning harness accepted the POST), and the backend produces `FEATURE_SINK_OK`,
-confirming the full delivery path completed.
+`{{env.WEBHOOK_TEST_TOKEN}}` — delivers successfully. Correct header transmission is confirmed indirectly: the trigger
+endpoint returns 202 (meaning harness accepted the POST), and the backend produces `FEATURE_SINK_OK`, confirming the
+full delivery path completed.
 
 The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-headers.md`. It fires when a response contains
 `WEBHOOK_HEADERS_FIRE` and POSTs to the URL held in `WEBHOOK_TEST_URL_FEATURE_SINK` (resolves to
 `http://witwave-bob:8099/triggers/feature-sink`) with:
+
 - `X-Test-Token: test-token-abc123` (resolved from `{{env.WEBHOOK_TEST_TOKEN}}`)
 - `X-Static-Header: static-value`
 
@@ -26,8 +28,8 @@ Wait for the A2A response to contain `WEBHOOK_HEADERS_FIRE`.
 
 ## Step 2 — Wait for the webhook chain to complete
 
-After `WEBHOOK_HEADERS_FIRE` appears, the webhook runner fires asynchronously. Poll the shared conversation log
-until `FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
+After `WEBHOOK_HEADERS_FIRE` appears, the webhook runner fires asynchronously. Poll the shared conversation log until
+`FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
 
 ```
 .agents/test/bob/logs/conversation.jsonl
@@ -43,4 +45,5 @@ The test passes if ALL of the following are true:
 
 The test fails if any condition is not met within the timeout.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

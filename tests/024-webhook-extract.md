@@ -1,17 +1,19 @@
 ---
-description: Verifies that LLM extraction runs before body rendering and the extracted variable appears in the POST body.
+description:
+  Verifies that LLM extraction runs before body rendering and the extracted variable appears in the POST body.
 enabled: true
 ---
 
 This test verifies the LLM extraction pipeline: the webhook runner sends the context (rendered markdown body with
-`{{response_preview}}` substituted in) plus the extraction prompt to the backend LLM, uses the response as a
-variable, and substitutes it into the `body:` template before POSTing.
+`{{response_preview}}` substituted in) plus the extraction prompt to the backend LLM, uses the response as a variable,
+and substitutes it into the `body:` template before POSTing.
 
 The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-extract.md`. It fires when a response contains
 `WEBHOOK_EXTRACT_FIRE` and:
 
 1. Substitutes `{{response_preview}}` into the markdown body (which becomes the extraction context).
-2. Sends the extraction prompt — "return only the word between EXTRACT_START and EXTRACT_END" — to the LLM with that context.
+2. Sends the extraction prompt — "return only the word between EXTRACT_START and EXTRACT_END" — to the LLM with that
+   context.
 3. Places the extracted word into `{{extracted_word}}` in the body template:
    `{"event": "extract-test", "extracted": "{{extracted_word}}", "agent": "{{agent}}"}`
 4. POSTs that JSON to `http://bob:8000/triggers/feature-sink`.
@@ -32,9 +34,9 @@ Wait for the A2A response to contain `WEBHOOK_EXTRACT_FIRE`.
 
 ## Step 2 — Wait for the webhook chain to complete
 
-After `WEBHOOK_EXTRACT_FIRE` appears, the webhook runner fires asynchronously (including an LLM extraction call
-before delivery). Poll the shared conversation log until `FEATURE_SINK_OK` appears, or until 60 seconds have
-elapsed (allow extra time for the extraction LLM call):
+After `WEBHOOK_EXTRACT_FIRE` appears, the webhook runner fires asynchronously (including an LLM extraction call before
+delivery). Poll the shared conversation log until `FEATURE_SINK_OK` appears, or until 60 seconds have elapsed (allow
+extra time for the extraction LLM call):
 
 ```
 .agents/test/bob/logs/conversation.jsonl
@@ -50,4 +52,5 @@ The test passes if ALL of the following are true:
 
 The test fails if any condition is not met within the timeout.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

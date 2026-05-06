@@ -3,9 +3,9 @@ description: Verifies that env-derived webhook URLs resolve correctly via url-en
 enabled: true
 ---
 
-This test verifies that a webhook whose URL is resolved via the `url-env-var` field reads the full URL from the
-named environment variable at parse time and successfully POSTs to the resolved URL. Inline `{{env.VAR}}`
-interpolation in the `url:` field is not supported (see #524) — env-derived URLs must go through `url-env-var`.
+This test verifies that a webhook whose URL is resolved via the `url-env-var` field reads the full URL from the named
+environment variable at parse time and successfully POSTs to the resolved URL. Inline `{{env.VAR}}` interpolation in the
+`url:` field is not supported (see #524) — env-derived URLs must go through `url-env-var`.
 
 The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-env-url.md`. It fires when a response contains
 `WEBHOOK_ENV_URL_FIRE` and POSTs to `WEBHOOK_TEST_URL_FEATURE_SINK`, which resolves to
@@ -24,8 +24,8 @@ Wait for the A2A response to contain `WEBHOOK_ENV_URL_FIRE`.
 
 ## Step 2 — Wait for the webhook chain to complete
 
-After `WEBHOOK_ENV_URL_FIRE` appears, the webhook runner fires asynchronously. Poll the shared conversation log
-until `FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
+After `WEBHOOK_ENV_URL_FIRE` appears, the webhook runner fires asynchronously. Poll the shared conversation log until
+`FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
 
 ```
 .agents/test/bob/logs/conversation.jsonl
@@ -41,4 +41,5 @@ The test passes if ALL of the following are true:
 
 The test fails if any condition is not met within the timeout.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

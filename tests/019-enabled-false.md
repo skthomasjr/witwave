@@ -84,6 +84,7 @@ The disabled trigger must return 404.
 Wait a further 70 seconds (long enough for the disabled job's `* * * * *` schedule to fire if it were enabled).
 
 Check the conversation log at `.agents/test/bob/logs/conversation.jsonl` for any of these strings:
+
 - `DISABLED_JOB_FIRED`
 - `DISABLED_TRIGGER_FIRED`
 - `DISABLED_CONTINUATION_FIRED`
@@ -103,9 +104,13 @@ mv .agents/test/bob/.witwave/HEARTBEAT.md.bak .agents/test/bob/.witwave/HEARTBEA
 ## Pass/Fail Criteria
 
 The test passes if ALL of the following are true:
+
 1. The disabled trigger endpoint returned 404.
-2. None of `DISABLED_JOB_FIRED`, `DISABLED_TRIGGER_FIRED`, `DISABLED_CONTINUATION_FIRED`, or `DISABLED_HEARTBEAT_FIRED` appear in the conversation log.
+2. None of `DISABLED_JOB_FIRED`, `DISABLED_TRIGGER_FIRED`, `DISABLED_CONTINUATION_FIRED`, or `DISABLED_HEARTBEAT_FIRED`
+   appear in the conversation log.
 
-The test fails if the disabled trigger returned anything other than 404, or if any disabled sentinel string appears in the log.
+The test fails if the disabled trigger returned anything other than 404, or if any disabled sentinel string appears in
+the log.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

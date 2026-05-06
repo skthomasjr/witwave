@@ -5,4 +5,5 @@ continues-after: task:task-ping
 trigger-when: TASK_OK
 delay: 10s
 ---
+
 Respond with CONTINUATION_DELAYED_OK.

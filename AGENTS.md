@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Claude Code (https://claude.ai/code) and Codex (https://openai.com/codex/) when working
+This file provides guidance to Claude Code (<https://claude.ai/code>) and Codex (<https://openai.com/codex/>) when working
 with code in this repository.
 
 ## Repo Root
@@ -24,16 +24,16 @@ otherwise), `AGENT_NAME` is not set — in that case, `<agent-name>` is `local-a
 
 This repo uses **trunk-based development**: changes land directly on `main`, not via feature branches and PRs. The
 working assumption is "main is always shippable" — small atomic commits, fast feedback, and immediate revert when
-something breaks. Background: paulhammant.com/what-is-trunk-based-development.html; corroborated by DORA / *Accelerate*
+something breaks. Background: paulhammant.com/what-is-trunk-based-development.html; corroborated by DORA / _Accelerate_
 as a high-performance practice.
 
 - **Commit directly to `main`.** No feature branch, no PR, no review queue. Push when the work is ready.
-- **Keep commits small and atomic.** Each commit should stand alone — bisectable, revertable, with a focused message.
-  If a change naturally splits (e.g. a refactor and a follow-up doc), make it two commits.
-- **Branches are an exception, not the default.** Reach for one only when the change is genuinely too large or risky
-  to land in a single atomic commit (e.g. a cross-cutting rename touching dozens of files). When a branch is
-  justified, keep it short-lived (hours, not days), merge fast-forward into `main`, and delete it. Long-lived branches
-  and review-gated PR queues are deliberately not part of the workflow here.
+- **Keep commits small and atomic.** Each commit should stand alone — bisectable, revertable, with a focused message. If
+  a change naturally splits (e.g. a refactor and a follow-up doc), make it two commits.
+- **Branches are an exception, not the default.** Reach for one only when the change is genuinely too large or risky to
+  land in a single atomic commit (e.g. a cross-cutting rename touching dozens of files). When a branch is justified,
+  keep it short-lived (hours, not days), merge fast-forward into `main`, and delete it. Long-lived branches and
+  review-gated PR queues are deliberately not part of the workflow here.
 - **If you break `main`, fix or revert immediately.** That's the contract that lets the no-PR style work — the next
   commit must not inherit a broken tree. Tests are the primary gate; run them locally before pushing.
 
@@ -41,8 +41,8 @@ For AI coding assistants (Claude Code, Codex):
 
 - Do not run `git commit` unless explicitly asked.
 - Do not run `git push` unless explicitly asked.
-- When asked to land work, default to a direct commit on `main`. Only suggest a branch when the change is genuinely
-  too large to land atomically — and even then, propose it before creating it.
+- When asked to land work, default to a direct commit on `main`. Only suggest a branch when the change is genuinely too
+  large to land atomically — and even then, propose it before creating it.
 
 ## Project Overview
 
@@ -89,11 +89,11 @@ Prompts can land in `.witwave/{jobs,tasks,triggers,continuations,webhooks}/` (or
    See `operator/README.md#the-witwaveprompt-resource` and
    `operator/config/samples/witwave_v1alpha1_witwaveprompt.yaml`.
 
-A third operator CRD, `WitwaveWorkspace`, is parallel to `WitwaveAgent` and `WitwavePrompt`: it provisions shared volumes,
-projects pre-created Secrets, and renders ConfigMap-backed files that get stamped onto every agent whose
+A third operator CRD, `WitwaveWorkspace`, is parallel to `WitwaveAgent` and `WitwavePrompt`: it provisions shared
+volumes, projects pre-created Secrets, and renders ConfigMap-backed files that get stamped onto every agent whose
 `Spec.WorkspaceRefs` references it. Membership is agent-owned (the agent declares `Spec.WorkspaceRefs[]`; the workspace
-controller maintains `Status.BoundAgents` as an inverted index). See `operator/README.md#the-witwaveworkspace-resource` and
-`operator/api/v1alpha1/witwaveworkspace_types.go`.
+controller maintains `Status.BoundAgents` as an inverted index). See `operator/README.md#the-witwaveworkspace-resource`
+and `operator/api/v1alpha1/witwaveworkspace_types.go`.
 
 harness retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging live in
 the backend container.
@@ -542,8 +542,8 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
   tracker (component labels match this file's taxonomy:
   `harness, claude, codex, gemini, dashboard, operator, charts, mcp, cli` + cross-cutting).
 - **Operator CRD reference** — `operator/api/v1alpha1/*_types.go` Go types (`witwaveagent_types.go`,
-  `witwaveprompt_types.go`, `witwaveworkspace_types.go`) + generated CRD schemas under `operator/config/crd/bases/`; sample
-  manifests in `operator/config/samples/`.
+  `witwaveprompt_types.go`, `witwaveworkspace_types.go`) + generated CRD schemas under `operator/config/crd/bases/`;
+  sample manifests in `operator/config/samples/`.
 - **`ww` CLI design rules** — `clients/ww/DESIGN.md` codifies the CLI's design invariants (kubeconfig handling, command
   taxonomy, flag conventions, exit codes). Rules are numbered (`KC-*`, `TAX-*`, …) and should be cited in PRs that touch
   CLI behavior.

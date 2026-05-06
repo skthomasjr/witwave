@@ -1,6 +1,8 @@
 ---
 name: model-check-claude-sonnet
-description: Verifies routing to Claude Sonnet and checks model self-awareness. The model's self-reported name may be inaccurate — models often misreport their own version. The authoritative model is in the conversation log, not the response text.
+description:
+  Verifies routing to Claude Sonnet and checks model self-awareness. The model's self-reported name may be inaccurate —
+  models often misreport their own version. The authoritative model is in the conversation log, not the response text.
 agent: claude
 model: claude-sonnet-4-6
 enabled: true

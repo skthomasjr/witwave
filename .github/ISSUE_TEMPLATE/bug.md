@@ -30,6 +30,7 @@ about: A defect or unexpected behavior in a component
 **Fix:** <suggested fix, or `unknown`>
 
 **Depends on:**
+
 - none
 
 **Acceptance criteria:**

@@ -1,5 +1,7 @@
 ---
-description: Verifies end-to-end outbound webhook delivery — a completed A2A prompt fires a webhook that POSTs to a trigger endpoint, which runs a second prompt on the backend.
+description:
+  Verifies end-to-end outbound webhook delivery — a completed A2A prompt fires a webhook that POSTs to a trigger
+  endpoint, which runs a second prompt on the backend.
 enabled: true
 ---
 
@@ -22,7 +24,8 @@ Wait for the A2A response to contain `WEBHOOK_FIRE` (poll the response or wait u
 
 ## Step 2 — Wait for the webhook chain to complete
 
-After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the codex conversation log until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
+After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the codex conversation
+log until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
 
 ```
 .agents/test/bob/logs/conversation.jsonl
@@ -38,4 +41,5 @@ The test passes if ALL of the following are true:
 
 The test fails if any condition is not met within the timeout.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

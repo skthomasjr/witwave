@@ -22,7 +22,8 @@ Wait up to 30 seconds for the backend to complete by polling the conversation lo
 
 Poll every 2 seconds until the string `PAYLOAD_TEST_7x9q` appears in the log, or until 30 seconds have elapsed.
 
-The test passes if `PAYLOAD_TEST_7x9q` is found in the conversation log within 30 seconds.
-The test fails if the string does not appear within 30 seconds, or if the trigger endpoint is unreachable.
+The test passes if `PAYLOAD_TEST_7x9q` is found in the conversation log within 30 seconds. The test fails if the string
+does not appear within 30 seconds, or if the trigger endpoint is unreachable.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

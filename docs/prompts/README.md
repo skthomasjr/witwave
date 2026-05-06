@@ -5,8 +5,8 @@ differs only in how and when it is triggered — the body is always the prompt t
 
 ## Prompt Types
 
-| Type                              | File location             | Trigger                                  |
-| --------------------------------- | ------------------------- | ---------------------------------------- |
+| Type                              | File location                 | Trigger                                  |
+| --------------------------------- | ----------------------------- | ---------------------------------------- |
 | [Heartbeat](heartbeat.md)         | `.witwave/HEARTBEAT.md`       | Cron schedule (single file)              |
 | [Jobs](jobs.md)                   | `.witwave/jobs/*.md`          | Cron schedule (one file per job)         |
 | [Tasks](tasks.md)                 | `.witwave/tasks/*.md`         | Calendar window (days, time, date range) |
@@ -25,18 +25,18 @@ override. An empty list (the default) disables consensus — the prompt is dispa
 
 ```yaml
 consensus:
-  - backend: "claude"                   # exact backend ID
-    model: "claude-opus-4-6"            # optional model override
-  - backend: "codex*"                   # glob pattern — matches all codex backends
+  - backend: "claude" # exact backend ID
+    model: "claude-opus-4-6" # optional model override
+  - backend: "codex*" # glob pattern — matches all codex backends
   - backend: "claude"
-    model: "claude-haiku-4-5"           # same backend, different model = two parallel calls
+    model: "claude-haiku-4-5" # same backend, different model = two parallel calls
 ```
 
 When consensus is active, the prompt is dispatched to every matched `(backend, model)` pair concurrently, then the
 responses are aggregated:
 
 - **Binary responses** (yes/no/agree/disagree variants): majority vote. The default backend breaks ties.
-- **Freeform responses**: a synthesis prompt is dispatched to the default backend, which merges the collected
-  responses into a single coherent answer.
+- **Freeform responses**: a synthesis prompt is dispatched to the default backend, which merges the collected responses
+  into a single coherent answer.
 
 The same backend can appear twice with different models — each combination is treated as a distinct call.

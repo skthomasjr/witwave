@@ -1,6 +1,8 @@
 ---
 name: Risk
-about: A code quality issue that works today but is fragile, insecure, hard to maintain, or likely to break under foreseeable conditions
+about:
+  A code quality issue that works today but is fragile, insecure, hard to maintain, or likely to break under foreseeable
+  conditions
 ---
 
 **Type:** risk
@@ -30,6 +32,7 @@ about: A code quality issue that works today but is fragile, insecure, hard to m
 **Mitigation:** <suggested mitigation, or `unknown`>
 
 **Depends on:**
+
 - none
 
 **Acceptance criteria:**

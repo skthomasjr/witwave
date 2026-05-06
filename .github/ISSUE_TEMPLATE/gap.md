@@ -1,6 +1,8 @@
 ---
 name: Gap
-about: A missing capability, coverage hole, or unimplemented requirement that leaves the system incomplete or inconsistent with its intended design
+about:
+  A missing capability, coverage hole, or unimplemented requirement that leaves the system incomplete or inconsistent
+  with its intended design
 ---
 
 **Type:** gap
@@ -30,6 +32,7 @@ about: A missing capability, coverage hole, or unimplemented requirement that le
 **Implementation:** <suggested approach to close the gap, or `unknown`>
 
 **Depends on:**
+
 - none
 
 **Acceptance criteria:**

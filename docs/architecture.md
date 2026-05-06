@@ -18,24 +18,22 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 
 ## Repository Structure
 
-Full file-by-file layout lives in [`AGENTS.md`](../AGENTS.md#project-structure) — that's the canonical
-reference for "what file is where" and stays current because coding agents read it first.
+Full file-by-file layout lives in [`AGENTS.md`](../AGENTS.md#project-structure) — that's the canonical reference for
+"what file is where" and stays current because coding agents read it first.
 
 At the top level, the repo is split into two buckets plus shared infrastructure:
 
-- **Platform infrastructure** — `harness/`, `backends/{claude,codex,gemini,echo}/`, `operator/`, `tools/`
-  (MCP servers: `kubernetes`, `helm`, `prometheus`), `charts/{witwave,witwave-operator}/`, `shared/`.
+- **Platform infrastructure** — `harness/`, `backends/{claude,codex,gemini,echo}/`, `operator/`, `tools/` (MCP servers:
+  `kubernetes`, `helm`, `prometheus`), `charts/{witwave,witwave-operator}/`, `shared/`.
 - **Client surfaces** (under `clients/`) — `clients/dashboard/` (Vue 3 web UI), `clients/ww/` (Go CLI).
-- **Agent configs** (`.agents/`) — per-named-agent filesystem config that gets mounted into the
-  platform containers. `active/` for production-like (`iris`, `nova`, `kira`); `test/` for
-  disposable test fixtures (`bob`, `fred`).
-- **Docs + skills** — `docs/` (this document + product-vision + competitive-landscape + event wire
-  contract + smoke tests + prompt-type reference), `.claude/skills/` (user-invokable Claude Code
-  skills that drive discovery / refinement / implementation loops), `.github/ISSUE_TEMPLATE/`.
+- **Agent configs** (`.agents/`) — per-named-agent filesystem config that gets mounted into the platform containers.
+  `active/` for production-like (`iris`, `nova`, `kira`); `test/` for disposable test fixtures (`bob`, `fred`).
+- **Docs + skills** — `docs/` (this document + product-vision + competitive-landscape + event wire contract + smoke
+  tests + prompt-type reference), `.claude/skills/` (user-invokable Claude Code skills that drive discovery / refinement
+  / implementation loops), `.github/ISSUE_TEMPLATE/`.
 
-The split between infrastructure and clients is intentional: infrastructure is the platform, clients
-are interchangeable ways to observe + interact with it. Adding a TUI or a mobile app goes under
-`clients/`, not as a peer of `harness/`.
+The split between infrastructure and clients is intentional: infrastructure is the platform, clients are interchangeable
+ways to observe + interact with it. Adding a TUI or a mobile app goes under `clients/`, not as a peer of `harness/`.
 
 ---
 
@@ -45,8 +43,8 @@ are interchangeable ways to observe + interact with it. Adding a TUI or a mobile
 
 Each named agent is a cluster of containers:
 
-1. **harness** — the infrastructure layer. Receives external A2A requests, fires heartbeats, runs jobs/tasks,
-   handles inbound triggers, fires outbound webhooks, and dispatches continuations. Owns no LLM itself.
+1. **harness** — the infrastructure layer. Receives external A2A requests, fires heartbeats, runs jobs/tasks, handles
+   inbound triggers, fires outbound webhooks, and dispatches continuations. Owns no LLM itself.
 2. **claude** (per agent) — a standalone A2A server backed by the Claude Agent SDK. Owns session state, memory, and
    conversation logging.
 3. **codex** (per agent) — a standalone A2A server backed by the OpenAI Agents SDK. Same interface as claude.
@@ -139,20 +137,20 @@ forwarding it to the backend URL. Retries transient errors (HTTP 429/502/503/504
 per-backend via an environment variable (`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar or separate-pod
 deployments without config file changes.
 
-**`metrics_proxy.py`** — Fetches `/metrics` from each configured backend on the dedicated metrics port
-(`METRICS_PORT`, default 9000 — the backend's app URL is rewritten to swap the port). Injects a `backend="<id>"`
-label on every sample line. The harness metrics listener merges its own metrics with all backend metrics, providing
-a single scrape target for the full deployment (redundant with PodMonitor-per-container scraping, but preserved for
-anyone curl-ing the harness directly).
+**`metrics_proxy.py`** — Fetches `/metrics` from each configured backend on the dedicated metrics port (`METRICS_PORT`,
+default 9000 — the backend's app URL is rewritten to swap the port). Injects a `backend="<id>"` label on every sample
+line. The harness metrics listener merges its own metrics with all backend metrics, providing a single scrape target for
+the full deployment (redundant with PodMonitor-per-container scraping, but preserved for anyone curl-ing the harness
+directly).
 
 ### Dedicated metrics listener (`shared/metrics_server.py`)
 
-Every container in the stack — harness, each backend, each MCP tool — runs `/metrics` on a **dedicated port** (9000
-by default, set via `METRICS_PORT` env / `metrics.port` chart value / `WitwaveAgentSpec.MetricsPort` CRD field)
-separate from the app listener (#643). The split lets NetworkPolicy and auth posture diverge cleanly between app
-traffic (A2A, triggers, conversations, MCP) and monitoring scrapes. `shared/metrics_server.py` exposes two
-entry points: an asyncio-task variant for containers that own the main event loop (harness, backends), and a
-daemon-thread variant for FastMCP-hosted containers (MCP tools) that don't.
+Every container in the stack — harness, each backend, each MCP tool — runs `/metrics` on a **dedicated port** (9000 by
+default, set via `METRICS_PORT` env / `metrics.port` chart value / `WitwaveAgentSpec.MetricsPort` CRD field) separate
+from the app listener (#643). The split lets NetworkPolicy and auth posture diverge cleanly between app traffic (A2A,
+triggers, conversations, MCP) and monitoring scrapes. `shared/metrics_server.py` exposes two entry points: an
+asyncio-task variant for containers that own the main event loop (harness, backends), and a daemon-thread variant for
+FastMCP-hosted containers (MCP tools) that don't.
 
 ### Backend Components (claude, codex, gemini, echo)
 
@@ -168,8 +166,8 @@ server).
 **`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID passed
 in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs directory.
 
-**`metrics.py`** — Prometheus metric definitions with `backend_*` prefix. `claude` exposes a superset including tool call,
-context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics; `gemini` exposes
+**`metrics.py`** — Prometheus metric definitions with `backend_*` prefix. `claude` exposes a superset including tool
+call, context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics; `gemini` exposes
 context-window metrics. All four share the common `backend_*` baseline set; `echo` implements only that baseline and
 documents it as the reference definition of what a well-behaved backend must emit.
 
@@ -181,9 +179,9 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 ### harness config files
 
-| File                 | Location              | Purpose                                                 |
-| -------------------- | --------------------- | ------------------------------------------------------- |
-| `agent-card.md`      | `.witwave/`               | A2A identity description for the harness agent card |
+| File                 | Location                  | Purpose                                                 |
+| -------------------- | ------------------------- | ------------------------------------------------------- |
+| `agent-card.md`      | `.witwave/`               | A2A identity description for the harness agent card     |
 | `backend.yaml`       | `.witwave/`               | Backend definitions and routing                         |
 | `HEARTBEAT.md`       | `.witwave/`               | Heartbeat schedule and prompt                           |
 | `jobs/*.md`          | `.witwave/jobs/`          | Scheduled jobs — cron frontmatter                       |
@@ -194,14 +192,14 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 ### Backend config files
 
-| File            | Location                   | Purpose                                                             |
-| --------------- | -------------------------- | ------------------------------------------------------------------- |
-| `agent-card.md` | `/home/agent/.claude/`     | A2A identity (agent card description) for the Claude backend        |
-| `agent-card.md` | `/home/agent/.codex/`      | A2A identity (agent card description) for the Codex backend         |
-| `agent-card.md` | `/home/agent/.gemini/`     | A2A identity (agent card description) for the Gemini backend        |
-| `CLAUDE.md`     | `/home/agent/.claude/`     | Behavioral instructions injected into the Claude backend at startup |
-| `AGENTS.md`     | `/home/agent/.codex/`      | Behavioral instructions injected into the Codex backend at startup  |
-| `GEMINI.md`     | `/home/agent/.gemini/`     | Behavioral instructions injected into the Gemini backend at startup |
+| File            | Location                | Purpose                                                             |
+| --------------- | ----------------------- | ------------------------------------------------------------------- |
+| `agent-card.md` | `/home/agent/.claude/`  | A2A identity (agent card description) for the Claude backend        |
+| `agent-card.md` | `/home/agent/.codex/`   | A2A identity (agent card description) for the Codex backend         |
+| `agent-card.md` | `/home/agent/.gemini/`  | A2A identity (agent card description) for the Gemini backend        |
+| `CLAUDE.md`     | `/home/agent/.claude/`  | Behavioral instructions injected into the Claude backend at startup |
+| `AGENTS.md`     | `/home/agent/.codex/`   | Behavioral instructions injected into the Codex backend at startup  |
+| `GEMINI.md`     | `/home/agent/.gemini/`  | Behavioral instructions injected into the Gemini backend at startup |
 | `memory/`       | `<name>/claude/memory/` | Persistent markdown memory files for Claude backend                 |
 | `memory/`       | `<name>/codex/memory/`  | Persistent markdown memory files for Codex backend                  |
 | `memory/`       | `<name>/gemini/memory/` | JSON session history for Gemini backend (`sessions/`)               |
@@ -210,49 +208,49 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 **harness:**
 
-| Variable                                    | Default                         | Description                                                                                                                    |
-| ------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Variable                                    | Default                             | Description                                                                                                                    |
+| ------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `AGENT_NAME`                                | `witwave`                           | Agent display name (e.g. `iris`)                                                                                               |
-| `HARNESS_HOST`                              | `0.0.0.0`                       | Interface the harness binds to                                                                                                 |
-| `HARNESS_PORT`                              | `8000`                          | HTTP port the harness listens on                                                                                               |
-| `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/` | Public URL published on the A2A agent card                                                                                   |
+| `HARNESS_HOST`                              | `0.0.0.0`                           | Interface the harness binds to                                                                                                 |
+| `HARNESS_PORT`                              | `8000`                              | HTTP port the harness listens on                                                                                               |
+| `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/`   | Public URL published on the A2A agent card                                                                                     |
 | `BACKEND_CONFIG_PATH`                       | `/home/agent/.witwave/backend.yaml` | Path to backend routing config                                                                                                 |
-| `METRICS_ENABLED`                           | _(unset)_                       | Enable Prometheus `/metrics`                                                                                                   |
-| `METRICS_AUTH_TOKEN`                        | _(unset)_                       | Bearer token required to access `/metrics`                                                                                     |
-| `METRICS_CACHE_TTL`                         | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                                                    |
-| `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                                        |
-| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                       |
-| `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                       | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                    |
-| `CORS_ALLOW_ORIGINS`                        | _(unset)_                       | Comma-separated allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                        |
-| `TASK_STORE_PATH`                           | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory                                                                          |
-| `WORKER_MAX_RESTARTS`                       | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                                                     |
-| `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                            | Maximum number of in-flight webhook delivery tasks across all subscriptions                                                    |
-| `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` | `10`                            | Per-subscription cap on concurrent in-flight deliveries; also settable per webhook via `max-concurrent-deliveries` frontmatter |
-| `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                           | Seconds to wait for a single LLM extraction call inside a webhook delivery                                                     |
-| `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                 | Maximum number of jobs that may run concurrently; `0` disables the limit                                                       |
-| `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                 | Maximum number of tasks that may run concurrently; `0` disables the limit                                                      |
-| `TASK_TIMEOUT_SECONDS`                      | `300`                           | Task timeout in seconds, applied to A2A backend requests                                                                       |
-| `MANIFEST_PATH`                             | `/home/agent/manifest.json`     | Path to the team manifest file listing all agents by name and URL                                                              |
-| `BACKENDS_READY_WARN_AFTER`                 | `120`                           | Seconds to wait before logging a warning that backends have not become healthy                                                 |
-| `LOG_PROMPT_MAX_BYTES`                      | `200`                           | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                       |
-| `A2A_BACKEND_MAX_RETRIES`                   | `3`                             | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                     |
-| `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                           | Base backoff in seconds for retry delay (exponential with jitter)                                                             |
-| `A2A_URL_<ID>`                              | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_CLAUDE`)                                                                       |
+| `METRICS_ENABLED`                           | _(unset)_                           | Enable Prometheus `/metrics`                                                                                                   |
+| `METRICS_AUTH_TOKEN`                        | _(unset)_                           | Bearer token required to access `/metrics`                                                                                     |
+| `METRICS_CACHE_TTL`                         | `15`                                | Seconds to cache aggregated backend metrics between scrapes                                                                    |
+| `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                           | Bearer token required to access `/conversations` and `/trace` (inbound)                                                        |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                       |
+| `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                           | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                    |
+| `CORS_ALLOW_ORIGINS`                        | _(unset)_                           | Comma-separated allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                        |
+| `TASK_STORE_PATH`                           | _(unset)_                           | Path for SQLite A2A task store; defaults to in-memory                                                                          |
+| `WORKER_MAX_RESTARTS`                       | `5`                                 | Consecutive crash limit before a critical worker marks the agent not-ready                                                     |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                                | Maximum number of in-flight webhook delivery tasks across all subscriptions                                                    |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` | `10`                                | Per-subscription cap on concurrent in-flight deliveries; also settable per webhook via `max-concurrent-deliveries` frontmatter |
+| `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                               | Seconds to wait for a single LLM extraction call inside a webhook delivery                                                     |
+| `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                     | Maximum number of jobs that may run concurrently; `0` disables the limit                                                       |
+| `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                     | Maximum number of tasks that may run concurrently; `0` disables the limit                                                      |
+| `TASK_TIMEOUT_SECONDS`                      | `300`                               | Task timeout in seconds, applied to A2A backend requests                                                                       |
+| `MANIFEST_PATH`                             | `/home/agent/manifest.json`         | Path to the team manifest file listing all agents by name and URL                                                              |
+| `BACKENDS_READY_WARN_AFTER`                 | `120`                               | Seconds to wait before logging a warning that backends have not become healthy                                                 |
+| `LOG_PROMPT_MAX_BYTES`                      | `200`                               | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                       |
+| `A2A_BACKEND_MAX_RETRIES`                   | `3`                                 | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                      |
+| `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                               | Base backoff in seconds for retry delay (exponential with jitter)                                                              |
+| `A2A_URL_<ID>`                              | _(unset)_                           | Per-backend URL override (e.g. `A2A_URL_IRIS_CLAUDE`)                                                                          |
 
 **Backends (claude / codex / gemini):**
 
-| Variable                   | Default                                | Description                                                                  |
-| -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-claude`)                                |
-| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
-| `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
-| `AGENT_URL`                | `http://localhost:8000/`               | Public A2A endpoint URL reported in agent card                               |
-| `BACKEND_PORT`             | `8000`                                 | HTTP port the backend listens on (internal)                                  |
-| `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                 |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                |
-| `TASK_STORE_PATH`          | _(unset)_                              | Path for SQLite A2A task store; defaults to in-memory                        |
-| `WORKER_MAX_RESTARTS`      | `5`                                    | Consecutive crash limit before a critical worker marks the backend not-ready |
-| `LOG_PROMPT_MAX_BYTES`     | `200`                                  | Max bytes of the prompt logged at INFO level; `0` suppresses it entirely     |
+| Variable                   | Default                       | Description                                                                  |
+| -------------------------- | ----------------------------- | ---------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-claude`)                                   |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_      | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
+| `AGENT_ID`                 | `claude` / `codex` / `gemini` | Backend slot identifier; used in metric labels                               |
+| `AGENT_URL`                | `http://localhost:8000/`      | Public A2A endpoint URL reported in agent card                               |
+| `BACKEND_PORT`             | `8000`                        | HTTP port the backend listens on (internal)                                  |
+| `METRICS_ENABLED`          | _(unset)_                     | Enable Prometheus `/metrics`                                                 |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                     | Bearer token required to access `/conversations` and `/trace`                |
+| `TASK_STORE_PATH`          | _(unset)_                     | Path for SQLite A2A task store; defaults to in-memory                        |
+| `WORKER_MAX_RESTARTS`      | `5`                           | Consecutive crash limit before a critical worker marks the backend not-ready |
+| `LOG_PROMPT_MAX_BYTES`     | `200`                         | Max bytes of the prompt logged at INFO level; `0` suppresses it entirely     |
 
 ---
 
@@ -316,12 +314,10 @@ This prevents concurrent outbound backend calls from the same harness process.
 | ui (active) | 3002    | —      | —     | —      |
 | ui (test)   | 3001    | —      | —     | —      |
 
-Active agents (iris/nova/kira) each run in their own pod with their own
-localhost, so the backend ports are uniform across them (8010/8011/8012).
-The harness port differs per agent only because multiple active agents may
-share a host via `hostPort`/`NodePort`. Test agents (bob/fred) still use
-agent-unique backend ports because they're deployed together in
-`values-test.yaml` with `hostPort` exposed on the same host.
+Active agents (iris/nova/kira) each run in their own pod with their own localhost, so the backend ports are uniform
+across them (8010/8011/8012). The harness port differs per agent only because multiple active agents may share a host
+via `hostPort`/`NodePort`. Test agents (bob/fred) still use agent-unique backend ports because they're deployed together
+in `values-test.yaml` with `hostPort` exposed on the same host.
 
 ---
 
@@ -370,8 +366,8 @@ All infrastructure decisions are evaluated against Kubernetes compatibility:
   (`/health/start`, `/health`, `/health/ready`) on backend containers — backends use `/health` (not `/health/live`) for
   the liveness route, but the three-probe shape is consistent across the platform (#1686).
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes.
-- Backend URL configurable via `A2A_URL_<ID>` env var — supports same-pod sidecar (`http://localhost:8010`)
-  or out-of-pod via Service DNS (`http://claude-svc:8000`) without config file changes.
+- Backend URL configurable via `A2A_URL_<ID>` env var — supports same-pod sidecar (`http://localhost:8010`) or
+  out-of-pod via Service DNS (`http://claude-svc:8000`) without config file changes.
 - Stateless containers at the harness layer (all state lives in backends).
 - Standard HTTP endpoints suitable for `Service` and `Ingress`.
 
@@ -379,11 +375,11 @@ Per-agent port assignments live in [`AGENTS.md` → Interacting with Agents](../
 
 ### git-sync Image
 
-The Helm chart uses an internal git-sync image (`ghcr.io/witwave-ai/images/git-sync`) built from `helpers/git-sync/Dockerfile`.
-This image adds `rsync` to the upstream git-sync base image, enabling `rsync --delete` for correct incremental directory
-sync. Without rsync, upstream git-sync copies only changed files — deletions and deep directory removes are not
-propagated. With rsync, the sync is fully correct: files and directories are added, modified, and deleted at all depths
-to match the source exactly.
+The Helm chart uses an internal git-sync image (`ghcr.io/witwave-ai/images/git-sync`) built from
+`helpers/git-sync/Dockerfile`. This image adds `rsync` to the upstream git-sync base image, enabling `rsync --delete`
+for correct incremental directory sync. Without rsync, upstream git-sync copies only changed files — deletions and deep
+directory removes are not propagated. With rsync, the sync is fully correct: files and directories are added, modified,
+and deleted at all depths to match the source exactly.
 
 ---
 
@@ -511,8 +507,8 @@ Routing values can be a plain agent ID string (`default: claude`) or an object w
 fields. Model resolution order: per-message override → routing entry model → per-backend config model.
 
 The `url` for any backend can be overridden at deploy time via an environment variable named
-`A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` — for example, `A2A_URL_IRIS_CLAUDE`. This lets the same `backend.yaml`
-work across Kubernetes service DNS and localhost-sidecar deployment shapes without modification.
+`A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` — for example, `A2A_URL_IRIS_CLAUDE`. This lets the same `backend.yaml` work
+across Kubernetes service DNS and localhost-sidecar deployment shapes without modification.
 
 ---
 

@@ -1,7 +1,8 @@
 # Jobs
 
-Jobs are defined as `*.md` files in the agent's `.witwave/jobs/` directory. Each file is an independent scheduled prompt.
-The job scheduler watches the directory for changes and registers or unregisters jobs at runtime — no restart needed.
+Jobs are defined as `*.md` files in the agent's `.witwave/jobs/` directory. Each file is an independent scheduled
+prompt. The job scheduler watches the directory for changes and registers or unregisters jobs at runtime — no restart
+needed.
 
 **Minimal test job** (fires every 5 minutes, verifies job scheduler + backend are alive):
 
@@ -86,14 +87,14 @@ Steps:
 
 ## Frontmatter Fields
 
-| Field         | Required | Description                                                       |
-| ------------- | -------- | ----------------------------------------------------------------- |
-| `name`        | No       | Display name used in logs and metrics; defaults to filename       |
-| `description` | No       | Human-readable summary                                            |
-| `schedule`    | Yes      | Cron expression (UTC)                                             |
-| `enabled`     | No       | `true` (default) to activate, `false` to disable                  |
-| `session`     | No       | Session ID override; defaults to a deterministic UUID             |
-| `model`       | No       | Model override passed to the backend; defaults to backend default |
-| `agent`       | No       | Backend ID override (e.g. `codex`); defaults to routing config    |
+| Field         | Required | Description                                                                                                                      |
+| ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | No       | Display name used in logs and metrics; defaults to filename                                                                      |
+| `description` | No       | Human-readable summary                                                                                                           |
+| `schedule`    | Yes      | Cron expression (UTC)                                                                                                            |
+| `enabled`     | No       | `true` (default) to activate, `false` to disable                                                                                 |
+| `session`     | No       | Session ID override; defaults to a deterministic UUID                                                                            |
+| `model`       | No       | Model override passed to the backend; defaults to backend default                                                                |
+| `agent`       | No       | Backend ID override (e.g. `codex`); defaults to routing config                                                                   |
 | `consensus`   | No       | List of `{backend, model?}` entries to fan out to; empty list (default) disables consensus. Supports glob patterns in `backend`. |
-| `max-tokens`  | No       | Token budget for this dispatch. Stop and return partial response when reached. |
+| `max-tokens`  | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                   |

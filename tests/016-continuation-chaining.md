@@ -3,7 +3,8 @@ description: Verifies that continuations can chain — a continuation fires afte
 enabled: true
 ---
 
-This test creates a two-level continuation chain: the trigger ping fires, which triggers a first continuation, which in turn triggers a second continuation.
+This test creates a two-level continuation chain: the trigger ping fires, which triggers a first continuation, which in
+turn triggers a second continuation.
 
 ## Setup
 
@@ -49,7 +50,8 @@ Verify the response is 202 before proceeding.
 
 ## Poll for both chain steps
 
-Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until both `CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear.
+Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until both
+`CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear.
 
 ## Cleanup
 
@@ -60,7 +62,8 @@ rm .agents/test/bob/.witwave/continuations/chain-2.md
 
 ## Pass/Fail Criteria
 
-The test passes if both `CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear in the conversation log within 60 seconds of firing the trigger.
-The test fails if either token is missing after 60 seconds.
+The test passes if both `CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear in the conversation log within 60 seconds of
+firing the trigger. The test fails if either token is missing after 60 seconds.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

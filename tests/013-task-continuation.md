@@ -3,7 +3,8 @@ description: Verifies that a continuation fires after a run-once task completes,
 enabled: true
 ---
 
-This test creates a run-once task and a continuation that fires after it with a `trigger-when` filter. The continuation should only fire when the task response contains the expected string.
+This test creates a run-once task and a continuation that fires after it with a `trigger-when` filter. The continuation
+should only fire when the task response contains the expected string.
 
 ## Setup
 
@@ -64,9 +65,11 @@ rm .agents/test/bob/.witwave/continuations/task-continuation-probe-nomatch.md
 ## Pass/Fail Criteria
 
 The test passes if:
+
 1. `TASK_CONT_FIRED` appears in the log within 60 seconds.
 2. `TASK_CONT_NOMATCH_FIRED` does NOT appear in the log.
 
 The test fails if `TASK_CONT_FIRED` is absent, or if `TASK_CONT_NOMATCH_FIRED` appears.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

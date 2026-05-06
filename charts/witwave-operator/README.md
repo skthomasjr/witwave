@@ -54,9 +54,9 @@ helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator -
 helm uninstall witwave-operator --namespace witwave
 ```
 
-All three CRDs (`WitwaveAgent`, `WitwavePrompt`, `WitwaveWorkspace`) ship under `charts/witwave-operator/crds/` and carry
-the `helm.sh/resource-policy: keep` annotation, so they are **not** deleted on uninstall. Existing CRs remain in the
-cluster and can be reconciled by a re-installed operator. Delete the CRDs manually if you want to fully tear down:
+All three CRDs (`WitwaveAgent`, `WitwavePrompt`, `WitwaveWorkspace`) ship under `charts/witwave-operator/crds/` and
+carry the `helm.sh/resource-policy: keep` annotation, so they are **not** deleted on uninstall. Existing CRs remain in
+the cluster and can be reconciled by a re-installed operator. Delete the CRDs manually if you want to fully tear down:
 
 ```bash
 kubectl delete crd witwaveagents.witwave.ai
@@ -179,11 +179,10 @@ The mutating webhook (`mwitwaveagent.kb.io`) carries one defaulting rule (popula
 (default `Ignore`); flip to `Fail` for strict admission once your webhook is HA.
 
 The `vwitwaveworkspace.kb.io` entry rejects: `volumes[].storageType: hostPath` (reserved for v1.x),
-`volumes[].accessMode` outside `{ReadWriteMany, ReadWriteOnce, ReadWriteOncePod}` (RWM is the cross-node default; RWO
-is the single-node fallback for clusters whose default storage class is RWO-only, e.g. Docker Desktop), `secrets[]`
-entries that set both `mountPath` and `envFrom`, `configFiles[]` entries that set neither `configMap` nor `inline`
-(or both), and mount-path collisions across the three lists. Further invariants land as follow-up gaps on top of this
-skeleton.
+`volumes[].accessMode` outside `{ReadWriteMany, ReadWriteOnce, ReadWriteOncePod}` (RWM is the cross-node default; RWO is
+the single-node fallback for clusters whose default storage class is RWO-only, e.g. Docker Desktop), `secrets[]` entries
+that set both `mountPath` and `envFrom`, `configFiles[]` entries that set neither `configMap` nor `inline` (or both),
+and mount-path collisions across the three lists. Further invariants land as follow-up gaps on top of this skeleton.
 
 ### Values shape
 
@@ -199,9 +198,9 @@ identical knobs for `certManager.enabled`, `createIssuer`, `issuerKind`, and `is
 
 The operator's default RBAC includes Secret write verbs because the inline `BackendSpec.credentials.secrets` path asks
 the reconciler to create/update a chart-owned Secret per backend. The `WitwaveWorkspace` CRD's `secrets[]` field, by
-contrast, accepts only existing-Secret references — the witwaveworkspace controller stays out of the secrets-write trust boundary by
-design (#1760). If every agent in your cluster also uses pre-provisioned Secrets referenced via `existingSecret`, drop
-the write verbs:
+contrast, accepts only existing-Secret references — the witwaveworkspace controller stays out of the secrets-write trust
+boundary by design (#1760). If every agent in your cluster also uses pre-provisioned Secrets referenced via
+`existingSecret`, drop the write verbs:
 
 ```yaml
 rbac:

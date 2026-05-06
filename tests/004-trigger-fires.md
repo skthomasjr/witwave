@@ -13,7 +13,8 @@ curl -s -o /dev/null -w "%{http_code}" \
   -d '{}'
 ```
 
-The test passes if the HTTP response code is 202.
-The test fails if the response code is anything other than 202, or if the endpoint is unreachable.
+The test passes if the HTTP response code is 202. The test fails if the response code is anything other than 202, or if
+the endpoint is unreachable.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

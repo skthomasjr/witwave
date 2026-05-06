@@ -61,20 +61,20 @@ agents and you have a scheduler with nothing to dispatch to — no intelligence.
 
 ## Components
 
-| Component          | Directory                  | Type                | Description                                                                                                                                          |
-| ------------------ | -------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Harness**        | `harness/`                 | Orchestrator agent  | Scheduling, triggering, chaining, A2A relay. No LLM of its own.                                                                                      |
-| **Claude backend** | `backends/claude/`         | Backend agent       | Executes prompts via the Claude Agent SDK.                                                                                                           |
-| **Codex backend**  | `backends/codex/`          | Backend agent       | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                                                 |
-| **Gemini backend** | `backends/gemini/`         | Backend agent       | Executes prompts via the Google Gemini SDK.                                                                                                          |
-| **Echo backend**   | `backends/echo/`           | Backend agent       | Zero-dependency stub. Returns a canned response quoting the prompt. Hello-world default + reference.                                                 |
-| **MCP tools**      | `tools/`                   | Tool infrastructure | `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.                                                               |
-| **Dashboard**      | `clients/dashboard/`       | Web client          | Vue 3 + PrimeVue web UI.                                                                                                                             |
-| **ww CLI**         | `clients/ww/`              | Client              | Go + cobra command-line interface (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh \| sh`, or Homebrew).       |
-| **Operator**       | `operator/`                | Kubernetes operator | Go controller that reconciles `WitwaveAgent`, `WitwavePrompt`, and `WitwaveWorkspace` CRDs.                                                                 |
-| **WitwaveWorkspace**      | `operator/api/v1alpha1/`   | Shared-resource CRD | Operator-reconciled bundle of shared volumes, projected Secrets, and ConfigMap files that participating agents mount. See [Workspaces](#workspaces). |
-| **Agent chart**    | `charts/witwave/`          | Deployment          | Helm chart that deploys witwave agents via templated manifests.                                                                                      |
-| **Operator chart** | `charts/witwave-operator/` | Deployment          | Helm chart that installs the operator + CRD.                                                                                                         |
+| Component            | Directory                  | Type                | Description                                                                                                                                          |
+| -------------------- | -------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Harness**          | `harness/`                 | Orchestrator agent  | Scheduling, triggering, chaining, A2A relay. No LLM of its own.                                                                                      |
+| **Claude backend**   | `backends/claude/`         | Backend agent       | Executes prompts via the Claude Agent SDK.                                                                                                           |
+| **Codex backend**    | `backends/codex/`          | Backend agent       | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                                                 |
+| **Gemini backend**   | `backends/gemini/`         | Backend agent       | Executes prompts via the Google Gemini SDK.                                                                                                          |
+| **Echo backend**     | `backends/echo/`           | Backend agent       | Zero-dependency stub. Returns a canned response quoting the prompt. Hello-world default + reference.                                                 |
+| **MCP tools**        | `tools/`                   | Tool infrastructure | `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.                                                               |
+| **Dashboard**        | `clients/dashboard/`       | Web client          | Vue 3 + PrimeVue web UI.                                                                                                                             |
+| **ww CLI**           | `clients/ww/`              | Client              | Go + cobra command-line interface (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh \| sh`, or Homebrew).       |
+| **Operator**         | `operator/`                | Kubernetes operator | Go controller that reconciles `WitwaveAgent`, `WitwavePrompt`, and `WitwaveWorkspace` CRDs.                                                          |
+| **WitwaveWorkspace** | `operator/api/v1alpha1/`   | Shared-resource CRD | Operator-reconciled bundle of shared volumes, projected Secrets, and ConfigMap files that participating agents mount. See [Workspaces](#workspaces). |
+| **Agent chart**      | `charts/witwave/`          | Deployment          | Helm chart that deploys witwave agents via templated manifests.                                                                                      |
+| **Operator chart**   | `charts/witwave-operator/` | Deployment          | Helm chart that installs the operator + CRD.                                                                                                         |
 
 The harness routes work to backend agents but does no LLM execution itself. Client surfaces (dashboard + ww) provide
 visibility and interaction; they don't participate in agent workflows. The operator and its chart are an alternative
@@ -82,12 +82,12 @@ install path to the agent chart; both target the same per-agent deployment shape
 
 ## Workspaces
 
-A `WitwaveWorkspace` is the operator-level primitive for shared resources multiple agents collaborate over. Each WitwaveWorkspace
-declares a list of shared volumes (RWM-capable PVCs), a list of pre-created Secret references, and a list of
-ConfigMap-backed files; the operator provisions and projects them onto every `WitwaveAgent` whose `spec.workspaceRefs[]`
-references the WitwaveWorkspace. The CRD is intentionally generic — source trees, datasets, video pipelines, accumulated memory
-pools, anything where teams of agents need the same files visible at the same paths. Membership is agent-owned: an agent
-with zero `workspaceRefs[]` runs perfectly; participation is purely additive.
+A `WitwaveWorkspace` is the operator-level primitive for shared resources multiple agents collaborate over. Each
+WitwaveWorkspace declares a list of shared volumes (RWM-capable PVCs), a list of pre-created Secret references, and a
+list of ConfigMap-backed files; the operator provisions and projects them onto every `WitwaveAgent` whose
+`spec.workspaceRefs[]` references the WitwaveWorkspace. The CRD is intentionally generic — source trees, datasets, video
+pipelines, accumulated memory pools, anything where teams of agents need the same files visible at the same paths.
+Membership is agent-owned: an agent with zero `workspaceRefs[]` runs perfectly; participation is purely additive.
 
 ```yaml
 apiVersion: witwave.ai/v1alpha1
@@ -268,8 +268,8 @@ curl http://localhost:8012/health
 
 ## Agent Structure
 
-Self-managing agents are defined under `.agents/self/` (the agents that maintain this repo). Each named agent has
-its own directory containing witwave config, backend instances, logs, and memory.
+Self-managing agents are defined under `.agents/self/` (the agents that maintain this repo). Each named agent has its
+own directory containing witwave config, backend instances, logs, and memory.
 
 ```text
 .agents/

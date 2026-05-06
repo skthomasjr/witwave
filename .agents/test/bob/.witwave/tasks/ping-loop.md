@@ -1,6 +1,7 @@
 ---
 name: task-ping-loop
-description: Test task — verifies looping behavior within a window. Runs Mon-Fri, loops every 10 minutes until LOOP_DONE.
+description:
+  Test task — verifies looping behavior within a window. Runs Mon-Fri, loops every 10 minutes until LOOP_DONE.
 days: "1-5"
 window-start: "00:00"
 window-duration: 1h

@@ -1,43 +1,31 @@
 # helm MCP tool
 
-MCP server that exposes Helm release operations against the cluster where
-this tool is deployed.
+MCP server that exposes Helm release operations against the cluster where this tool is deployed.
 
 ## Implementation
 
-Shells out to the `helm` CLI (installed in the image). Helm has no REST API
-and no Python SDK — the only first-class programmatic surface is the Go SDK,
-so every Python wrapper in the ecosystem ultimately execs `helm`. We do the
-same directly, using `--output json` where Helm supports it so results come
-back structured.
+Shells out to the `helm` CLI (installed in the image). Helm has no REST API and no Python SDK — the only first-class
+programmatic surface is the Go SDK, so every Python wrapper in the ecosystem ultimately execs `helm`. We do the same
+directly, using `--output json` where Helm supports it so results come back structured.
 
-The bundled `helm` CLI is pinned to **v3.20.2** (#769) to carry the CERT-Bund
-WID-SEC-2026-1048 fixes (file manipulation / security-control bypass / potential
-RCE, CVSS 8.6). Refresh the pin in `tools/helm/Dockerfile` at least quarterly
-and whenever a new Helm security advisory lands — every caller inherits the
-bundled CLI.
+The bundled `helm` CLI is pinned to **v3.20.2** (#769) to carry the CERT-Bund WID-SEC-2026-1048 fixes (file manipulation
+/ security-control bypass / potential RCE, CVSS 8.6). Refresh the pin in `tools/helm/Dockerfile` at least quarterly and
+whenever a new Helm security advisory lands — every caller inherits the bundled CLI.
 
 ## Auth
 
-Helm picks up the in-cluster API server and ServiceAccount token from the
-standard env vars (`KUBERNETES_SERVICE_HOST`, the mounted SA token at
-`/var/run/secrets/kubernetes.io/serviceaccount/`). No kubeconfig is handled
-inside this server.
+Helm picks up the in-cluster API server and ServiceAccount token from the standard env vars (`KUBERNETES_SERVICE_HOST`,
+the mounted SA token at `/var/run/secrets/kubernetes.io/serviceaccount/`). No kubeconfig is handled inside this server.
 
 ## RBAC
 
-**Do not bind this tool to `cluster-admin` by default.** Helm can install
-any chart, and with `cluster-admin` that means installing any workload
-anywhere — including ones that themselves hold `cluster-admin`. An
-LLM-driven caller should operate with the narrowest RBAC that lets the
-intended charts render, and only be widened deliberately. (See #770.)
+**Do not bind this tool to `cluster-admin` by default.** Helm can install any chart, and with `cluster-admin` that means
+installing any workload anywhere — including ones that themselves hold `cluster-admin`. An LLM-driven caller should
+operate with the narrowest RBAC that lets the intended charts render, and only be widened deliberately. (See #770.)
 
-The example below is a **read-only** baseline scoped to a single
-namespace: it lets the tool enumerate releases and read the chart
-state Helm persists in Secrets, but cannot `install`, `upgrade`,
-`rollback`, or `uninstall`. Add the write verbs (and the kind-specific
-verbs each chart needs) only when you accept the LLM writing to the
-cluster.
+The example below is a **read-only** baseline scoped to a single namespace: it lets the tool enumerate releases and read
+the chart state Helm persists in Secrets, but cannot `install`, `upgrade`, `rollback`, or `uninstall`. Add the write
+verbs (and the kind-specific verbs each chart needs) only when you accept the LLM writing to the cluster.
 
 ```yaml
 # Scoped ServiceAccount (same namespace as the mcp-helm Deployment).
@@ -86,12 +74,10 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-For write operations (`install`, `upgrade`, `rollback`, `uninstall`),
-extend this Role with the exact resources/verbs the target chart
-requires, or (when the chart spans namespaces) promote to a
-`ClusterRole` + `ClusterRoleBinding` and review carefully. Never
-grant `cluster-admin` as a shortcut — the blast radius of an LLM-driven
-misstep is then every workload in every namespace.
+For write operations (`install`, `upgrade`, `rollback`, `uninstall`), extend this Role with the exact resources/verbs
+the target chart requires, or (when the chart spans namespaces) promote to a `ClusterRole` + `ClusterRoleBinding` and
+review carefully. Never grant `cluster-admin` as a shortcut — the blast radius of an LLM-driven misstep is then every
+workload in every namespace.
 
 ## Tools
 
@@ -109,5 +95,5 @@ misstep is then every workload in every namespace.
 | `repo_add`      | Add a chart repository.                                                      |
 | `repo_update`   | Refresh local chart repo indexes.                                            |
 
-`install`/`upgrade` accept a `values` dict that is serialized to a temp YAML
-file and passed with `-f`; the file is removed after the call.
+`install`/`upgrade` accept a `values` dict that is serialized to a temp YAML file and passed with `-f`; the file is
+removed after the call.

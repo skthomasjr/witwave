@@ -4,4 +4,5 @@ description: Test continuation — fires after the trigger ping completes succes
 continues-after: trigger:ping
 delay: 5s
 ---
+
 Respond with CONTINUATION_TRIGGER_OK.

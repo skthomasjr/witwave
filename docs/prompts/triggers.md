@@ -70,18 +70,18 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 
 ## Frontmatter Fields
 
-| Field            | Required | Description                                                                                                                                                                 |
-| ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`       | Yes      | URL-safe slug served at `POST /triggers/{endpoint}`. Must match `^[a-z0-9][a-z0-9-]*$`.                                                                                     |
-| `name`           | No       | Display name used in logs and discovery. Defaults to the filename stem.                                                                                                     |
-| `description`    | No       | Human-readable summary. Included in the discovery endpoint response.                                                                                                        |
-| `enabled`        | No       | `false` disables without deleting. Default: `true`.                                                                                                                         |
+| Field            | Required | Description                                                                                                                                                               |
+| ---------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`       | Yes      | URL-safe slug served at `POST /triggers/{endpoint}`. Must match `^[a-z0-9][a-z0-9-]*$`.                                                                                   |
+| `name`           | No       | Display name used in logs and discovery. Defaults to the filename stem.                                                                                                   |
+| `description`    | No       | Human-readable summary. Included in the discovery endpoint response.                                                                                                      |
+| `enabled`        | No       | `false` disables without deleting. Default: `true`.                                                                                                                       |
 | `secret-env-var` | No       | Name of an environment variable holding an HMAC-SHA256 secret. When set and the env var is non-empty, harness validates `X-Hub-Signature-256` (GitHub-compatible format). |
-| `session`        | No       | Session ID override. Defaults to a deterministic UUID derived from `AGENT_NAME` and `endpoint`.                                                                             |
-| `model`          | No       | Model override passed to the backend.                                                                                                                                       |
-| `agent`          | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                                                             |
-| `consensus`      | No       | List of `{backend, model?}` entries to fan out to; empty list (default) disables consensus. Supports glob patterns in `backend`.                                           |
-| `max-tokens`     | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                                                             |
+| `session`        | No       | Session ID override. Defaults to a deterministic UUID derived from `AGENT_NAME` and `endpoint`.                                                                           |
+| `model`          | No       | Model override passed to the backend.                                                                                                                                     |
+| `agent`          | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                                                           |
+| `consensus`      | No       | List of `{backend, model?}` entries to fan out to; empty list (default) disables consensus. Supports glob patterns in `backend`.                                          |
+| `max-tokens`     | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                                                            |
 
 ## Auth Fallback Order
 
@@ -89,5 +89,5 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 2. Else if `TRIGGERS_AUTH_TOKEN` env var is non-empty → require `Authorization: Bearer <token>`.
 3. Else → reject with `401 Unauthorized`. At least one auth mechanism must be configured.
 
-**In-flight deduplication:** if a `POST` arrives while the same endpoint is already processing a prior request,
-harness returns `409 Conflict` and does not enqueue a second run.
+**In-flight deduplication:** if a `POST` arrives while the same endpoint is already processing a prior request, harness
+returns `409 Conflict` and does not enqueue a second run.

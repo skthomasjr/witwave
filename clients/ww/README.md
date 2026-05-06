@@ -183,7 +183,7 @@ Every command supports `--help`. Summary:
 | `ww validate <file>`       | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.                                                                                         |
 | `ww version`               | Print the version, commit, and build date. `--short` prints just the semver.                                                                                        |
 | `ww operator [cmd]`        | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster; plus `logs` and `events` for diagnostics. See below.             |
-| `ww workspace [cmd]`       | Manage `WitwaveWorkspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [WitwaveWorkspace management](#workspace-management).                           |
+| `ww workspace [cmd]`       | Manage `WitwaveWorkspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [WitwaveWorkspace management](#workspace-management).             |
 | `ww config [cmd]`          | Read, write, and inspect `ww` configuration values — `get`, `set`, `unset`, `list-keys`, `path`. See [Managing config from the CLI](#managing-config-from-the-cli). |
 | `ww update`                | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date).                                                                          |
 
@@ -463,12 +463,12 @@ LLM backends need an API key or OAuth token. `ww agent create` resolves per-back
 flags (pick ONE per backend; `--auth-set` is the only one that's repeatable for the same backend, accumulating into one
 Secret):
 
-| Flag              | Shape                        | Behavior                                                                                                                                                                                         |
-| ----------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--auth`          | `<backend>=<profile>`        | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>` Secret. MVP profiles: `claude: api-key \| oauth`.                                                       |
-| `--backend-secret-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Each VAR is bare `<NAME>` (Secret key matches name) or a rename `<SRC>:<DEST>` (read `$SRC`, store under key `DEST`).                                       |
-| `--auth-secret`   | `<backend>=<secret-name>`    | Reference an existing Secret (verified, never modified). Production default.                                                                                                                     |
-| `--auth-set`      | `<backend>:<KEY>=<VALUE>`    | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--backend-secret-from-env`.** |
+| Flag                        | Shape                        | Behavior                                                                                                                                                                                                   |
+| --------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--auth`                    | `<backend>=<profile>`        | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>` Secret. MVP profiles: `claude: api-key \| oauth`.                                                                 |
+| `--backend-secret-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Each VAR is bare `<NAME>` (Secret key matches name) or a rename `<SRC>:<DEST>` (read `$SRC`, store under key `DEST`).                                                   |
+| `--auth-secret`             | `<backend>=<secret-name>`    | Reference an existing Secret (verified, never modified). Production default.                                                                                                                               |
+| `--auth-set`                | `<backend>:<KEY>=<VALUE>`    | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--backend-secret-from-env`.** |
 
 ```bash
 # OAuth path — reads $CLAUDE_CODE_OAUTH_TOKEN from the shell
@@ -500,13 +500,13 @@ ww agent backend add hello claude \
 ```
 
 Minted Secrets carry `app.kubernetes.io/managed-by: ww` so `ww agent delete --purge` reaps them label-gated. Hand-rolled
-Secrets at the same name are refused — use `--auth-secret` to reference them instead, or `--backend-secret-from-env` with a
-non-colliding name. The `created-by` annotation on `--auth-set`-minted Secrets records key NAMES only (never values) so
-values don't leak into `kubectl get secret -o yaml` metadata.
+Secrets at the same name are refused — use `--auth-secret` to reference them instead, or `--backend-secret-from-env`
+with a non-colliding name. The `created-by` annotation on `--auth-set`-minted Secrets records key NAMES only (never
+values) so values don't leak into `kubectl get secret -o yaml` metadata.
 
 Editing or removing one key in an existing credential Secret without recreating the agent isn't covered by ww yet — use
-`kubectl edit secret <agent>-<backend> -n <ns>` for now. A follow-up
-`ww agent backend auth set/unset/list/show` subtree is on the roadmap.
+`kubectl edit secret <agent>-<backend> -n <ns>` for now. A follow-up `ww agent backend auth set/unset/list/show` subtree
+is on the roadmap.
 
 Namespace handling follows DESIGN.md NS-1..5:
 
@@ -522,9 +522,10 @@ Namespace handling follows DESIGN.md NS-1..5:
 - `-A` is only valid on `list` — never on `create`, `status`, `delete`, or any mutating verb. On `list` it's redundant
   (the default is already all-namespaces) but accepted for kubectl parity.
 
-Create waits up to `--timeout` (default `5m`) for the operator to report the agent Ready. On timeout, recent CR and pod events are dumped so cold image pulls can be distinguished from real failures (crashlooping containers, ImagePullBackOff). Pass `--no-wait` to return as
-soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `delete`) honour `--yes` /
-`WW_ASSUME_YES=true` and `--dry-run` the same way `ww operator install` does.
+Create waits up to `--timeout` (default `5m`) for the operator to report the agent Ready. On timeout, recent CR and pod
+events are dumped so cold image pulls can be distinguished from real failures (crashlooping containers,
+ImagePullBackOff). Pass `--no-wait` to return as soon as the CR is accepted (scripts + CI). All mutating commands
+(`create`, `delete`) honour `--yes` / `WW_ASSUME_YES=true` and `--dry-run` the same way `ww operator install` does.
 
 `ww agent send` uses the Kubernetes apiserver's built-in Service proxy so any `ClusterIP` Service is reachable without
 local port-forwarding or an external LoadBalancer. This makes round-trip A2A calls from a laptop against a cluster-only
@@ -599,15 +600,15 @@ ww workspace bind iris shared                                 # idempotent — r
 ww workspace unbind iris shared                               # drops the entry; does NOT delete the WitwaveWorkspace
 ```
 
-| Subcommand                     | Purpose                                                                                           |
-| ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `ww workspace create [name]`   | Create a WitwaveWorkspace from a YAML file (`-f`) or convenience flags (`--volume`, `--secret`).         |
-| `ww workspace list`            | Cluster-wide by default (NS-3 / kubectl parity); narrow with `-n`. Output `-o table\|yaml\|json`. |
-| `ww workspace get <name>`      | Fetch a single WitwaveWorkspace; default output is a one-row table; `-o yaml\|json` for the raw object.  |
-| `ww workspace status <name>`   | Curated human view: volumes, conditions, bound agents.                                            |
-| `ww workspace delete <name>`   | Delete the CR; `--wait` blocks on the refuse-delete finalizer.                                    |
-| `ww workspace bind <a> <ws>`   | Add `<ws>` to `<a>.spec.workspaceRefs[]`. Idempotent. Same-namespace only in v1alpha1.            |
-| `ww workspace unbind <a> <ws>` | Remove `<ws>` from `<a>.spec.workspaceRefs[]`. Does NOT delete the WitwaveWorkspace.                     |
+| Subcommand                     | Purpose                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `ww workspace create [name]`   | Create a WitwaveWorkspace from a YAML file (`-f`) or convenience flags (`--volume`, `--secret`).        |
+| `ww workspace list`            | Cluster-wide by default (NS-3 / kubectl parity); narrow with `-n`. Output `-o table\|yaml\|json`.       |
+| `ww workspace get <name>`      | Fetch a single WitwaveWorkspace; default output is a one-row table; `-o yaml\|json` for the raw object. |
+| `ww workspace status <name>`   | Curated human view: volumes, conditions, bound agents.                                                  |
+| `ww workspace delete <name>`   | Delete the CR; `--wait` blocks on the refuse-delete finalizer.                                          |
+| `ww workspace bind <a> <ws>`   | Add `<ws>` to `<a>.spec.workspaceRefs[]`. Idempotent. Same-namespace only in v1alpha1.                  |
+| `ww workspace unbind <a> <ws>` | Remove `<ws>` from `<a>.spec.workspaceRefs[]`. Does NOT delete the WitwaveWorkspace.                    |
 
 ### Flags
 
@@ -621,7 +622,7 @@ NS-3).
 
 | Flag                 | Shape                                        | Behaviour                                                                                                                                |
 | -------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `-f, --from-file`    | path                                         | YAML/JSON `WitwaveWorkspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                         |
+| `-f, --from-file`    | path                                         | YAML/JSON `WitwaveWorkspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                  |
 | `--volume`           | `<name>=<size>[@<storageClass>]`             | Repeatable. Defaults the access mode to `ReadWriteMany` (v1alpha1 contract — RWO is v1.x).                                               |
 | `--secret`           | `<name>` / `<name>@/abs/path` / `<name>=env` | Repeatable. Bare name = reference only; `@/abs/path` = mount; `=env` = project as `envFrom`. Anything else after `=` is rejected loudly. |
 | `--create-namespace` | bool                                         | Provision the namespace (labelled `app.kubernetes.io/managed-by: ww`) when missing. No-op otherwise.                                     |
@@ -632,8 +633,8 @@ before confirmation.
 
 For full control over reclaim policies, multiple `configFiles[]` entries, and other fields the convenience flags don't
 surface, author a YAML manifest and pass it via `-f`. The schema lives at
-[`operator/api/v1alpha1/witwaveworkspace_types.go`](../../operator/api/v1alpha1/witwaveworkspace_types.go) and a richer walk-through
-sits in [`operator/README.md`](../../operator/README.md#the-witwaveworkspace-resource).
+[`operator/api/v1alpha1/witwaveworkspace_types.go`](../../operator/api/v1alpha1/witwaveworkspace_types.go) and a richer
+walk-through sits in [`operator/README.md`](../../operator/README.md#the-witwaveworkspace-resource).
 
 ## Interactive TUI
 

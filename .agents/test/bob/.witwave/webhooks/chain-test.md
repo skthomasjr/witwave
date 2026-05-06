@@ -11,4 +11,5 @@ content-type: application/json
 headers:
   Authorization: "Bearer {{env.WEBHOOK_TEST_BEARER}}"
 ---
+
 {"event": "webhook-chain-test", "kind": "{{kind}}", "session_id": "{{session_id}}"}

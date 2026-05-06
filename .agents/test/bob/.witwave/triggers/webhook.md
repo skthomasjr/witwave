@@ -6,5 +6,5 @@ enabled: true
 secret-env-var: BOB_WEBHOOK_SECRET
 ---
 
-A webhook event has arrived. Parse the request body as JSON and summarize the event type and key fields.
-If the body is not JSON, describe the raw payload.
+A webhook event has arrived. Parse the request body as JSON and summarize the event type and key fields. If the body is
+not JSON, describe the raw payload.

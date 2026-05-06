@@ -5,4 +5,5 @@ continues-after:
   - job:fanin-a
   - job:fanin-b
 ---
+
 Respond with FANIN_OK.

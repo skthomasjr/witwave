@@ -3,7 +3,8 @@ description: Verifies that a continuation fires after an upstream job completes 
 enabled: true
 ---
 
-This test creates a run-once job and a matching continuation, fires the job on startup, and verifies the continuation fires.
+This test creates a run-once job and a matching continuation, fires the job on startup, and verifies the continuation
+fires.
 
 ## Setup
 
@@ -36,7 +37,8 @@ Wait 5 seconds for the file watchers to register both files.
 
 ## Verification
 
-Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until `CONTINUATION_PROBE_OK` appears.
+Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until
+`CONTINUATION_PROBE_OK` appears.
 
 ## Cleanup
 
@@ -47,7 +49,8 @@ rm .agents/test/bob/.witwave/continuations/continuation-probe.md
 
 ## Pass/Fail Criteria
 
-The test passes if `CONTINUATION_PROBE_OK` appears in the conversation log within 60 seconds.
-The test fails if `CONTINUATION_PROBE_OK` does not appear within 60 seconds.
+The test passes if `CONTINUATION_PROBE_OK` appears in the conversation log within 60 seconds. The test fails if
+`CONTINUATION_PROBE_OK` does not appear within 60 seconds.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

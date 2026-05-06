@@ -1,8 +1,8 @@
 # Webhooks
 
 Webhooks fire outbound HTTP POST requests after a prompt run completes. Each webhook is defined as a `*.md` file in the
-agent's `.witwave/webhooks/` directory. The webhook runner evaluates all filters after every prompt — from any source (A2A,
-heartbeat, job, task, trigger, continuation) — and POSTs to the subscription's URL only if all pass.
+agent's `.witwave/webhooks/` directory. The webhook runner evaluates all filters after every prompt — from any source
+(A2A, heartbeat, job, task, trigger, continuation) — and POSTs to the subscription's URL only if all pass.
 
 Webhooks complement inbound triggers: triggers are internet → agent; webhooks are agent → internet.
 
@@ -57,9 +57,8 @@ body: |
 ## Built-in Variables
 
 Available in the markdown body, `body:` template, and header values. **Not available in the `url:` field** —
-`{{env.VAR}}` and extracted variables are stripped from URLs to prevent SSRF via env exfiltration or
-extraction-steered redirects (#524). Use `url-env-var` when the destination URL is stored in an environment
-variable.
+`{{env.VAR}}` and extracted variables are stripped from URLs to prevent SSRF via env exfiltration or extraction-steered
+redirects (#524). Use `url-env-var` when the destination URL is stored in an environment variable.
 
 | Variable               | Value                                                     |
 | ---------------------- | --------------------------------------------------------- |
@@ -75,36 +74,36 @@ variable.
 | `{{timestamp}}`        | ISO 8601 UTC timestamp of delivery                        |
 | `{{delivery_id}}`      | UUID unique to this delivery attempt                      |
 
-`{{env.VAR}}` resolves the environment variable `VAR` at delivery time. Available in the markdown body,
-`body:` template, and header values. **Rejected in the `url:` field** — env-derived URLs must be placed
-in a single environment variable and referenced via `url-env-var` instead (#524). Only `http`/`https`
-schemes are accepted, and hosts resolving to loopback/link-local/private/reserved IP literals are blocked
-unless explicitly opted in via the harness `WEBHOOK_URL_ALLOWED_HOSTS` env var.
+`{{env.VAR}}` resolves the environment variable `VAR` at delivery time. Available in the markdown body, `body:`
+template, and header values. **Rejected in the `url:` field** — env-derived URLs must be placed in a single environment
+variable and referenced via `url-env-var` instead (#524). Only `http`/`https` schemes are accepted, and hosts resolving
+to loopback/link-local/private/reserved IP literals are blocked unless explicitly opted in via the harness
+`WEBHOOK_URL_ALLOWED_HOSTS` env var.
 
 Extracted variables (defined under `extract:`) are also available in the `body:` template and header values.
 
 ## Frontmatter Fields
 
-| Field                       | Required   | Description                                                                                                                                                            |
-| --------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Field                       | Required   | Description                                                                                                                                                                                                  |
+| --------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `url`                       | One of two | Literal webhook destination URL. `{{env.VAR}}` and extracted variables are **not** substituted here (#524); only `http`/`https` are accepted and private/loopback IP hosts are rejected unless allow-listed. |
-| `url-env-var`               | One of two | Name of an env var holding the destination URL. Use this instead of `url:` when the URL comes from the environment.                                                    |
-| `name`                      | No         | Display name used in logs and metrics. Defaults to filename stem.                                                                                                      |
-| `description`               | No         | Human-readable summary.                                                                                                                                                |
-| `enabled`                   | No         | `false` disables without deleting. Default: `true`.                                                                                                                    |
-| `notify-when`               | No         | `always`, `on_success` (default), or `on_error`.                                                                                                                       |
-| `notify-on-kind`            | No         | Glob pattern list matched against prompt kind. Omit to match all.                                                                                                      |
-| `notify-on-response`        | No         | Glob pattern list matched against response text. Omit to match all.                                                                                                    |
-| `content-type`              | No         | `Content-Type` header. Default: `application/json`.                                                                                                                    |
-| `headers`                   | No         | YAML map of additional HTTP headers. Values support `{{env.VAR}}` interpolation.                                                                                       |
-| `timeout`                   | No         | Request timeout. Format: `10s`, `30s`, `2m`. Default: `10s`.                                                                                                           |
-| `retries`                   | No         | Number of retry attempts on failure. Default: `0` (no retry).                                                                                                          |
-| `extract`                   | No         | YAML map of `variable_name: prompt`. Each prompt is sent to the LLM with the markdown body as context; the response becomes a variable available in `body:`.           |
-| `body`                      | No         | YAML literal block scalar (`body: \|`) used as the POST body template. Supports all variables including extracted ones. If omitted, the default JSON envelope is sent. |
-| `signing-secret-env-var`    | No         | Name of an env var holding an HMAC-SHA256 secret → `X-Hub-Signature-256` header (GitHub-compatible).                                                                   |
-| `max-concurrent-deliveries` | No         | Per-subscription cap on concurrent in-flight deliveries. Defaults to `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` (env var, default `10`).                              |
-| `model`                     | No         | Model override for LLM extraction calls.                                                                                                                               |
-| `agent`                     | No         | Backend ID override for LLM extraction calls (e.g. `codex`); defaults to routing config.                                                                               |
+| `url-env-var`               | One of two | Name of an env var holding the destination URL. Use this instead of `url:` when the URL comes from the environment.                                                                                          |
+| `name`                      | No         | Display name used in logs and metrics. Defaults to filename stem.                                                                                                                                            |
+| `description`               | No         | Human-readable summary.                                                                                                                                                                                      |
+| `enabled`                   | No         | `false` disables without deleting. Default: `true`.                                                                                                                                                          |
+| `notify-when`               | No         | `always`, `on_success` (default), or `on_error`.                                                                                                                                                             |
+| `notify-on-kind`            | No         | Glob pattern list matched against prompt kind. Omit to match all.                                                                                                                                            |
+| `notify-on-response`        | No         | Glob pattern list matched against response text. Omit to match all.                                                                                                                                          |
+| `content-type`              | No         | `Content-Type` header. Default: `application/json`.                                                                                                                                                          |
+| `headers`                   | No         | YAML map of additional HTTP headers. Values support `{{env.VAR}}` interpolation.                                                                                                                             |
+| `timeout`                   | No         | Request timeout. Format: `10s`, `30s`, `2m`. Default: `10s`.                                                                                                                                                 |
+| `retries`                   | No         | Number of retry attempts on failure. Default: `0` (no retry).                                                                                                                                                |
+| `extract`                   | No         | YAML map of `variable_name: prompt`. Each prompt is sent to the LLM with the markdown body as context; the response becomes a variable available in `body:`.                                                 |
+| `body`                      | No         | YAML literal block scalar (`body: \|`) used as the POST body template. Supports all variables including extracted ones. If omitted, the default JSON envelope is sent.                                       |
+| `signing-secret-env-var`    | No         | Name of an env var holding an HMAC-SHA256 secret → `X-Hub-Signature-256` header (GitHub-compatible).                                                                                                         |
+| `max-concurrent-deliveries` | No         | Per-subscription cap on concurrent in-flight deliveries. Defaults to `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` (env var, default `10`).                                                                    |
+| `model`                     | No         | Model override for LLM extraction calls.                                                                                                                                                                     |
+| `agent`                     | No         | Backend ID override for LLM extraction calls (e.g. `codex`); defaults to routing config.                                                                                                                     |
 
 ## Default Envelope
 

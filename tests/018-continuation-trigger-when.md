@@ -1,11 +1,16 @@
 ---
-description: Verifies that trigger-when filtering allows a continuation to fire only when the upstream response contains the expected string.
+description:
+  Verifies that trigger-when filtering allows a continuation to fire only when the upstream response contains the
+  expected string.
 enabled: true
 ---
 
-Bob has a continuation at `.agents/test/bob/.witwave/continuations/ping-delayed.md` with `continues-after: task:Task Ping` and `trigger-when: TASK_OK`. This continuation only fires if the upstream response contains `TASK_OK`.
+Bob has a continuation at `.agents/test/bob/.witwave/continuations/ping-delayed.md` with
+`continues-after: task:Task Ping` and `trigger-when: TASK_OK`. This continuation only fires if the upstream response
+contains `TASK_OK`.
 
-This test uses a different approach — create two continuations on the same upstream (trigger:ping): one with a `trigger-when` string that will appear in the response, and one with a string that will not. Only the first should fire.
+This test uses a different approach — create two continuations on the same upstream (trigger:ping): one with a
+`trigger-when` string that will appear in the response, and one with a string that will not. Only the first should fire.
 
 ## Setup
 
@@ -65,9 +70,11 @@ rm .agents/test/bob/.witwave/continuations/trigger-when-nomatch.md
 ## Pass/Fail Criteria
 
 The test passes if:
+
 1. `TRIGGER_WHEN_MATCH_FIRED` appears in the log within 60 seconds.
 2. `TRIGGER_WHEN_NOMATCH_FIRED` does NOT appear in the log.
 
 The test fails if `TRIGGER_WHEN_MATCH_FIRED` is absent, or if `TRIGGER_WHEN_NOMATCH_FIRED` appears.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
+the issue. Only fix tooling or execution problems that prevent the test itself from running.**

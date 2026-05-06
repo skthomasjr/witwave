@@ -25,11 +25,14 @@ about: A new capability derived from an approved request
 
 **Design:** <suggested implementation approach, or `unknown`>
 
-**Breaking changes:** <does this alter existing behavior in a way that could break current workflows? yes | no — if yes, describe the impact>
+**Breaking changes:** <does this alter existing behavior in a way that could break current workflows? yes | no — if yes,
+describe the impact>
 
-**User communication:** <does this require documentation, help text updates, or notification to users or agents? yes | no — if yes, describe what>
+**User communication:** <does this require documentation, help text updates, or notification to users or agents? yes |
+no — if yes, describe what>
 
 **Depends on:**
+
 - none
 
 **Acceptance criteria:**

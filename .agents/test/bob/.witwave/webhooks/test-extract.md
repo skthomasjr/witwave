@@ -11,7 +11,9 @@ content-type: application/json
 headers:
   Authorization: "Bearer {{env.WEBHOOK_TEST_BEARER}}"
 extract:
-  extracted_word: Read the text below and return only the word that appears between the tokens EXTRACT_START and EXTRACT_END. Return that single word and nothing else.
+  extracted_word:
+    Read the text below and return only the word that appears between the tokens EXTRACT_START and EXTRACT_END. Return
+    that single word and nothing else.
 body: |
   {"event": "extract-test", "extracted": "{{extracted_word}}", "agent": "{{agent}}"}
 ---

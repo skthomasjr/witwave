@@ -40,21 +40,21 @@ highest-priority item for today. When done, respond with STANDUP_DONE.
 
 ## Frontmatter Fields
 
-| Field             | Required | Description                                                                                                              |
-| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem.                                                        |
-| `description`     | No       | Human-readable summary.                                                                                                  |
-| `start`           | No       | Earliest date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no lower bound.                            |
-| `end`             | No       | Last date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no expiry.                                     |
-| `days`            | No       | Cron weekday expression — numeric (`1-5`, `1,3,5`) or abbreviation (`Mon-Fri`, `Mon,Wed,Fri`). Default: `*` (every day). |
-| `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start`. Default: `UTC`.                                     |
-| `window-start`    | Yes      | Start of the daily run window (`HH:MM` in the task's time zone).                                                         |
-| `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Required to enable looping.                |
-| `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-duration`. Default: `false`.                 |
-| `loop-gap`        | No       | Pause after a run completes before the next iteration. Format: `30s`, `15m`, `1h`, `1h30m`. Default: no pause.           |
-| `done-when`       | No       | Stop looping for the day if the backend response contains this string.                                                   |
-| `model`           | No       | Model override passed to the backend.                                                                                    |
-| `agent`           | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                          |
-| `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                                      |
+| Field             | Required | Description                                                                                                                      |
+| ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem.                                                                |
+| `description`     | No       | Human-readable summary.                                                                                                          |
+| `start`           | No       | Earliest date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no lower bound.                                    |
+| `end`             | No       | Last date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no expiry.                                             |
+| `days`            | No       | Cron weekday expression — numeric (`1-5`, `1,3,5`) or abbreviation (`Mon-Fri`, `Mon,Wed,Fri`). Default: `*` (every day).         |
+| `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start`. Default: `UTC`.                                             |
+| `window-start`    | Yes      | Start of the daily run window (`HH:MM` in the task's time zone).                                                                 |
+| `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Required to enable looping.                        |
+| `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-duration`. Default: `false`.                         |
+| `loop-gap`        | No       | Pause after a run completes before the next iteration. Format: `30s`, `15m`, `1h`, `1h30m`. Default: no pause.                   |
+| `done-when`       | No       | Stop looping for the day if the backend response contains this string.                                                           |
+| `model`           | No       | Model override passed to the backend.                                                                                            |
+| `agent`           | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                  |
+| `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                                              |
 | `consensus`       | No       | List of `{backend, model?}` entries to fan out to; empty list (default) disables consensus. Supports glob patterns in `backend`. |
-| `max-tokens`      | No       | Token budget for this dispatch. Stop and return partial response when reached.                                           |
+| `max-tokens`      | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                   |

@@ -9,5 +9,5 @@ The request body above contains a JSON payload. Read the value of the "token" fi
 
 ECHO:<token value>
 
-For example, if the payload is {"token": "abc123"}, respond with ECHO:abc123.
-If the body is not valid JSON or the "token" field is missing, respond with ECHO:MISSING.
+For example, if the payload is {"token": "abc123"}, respond with ECHO:abc123. If the body is not valid JSON or the
+"token" field is missing, respond with ECHO:MISSING.

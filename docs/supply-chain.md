@@ -17,12 +17,12 @@ and is out of proportion to the project's threat model today.
 
 ## What's attested, per artifact
 
-| Artifact | Cosign signature | SLSA provenance | SBOM |
-|---|---|---|---|
-| Container images (`ghcr.io/witwave-ai/images/*`) | ✅ keyless, on the image digest | ✅ buildx attestation, attached to the image index | ✅ SPDX, attached to the image index |
-| `ww` CLI binaries (`.tar.gz` per platform) | ✅ keyless, via goreleaser, `.cosign.bundle` per archive | ✅ `slsa-github-generator` `.intoto.jsonl` asset on the GitHub Release | ✅ SPDX, archive-scoped (goreleaser) |
-| Helm charts (`oci://ghcr.io/witwave-ai/charts/*`) | ✅ keyless, on the chart's OCI digest | — (not pursued; the cosign signature + the underlying-image attestations are sufficient) | — |
-| Embedded chart in `ww` binary (the chart `ww operator install` deploys) | (transitively, via the binary signature + SLSA predicate) | ✅ content-hash subject in the binary's SLSA predicate | — |
+| Artifact                                                                | Cosign signature                                          | SLSA provenance                                                                          | SBOM                                 |
+| ----------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------ |
+| Container images (`ghcr.io/witwave-ai/images/*`)                        | ✅ keyless, on the image digest                           | ✅ buildx attestation, attached to the image index                                       | ✅ SPDX, attached to the image index |
+| `ww` CLI binaries (`.tar.gz` per platform)                              | ✅ keyless, via goreleaser, `.cosign.bundle` per archive  | ✅ `slsa-github-generator` `.intoto.jsonl` asset on the GitHub Release                   | ✅ SPDX, archive-scoped (goreleaser) |
+| Helm charts (`oci://ghcr.io/witwave-ai/charts/*`)                       | ✅ keyless, on the chart's OCI digest                     | — (not pursued; the cosign signature + the underlying-image attestations are sufficient) | —                                    |
+| Embedded chart in `ww` binary (the chart `ww operator install` deploys) | (transitively, via the binary signature + SLSA predicate) | ✅ content-hash subject in the binary's SLSA predicate                                   | —                                    |
 
 All cosign signatures are **keyless** — no long-lived signing keys live in this repo. The signing identity is the
 release workflow, bound to the tag the artifact was built from. Sigstore (Fulcio + Rekor) is operated by the Linux
@@ -60,8 +60,8 @@ nothing changes for users who don't want to verify.
 ### 2. Per-artifact verify
 
 Each install path has a documented verification recipe in
-[`SECURITY.md`](../SECURITY.md#verifying-signed-release-artefacts). Run the cosign / slsa-verifier / `docker buildx
-imagetools inspect` recipe before consuming the artifact. Manual but visible.
+[`SECURITY.md`](../SECURITY.md#verifying-signed-release-artefacts). Run the cosign / slsa-verifier /
+`docker buildx imagetools inspect` recipe before consuming the artifact. Manual but visible.
 
 ### 3. Cluster-wide enforcement (admission control)
 
@@ -77,9 +77,9 @@ Run a verifying admission controller in the cluster, and configure it to require
 - **[slsa-verifier](https://github.com/slsa-framework/slsa-verifier)** for the CLI binaries — drop it into your build
   pipeline that consumes `ww` and require successful verification before installing.
 
-The witwave-operator chart does not ship such a policy by default. It's an operator opt-in — adding it without
-opt-in would refuse unsigned third-party images that operators have legitimate reasons to run. File an issue if you'd
-like a sample policy bundle.
+The witwave-operator chart does not ship such a policy by default. It's an operator opt-in — adding it without opt-in
+would refuse unsigned third-party images that operators have legitimate reasons to run. File an issue if you'd like a
+sample policy bundle.
 
 ## Tag housekeeping for users who care
 
@@ -88,15 +88,15 @@ type may have failed mid-flight on its first release tag, leaving some artifacts
 strict-verification clusters should pin to **v0.9.5+** (where chart cosign signing landed cleanly) or **v0.9.6+** (where
 the CLI SLSA predicate landed cleanly).
 
-| Tag | Notes |
-|---|---|
-| ≤ v0.9.0 | Pre-supply-chain-rollout. Cosign signatures only on images + CLI; no SLSA, no SBOM, no chart signing. |
-| v0.9.1 | First post-rename release. Same posture as ≤v0.9.0. |
-| v0.9.2 | **Partial release** — image push failed on the first attempt at item 1. Charts + CLI shipped; images did not. Skip. |
-| v0.9.3 | Image-tier complete (item 1). |
-| v0.9.4 | **Partial release** — chart cosign push failed on the first attempt at item 3 (auth bug). Images + CLI shipped; charts did not. Skip. |
-| v0.9.5 | Chart-tier complete (item 3). |
-| v0.9.6+ | CLI SLSA predicate complete (items 2 + 4). Full attestation set. |
+| Tag      | Notes                                                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ≤ v0.9.0 | Pre-supply-chain-rollout. Cosign signatures only on images + CLI; no SLSA, no SBOM, no chart signing.                                 |
+| v0.9.1   | First post-rename release. Same posture as ≤v0.9.0.                                                                                   |
+| v0.9.2   | **Partial release** — image push failed on the first attempt at item 1. Charts + CLI shipped; images did not. Skip.                   |
+| v0.9.3   | Image-tier complete (item 1).                                                                                                         |
+| v0.9.4   | **Partial release** — chart cosign push failed on the first attempt at item 3 (auth bug). Images + CLI shipped; charts did not. Skip. |
+| v0.9.5   | Chart-tier complete (item 3).                                                                                                         |
+| v0.9.6+  | CLI SLSA predicate complete (items 2 + 4). Full attestation set.                                                                      |
 
 Pinning charts + images + CLI together at the same tag is recommended; the image and chart attestations both name the
 release tag in their predicate subject, so version skew between them undermines the trust story.
