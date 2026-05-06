@@ -217,9 +217,9 @@ func TestParseHarnessEnvs_RejectsDuplicate(t *testing.T) {
 func TestParseHarnessEnvs_BadShape(t *testing.T) {
 	t.Parallel()
 	cases := []string{
-		"TASK_TIMEOUT_SECONDS",   // missing =
-		"=2700",                  // empty key
-		"TASK_TIMEOUT_SECONDS=",  // empty value
+		"TASK_TIMEOUT_SECONDS",  // missing =
+		"=2700",                 // empty key
+		"TASK_TIMEOUT_SECONDS=", // empty value
 	}
 	for _, raw := range cases {
 		t.Run(raw, func(t *testing.T) {
