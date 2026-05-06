@@ -6,6 +6,71 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-05-06
+
+Team-participation arc: every self-agent gains generic A2A peer discovery + call skills, nova lands as the third
+self-agent (full code-hygiene identity, skill set, and image toolchain), kira's docs surface grows a research skill plus
+Tier 2 verify/consistency checks under a new `docs-cleanup` orchestrator, and `ww` gains a `--harness-env` flag that
+closes the cross-agent timeout trap where `TASK_TIMEOUT_SECONDS` set on the backend alone left the harness retrying
+long-running relays at the 5-minute default.
+
+### Added
+
+- **ww**: `--harness-env <KEY>=<VALUE>` flag on `ww agent create`, repeatable. Stamps `spec.env[]` on the harness
+  container so settings like `TASK_TIMEOUT_SECONDS` propagate to the harness's A2A relay timeout (read at startup as
+  `max(TASK_TIMEOUT_SECONDS - 10, 10)`). Closes the failure mode where iris→kira docs-scan calls retried mid-relay and
+  produced duplicate work because the backend's longer timeout wasn't matched on the harness.
+- **backends**: nova's code-hygiene toolchain installed uniformly in claude, codex, and gemini images — Go 1.23.4 +
+  goimports, shfmt 3.10.0, shellcheck, actionlint 1.7.7, hadolint 2.12.0, helm 3.16.3, ruff 0.6.9, yamllint 1.35.1.
+  ~205 MB image growth (Go is the bulk). Echo image stays minimal by design.
+
+### Agent identity
+
+- **self (iris/kira/nova)**: `discover-peers` + `call-peer` skills installed identically across all three agents.
+  Discovery introspects Kubernetes-injected service env vars (`<NAME>_SERVICE_HOST` / `_PORT`) and probes each
+  candidate's `/.well-known/agent.json`, caching confirmed peers as reference-type memory entries. `call-peer` builds a
+  JSON-RPC `message/send` envelope (blocking, fresh messageId), POSTs, parses the response, and surfaces typed
+  diagnostics for the standard `-32001` / `-32603` error codes. Same-namespace only; pod restart required to discover
+  newly-deployed siblings.
+- **nova**: scaffolded as the team's third self-agent — owner of the CODE-INTERNAL COMPREHENSION SUBSTRATE (code
+  comments as the way future contributors and AI agents understand existing behaviour). Identity (CLAUDE.md +
+  agent-card), team-participation files (HEARTBEAT, backend.yaml, git-identity, git-push), and four code-domain skills:
+  `code-format` (Tier 1 mechanical fixes via ruff/gofmt/goimports/shfmt/prettier/yamllint), `code-verify` (Tier 2 read-
+  only cross-checks of docstrings vs signatures, godoc vs exported APIs, helm-docs comments vs template usage),
+  `code-document` (Tier 3 grounded authoring of missing comments — every claim must be derivable from the code body),
+  and `code-cleanup` (Tier 1 + 2 orchestrator that delegates publishing to iris). Helm chart values are first-class
+  targets. Infrastructure source — Dockerfiles, shell scripts, GitHub Actions workflows — is included in scope across
+  every nova skill (shellcheck, hadolint, actionlint added to Tier 1; new check classes D/E/F in Tier 2; new authoring
+  categories D/E/F in Tier 3).
+- **kira**: `docs-research` skill — the only docs skill that reaches outside the repo. Targets forward-looking Cat C
+  documents (`competitive-landscape.md`, `product-vision.md`, `architecture.md`); verifies existing URLs still resolve,
+  rechecks named projects for currency, and adds up to 3 new competitive-landscape entries per run. Citation discipline
+  is the load-bearing rule: every new claim must end with `(source: <url>, accessed YYYY-MM-DD)`. One commit per target
+  doc; push delegated to iris.
+- **kira**: Tier 2 docs skills — `docs-verify` cross-checks Cat C documentation against current code (broken paths,
+  command examples, env-var names, version numbers, identifiers); `docs-consistency` runs cross-doc agreement checks on
+  Cat C (versions, subproject README claims, command-surface drift). Both are memory-log only — every finding is an
+  "update doc OR fix code" judgment call. New `docs-cleanup` orchestrator runs the full sweep (Tier 1 on all `.md`,
+  Tier 2 on Cat C only) and delegates publishing to iris. `docs-validate` extended to wrap long YAML frontmatter
+  `description:` strings via folded scalars so the `printWidth=120` convention applies there too. `docs-scan` updated
+  to delegate push via `call-peer` instead of invoking `git-push` directly — kira-commits / iris-pushes contract now
+  applied uniformly across both orchestrators.
+- **kira**: identity tightened around the docs-as-communication-channel framing (CLAUDE.md + agent-card). Two distinct
+  audiences — humans reading the repo and downstream automated processes that ingest forward-looking docs for feature
+  discovery / planning — make drift propagate downstream as wrong code changes or miscalibrated planning. Stale claims
+  dropped from agent-card ("every 6 hours" cadence, "pushes the batch herself", AGENTS.md/CLAUDE.md autofix scope).
+- **iris**: identity tightened around the choke-point framing (CLAUDE.md + agent-card). Iris is the team's choke point
+  for everything reaching `origin/main` — every commit by any agent reaches origin through iris; every tagged release
+  happens through iris. The kira-commits / iris-pushes `call-peer` pattern is now made explicit in Responsibility 2.
+  agent-card rewritten end-to-end to drop the source-tree-as-user-capability framing (iris owns it autonomously as a
+  precondition).
+
+### Documentation
+
+- **bootstrap**: Step 5 added for nova deploy — mirrors Step 4 (kira) with nova-specific env-var lifts
+  (`GITHUB_TOKEN_NOVA` / `GITHUB_USER_NOVA`) and the paired `TASK_TIMEOUT_SECONDS=2700` on both harness and backend.
+  Goal section, env-vars block, verify section ("three rows"), and teardown updated for the three-agent footprint.
+
 ## [0.13.0] — 2026-05-02
 
 A2A correctness arc: blocking-call response truncation fixed, hook-event field corrected, and the streaming capability
