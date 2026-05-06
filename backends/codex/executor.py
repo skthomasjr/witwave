@@ -749,8 +749,8 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         if result.returncode != 0 and result.stderr:
             out += result.stderr
         return out
-    except subprocess.TimeoutExpired:
-        raise ShellTimeoutError(f"Command timed out after {timeout_s}s")
+    except subprocess.TimeoutExpired as exc:
+        raise ShellTimeoutError(f"Command timed out after {timeout_s}s") from exc
     except Exception as exc:
         raise ShellExecutionError(f"Shell error: {exc}") from exc
 
