@@ -92,7 +92,100 @@ Capture: (a) the list of files fixed; (b) the list of remaining
 diagnostics that need human attention. The latter goes to
 deferred-findings memory.
 
-### 5. Report
+### 5. Project-specific formatting (post-Prettier touchups)
+
+Two project-specific rules that Prettier doesn't enforce on its
+own and that need to ride alongside the Tier 1 mechanical pass:
+
+#### Rule A — Markdown tables stay column-aligned
+
+Prettier's default behaviour DOES re-pad markdown table columns
+(`| --- | --- |` separators get aligned to the widest cell in
+each column). After step 3 (Prettier), this rule is normally
+already satisfied — but verify because:
+
+- Files in `.prettierignore` are skipped by Prettier; if any
+  contain markdown tables, those won't have been re-padded.
+- "Tables" inside fenced code blocks (```` ```markdown ... ```` )
+  aren't real markdown tables and Prettier won't touch them — but
+  if a doc claims to show a table example, the example should
+  still look aligned. That's an authorial choice; flag in memory
+  rather than auto-fix.
+
+For each ignored-but-tabled file, log a one-line entry to
+deferred-findings memory. Don't try to format ignored files —
+they're excluded for a reason.
+
+#### Rule B — YAML frontmatter line lengths
+
+Markdown files with YAML frontmatter (the `---`-bracketed block
+at the top of every `SKILL.md`, `HEARTBEAT.md`, deferred-findings
+memory entry, etc.) frequently have **single-line string values
+that blow past the prose `printWidth` limit**. Prettier formats
+the markdown body but treats the frontmatter as opaque YAML and
+leaves long lines alone. The end state: prose stays at
+proseWrap=120 but the frontmatter `description:` runs 300+
+characters on one line, which reads badly in any narrow editor.
+
+Apply this rule:
+
+- For each `*.md` file with YAML frontmatter, parse the
+  frontmatter block (lines between the opening and closing `---`).
+- For each string-valued key whose serialised line exceeds the
+  configured `printWidth` from `.prettierrc.yaml` (currently
+  120):
+  - Rewrite the value as a YAML **folded scalar** using `>-`
+    (folded, strip-trailing-newlines) so the YAML semantics are
+    preserved (folded scalars collapse to a single string with
+    spaces between wrapped lines).
+  - Wrap the content to `printWidth - 2` columns of prose (the
+    `-2` accounts for the YAML indent), preserving any inline
+    backticks, links, and punctuation.
+  - Indent each wrapped line two spaces relative to the key, per
+    YAML folded-scalar convention.
+
+Example transformation:
+
+```yaml
+# before — one long line, hard to scan in a narrow editor
+description: Validate and auto-fix markdown formatting and prose-syntax across the repo's documentation surface. Runs the same markdownlint + prettier toolchain that CI does, applies safe auto-fixes, and reports what changed. Trigger when the user says "validate docs", "lint docs", "fix doc formatting".
+```
+
+```yaml
+# after — folded scalar, wraps at proseWrap=120
+description: >-
+  Validate and auto-fix markdown formatting and prose-syntax across the
+  repo's documentation surface. Runs the same markdownlint + prettier
+  toolchain that CI does, applies safe auto-fixes, and reports what
+  changed. Trigger when the user says "validate docs", "lint docs",
+  "fix doc formatting".
+```
+
+Implementation: a small Python script using `yaml.safe_load` to
+parse and `yaml.safe_dump(..., default_style='>', width=N)` to
+re-emit (or hand-rolled wrapping if PyYAML's defaults don't match
+exactly). Run inside the workspace checkout, write changes
+in-place, capture the list of files modified.
+
+After this rule fires, re-run Prettier once more — the
+frontmatter rewrite shouldn't change the markdown body, but
+running Prettier again is a cheap idempotent verification that
+the file still satisfies the formatter.
+
+#### Reporting these touchups
+
+Both rules' modifications count toward the "files modified" count
+in step 6's report, broken out separately so the orchestrator
+(`docs-scan` / `docs-cleanup`) can group them into their own
+commit:
+
+> `docs: format YAML frontmatter to respect printWidth`
+
+(Or include them in the main `docs: apply markdownlint + prettier
+auto-fixes` commit if the orchestrator prefers a single batch —
+that's the orchestrator's call, not this skill's.)
+
+### 6. Report
 
 Return a structured summary to the caller:
 

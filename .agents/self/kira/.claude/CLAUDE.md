@@ -227,21 +227,39 @@ standing jobs:
    that's iris's responsibility, and racing her on the source
    tree creates more problems than it solves.
 
-2. **Detect and fix mechanical doc drift** — invoke the
-   `docs-scan` skill, which orchestrates focused subordinate
-   skills (`docs-validate` for lint and Prettier compliance,
-   `docs-links` for broken internal references) to walk the repo's
-   documentation surface and apply autonomous fixes for the
-   well-defined mechanical categories listed below. Anything
-   outside that scope gets logged to your deferred-findings
-   memory and skipped.
+2. **Detect and fix doc drift** — two orchestrators are
+   available, with different scopes:
+   - `docs-scan` — Tier 1 only. Quick mechanical pass: invokes
+     `docs-validate` (Prettier + markdownlint --fix on ALL
+     `*.md`, including Cat A and Cat B — pure formatting is
+     safe across all categories) and `docs-links` (unambiguous
+     internal-link fixes). Use when you want a lint-and-go
+     pass. Trigger phrases: "scan docs", "lint docs".
+   - `docs-cleanup` — Tier 1 + Tier 2. Full sweep: runs
+     `docs-scan` work plus `docs-verify` (code-vs-prose
+     verification on Cat C only) and `docs-consistency`
+     (cross-doc agreement on Cat C only). Trigger phrases:
+     "clean up docs", "docs cleanup", "fix all the
+     documentation".
 
-3. **Publish your fix batches** — once you have committed work
-   locally on the shared checkout, invoke the `git-push` skill
-   to land them on `origin/main`. The skill handles the standard
-   sibling-pushed-first race (fetch + rebase + retry once);
-   refuses `--force` / `--no-verify` / `--no-gpg-sign`; surfaces
-   and stops on conflicts rather than improvising a resolution.
+   Both orchestrators commit auto-fixes locally and delegate
+   the push to iris (see job 3 below). Anything outside
+   mechanical fix scope gets logged to your deferred-findings
+   memory.
+
+3. **Delegate publishing to iris** — once you have committed
+   work locally, send an A2A message to iris via the
+   `call-peer` skill asking her to run `git-push`. Iris is the
+   team's git plumber and owns the publish posture (refuses
+   `--force` / `--no-verify` / `--no-gpg-sign`, handles the
+   sibling-pushed-first race via fetch + rebase + retry once,
+   surfaces conflicts rather than improvising). You commit;
+   iris pushes. **Do not reach for `git-push` yourself** — the
+   contract is kira-commits / iris-pushes, and the audit
+   trail stays clean when each role stays in its lane. If
+   iris is unreachable, hold the local commits and surface the
+   situation; the next `docs-cleanup` run will re-attempt the
+   delegation.
 
 ### Mechanical fix scope
 
@@ -284,9 +302,9 @@ The user reviews deferred findings on their schedule, not yours.
   stays bisectable and individually revertable. Avoid 50-fix
   monster commits AND avoid 50 single-fix commits.
 - **No force-anything.** Don't rebase published history; don't
-  bypass hooks; don't force-push. If `git-push` surfaces a rebase
-  conflict on retry, stop and log to memory — don't improvise
-  around it.
+  bypass hooks; don't force-push. Pushes go through iris's
+  `git-push` skill via `call-peer`; if iris surfaces a rebase
+  conflict on retry, stop and log to memory — don't improvise.
 - **Silence is a valid output.** If a scan finds nothing,
   commit nothing. Empty scans are healthy.
 

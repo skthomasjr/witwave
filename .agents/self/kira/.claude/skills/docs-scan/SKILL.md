@@ -1,6 +1,6 @@
 ---
 name: docs-scan
-description: The top-level docs maintenance orchestrator. Verifies the source tree, pins git identity, runs each focused docs skill (validate + links), commits the resulting changes per category, and pushes the batch via git-push. Invoked by the heartbeat on schedule and on demand. Trigger when the user says "scan docs", "check documentation", "run docs maintenance", or similar.
+description: Tier 1 docs orchestrator — quick mechanical pass. Verifies the source tree, pins git identity, runs each focused Tier 1 docs skill (validate + links), commits the resulting changes per category, and delegates the push to iris via `call-peer`. For the full Tier 1 + Tier 2 sweep that also runs `docs-verify` and `docs-consistency`, use `docs-cleanup` instead. Trigger when the user says "scan docs", "check documentation", "run docs maintenance", or similar.
 version: 0.1.0
 ---
 
@@ -99,12 +99,25 @@ git -C <checkout> log --oneline ${PRE_SCAN_SHA}..HEAD
   "scan clean, no changes" to the caller and exit.
 - **One or more commits** → proceed to push.
 
-### 7. Push the batch
+### 7. Delegate the push to iris
 
-Invoke the `git-push` skill. It handles the standard sibling-
-pushed-first race and refuses footgun flags. If push fails (race
-on retry, conflict, auth), surface the failure verbatim and stop
-— don't improvise.
+Don't push yourself — the contract per CLAUDE.md is
+kira-commits / iris-pushes. Invoke the `call-peer` skill with
+`iris` as the target peer and a self-contained prompt:
+
+> *"docs-scan batch ready to publish. <N> commit(s) on
+> `<branch>` since `<PRE_SCAN_SHA>`. Subjects:*
+>
+> - *<commit subject 1>*
+> - *<commit subject 2>*
+>
+> *Please run `git-push` to land them on origin/<branch>."*
+
+Capture iris's reply. Success = pushed commit range; failure =
+verbatim error from her side. Don't improvise around her
+decision (no `git-push` from kira even when the skill is no
+longer installed; if iris is down, the local commits stay
+unpushed until next attempt).
 
 ### 8. Report
 
