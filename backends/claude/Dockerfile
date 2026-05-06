@@ -50,9 +50,11 @@ RUN apt-get update && apt-get install -y shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
 # Go toolchain — needed for gofmt + goimports (nova code-format Go
-# pass). Pin the version so image rebuilds are reproducible. We install
-# goimports via `go install` then keep the whole toolchain because
-# gofmt is part of it (no point in stripping back to fragments).
+# pass) and for evan's bug-class analyzers (staticcheck SA-rules,
+# errcheck, ineffassign, controller-gen drift check). Pin every
+# version so image rebuilds are reproducible. We keep the whole
+# toolchain because gofmt is part of it and `go install` of any
+# pure-Go tool needs the compiler regardless.
 ARG GO_VERSION=1.23.4
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
@@ -68,8 +70,16 @@ ENV PATH="/usr/local/go/bin:/usr/local/bin:$PATH" \
     GOPATH="/usr/local/gopath" \
     GOFLAGS="-mod=mod"
 ARG GOIMPORTS_VERSION=v0.27.0
+ARG STATICCHECK_VERSION=2024.1.1
+ARG ERRCHECK_VERSION=v1.7.0
+ARG INEFFASSIGN_VERSION=v0.1.0
+ARG CONTROLLER_GEN_VERSION=v0.16.5
 RUN go install "golang.org/x/tools/cmd/goimports@${GOIMPORTS_VERSION}" \
-    && cp "$GOPATH/bin/goimports" /usr/local/bin/goimports \
+    && go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" \
+    && go install "github.com/kisielk/errcheck@${ERRCHECK_VERSION}" \
+    && go install "github.com/gordonklaus/ineffassign@${INEFFASSIGN_VERSION}" \
+    && go install "sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}" \
+    && cp "$GOPATH/bin/"* /usr/local/bin/ \
     && rm -rf "$GOPATH"
 
 # shfmt — shell-script formatter (nova code-format auto-fix path).
