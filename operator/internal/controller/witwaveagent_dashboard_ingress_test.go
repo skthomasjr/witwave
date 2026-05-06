@@ -162,8 +162,8 @@ func diAgent(name string) *witwavev1alpha1.WitwaveAgent {
 
 func TestBuildDashboardIngress_DisabledReturnsNil(t *testing.T) {
 	cases := map[string]*witwavev1alpha1.WitwaveAgent{
-		"nil agent":           nil,
-		"nil dashboard":       {ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: "ns"}},
+		"nil agent":     nil,
+		"nil dashboard": {ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: "ns"}},
 		"dashboard disabled": {
 			ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: "ns"},
 			Spec: witwavev1alpha1.WitwaveAgentSpec{

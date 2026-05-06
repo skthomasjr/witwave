@@ -329,9 +329,9 @@ func TestWitwaveWorkspaceReclaimRetainKeepsPVC(t *testing.T) {
 			Name:      WitwaveWorkspaceVolumePVCName(ws.Name, "memory"),
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
-				labelManagedBy:           managedBy,
+				labelManagedBy:                  managedBy,
 				labelWitwaveWorkspaceName:       ws.Name,
-				labelComponent:           componentWitwaveWorkspaceVolume,
+				labelComponent:                  componentWitwaveWorkspaceVolume,
 				labelWitwaveWorkspaceVolumeName: "memory",
 			},
 			OwnerReferences: []metav1.OwnerReference{

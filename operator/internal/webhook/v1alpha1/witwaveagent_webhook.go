@@ -330,8 +330,8 @@ func validateCors(agent *witwavev1alpha1.WitwaveAgent) error {
 	}
 	if hasWildcard && !agent.Spec.Cors.AllowWildcard {
 		return apierrors.NewForbidden(witwaveagentGR, agent.Name, fmt.Errorf(
-			"spec.cors.allowOrigins contains \"*\" without spec.cors.allowWildcard=true; " +
-				"a wildcard origin combined with credentialed routes (/triggers, /conversations) " +
+			"spec.cors.allowOrigins contains \"*\" without spec.cors.allowWildcard=true; "+
+				"a wildcard origin combined with credentialed routes (/triggers, /conversations) "+
 				"is a disclosure-hole — set allowWildcard=true to acknowledge the risk explicitly (#763, #1748)",
 		))
 	}

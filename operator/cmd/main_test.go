@@ -139,7 +139,6 @@ func TestValidateLeaderElectionFlags(t *testing.T) {
 	}
 }
 
-
 // TestRenewFailureCounterWired (#1739) pins the wiring of
 // WitwaveAgentLeaderElectionRenewFailuresTotal at the cmd-main level.
 // The counter was declared and registered for over a release cycle

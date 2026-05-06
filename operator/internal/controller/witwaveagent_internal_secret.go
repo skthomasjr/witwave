@@ -68,7 +68,7 @@ const componentInternal = "internal"
 // keys in the Secret so either resolution path lands the token without
 // the legacy-fallback warning fire.
 const (
-	internalSecretAuthTokenKey       = "HOOK_EVENTS_AUTH_TOKEN"
+	internalSecretAuthTokenKey        = "HOOK_EVENTS_AUTH_TOKEN"
 	internalSecretBackendAuthTokenKey = "HARNESS_EVENTS_AUTH_TOKEN"
 )
 

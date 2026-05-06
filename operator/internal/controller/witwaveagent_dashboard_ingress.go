@@ -335,4 +335,3 @@ func (r *WitwaveAgentReconciler) updateDashboardIngressLastEventState(ctx contex
 	agent.Annotations[dashboardIngressLastEventStateAnnotation] = value
 	return nil
 }
-

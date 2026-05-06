@@ -26,9 +26,9 @@ func prAgent(name string) *witwavev1alpha1.WitwaveAgent {
 
 func TestPrometheusRuleEnabled(t *testing.T) {
 	cases := []struct {
-		name    string
-		agent   *witwavev1alpha1.WitwaveAgent
-		want    bool
+		name  string
+		agent *witwavev1alpha1.WitwaveAgent
+		want  bool
 	}{
 		{name: "no spec", agent: prAgent("iris"), want: false},
 		{

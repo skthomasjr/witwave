@@ -305,9 +305,9 @@ func (r *WitwaveWorkspaceReconciler) reconcileVolumes(ctx context.Context, ws *w
 	if err := r.List(ctx, existing,
 		client.InNamespace(ws.Namespace),
 		client.MatchingLabels{
-			labelManagedBy:     managedBy,
+			labelManagedBy:            managedBy,
 			labelWitwaveWorkspaceName: ws.Name,
-			labelComponent:     componentWitwaveWorkspaceVolume,
+			labelComponent:            componentWitwaveWorkspaceVolume,
 		},
 	); err != nil {
 		return fmt.Errorf("list owned PVCs: %w", err)
@@ -353,10 +353,10 @@ func (r *WitwaveWorkspaceReconciler) buildVolumePVC(ws *witwavev1alpha1.WitwaveW
 			Name:      WitwaveWorkspaceVolumePVCName(ws.Name, vol.Name),
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
-				labelName:                ws.Name,
-				labelComponent:           componentWitwaveWorkspaceVolume,
-				labelPartOf:              partOf,
-				labelManagedBy:           managedBy,
+				labelName:                       ws.Name,
+				labelComponent:                  componentWitwaveWorkspaceVolume,
+				labelPartOf:                     partOf,
+				labelManagedBy:                  managedBy,
 				labelWitwaveWorkspaceName:       ws.Name,
 				labelWitwaveWorkspaceVolumeName: vol.Name,
 			},
@@ -433,9 +433,9 @@ func (r *WitwaveWorkspaceReconciler) reconcileConfigFiles(ctx context.Context, w
 	if err := r.List(ctx, existing,
 		client.InNamespace(ws.Namespace),
 		client.MatchingLabels{
-			labelManagedBy:     managedBy,
+			labelManagedBy:            managedBy,
 			labelWitwaveWorkspaceName: ws.Name,
-			labelComponent:     componentWitwaveWorkspaceConfigFile,
+			labelComponent:            componentWitwaveWorkspaceConfigFile,
 		},
 	); err != nil {
 		return fmt.Errorf("list owned ConfigMaps: %w", err)
@@ -464,10 +464,10 @@ func (r *WitwaveWorkspaceReconciler) buildInlineConfigMap(ws *witwavev1alpha1.Wi
 			Name:      WitwaveWorkspaceInlineConfigMapName(ws.Name, cf.Inline.Name),
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
-				labelName:                    ws.Name,
-				labelComponent:               componentWitwaveWorkspaceConfigFile,
-				labelPartOf:                  partOf,
-				labelManagedBy:               managedBy,
+				labelName:                           ws.Name,
+				labelComponent:                      componentWitwaveWorkspaceConfigFile,
+				labelPartOf:                         partOf,
+				labelManagedBy:                      managedBy,
 				labelWitwaveWorkspaceName:           ws.Name,
 				labelWitwaveWorkspaceConfigFileName: cf.Inline.Name,
 			},
@@ -517,9 +517,9 @@ func (r *WitwaveWorkspaceReconciler) deleteRetainEligibleResources(ctx context.C
 	if err := r.List(ctx, pvcs,
 		client.InNamespace(ws.Namespace),
 		client.MatchingLabels{
-			labelManagedBy:     managedBy,
+			labelManagedBy:            managedBy,
 			labelWitwaveWorkspaceName: ws.Name,
-			labelComponent:     componentWitwaveWorkspaceVolume,
+			labelComponent:            componentWitwaveWorkspaceVolume,
 		},
 	); err != nil {
 		return fmt.Errorf("list owned PVCs: %w", err)
