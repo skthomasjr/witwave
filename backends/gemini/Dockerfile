@@ -32,6 +32,68 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Code-hygiene tooling for nova (used by her code-format / code-verify /
+# code-document skills). Shared across backend images so any agent has
+# the binaries available; iris and kira don't invoke them but the cost
+# is one image build, not per-agent images.
+
+# shellcheck — diagnostic linter for shell scripts (nova code-format).
+RUN apt-get update && apt-get install -y shellcheck \
+    && rm -rf /var/lib/apt/lists/*
+
+# Go toolchain — needed for gofmt + goimports (nova code-format Go
+# pass). Pinned for reproducibility.
+ARG GO_VERSION=1.23.4
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) GO_ARCH=amd64 ;; \
+        arm64) GO_ARCH=arm64 ;; \
+        *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" \
+         -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:/usr/local/bin:$PATH" \
+    GOPATH="/usr/local/gopath" \
+    GOFLAGS="-mod=mod"
+ARG GOIMPORTS_VERSION=v0.27.0
+RUN go install "golang.org/x/tools/cmd/goimports@${GOIMPORTS_VERSION}" \
+    && cp "$GOPATH/bin/goimports" /usr/local/bin/goimports \
+    && rm -rf "$GOPATH"
+
+# shfmt — shell-script formatter (nova code-format auto-fix).
+ARG SHFMT_VERSION=3.10.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_${ARCH}" \
+         -o /usr/local/bin/shfmt \
+    && chmod +x /usr/local/bin/shfmt
+
+# actionlint — GitHub Actions workflow linter (nova code-format).
+ARG ACTIONLINT_VERSION=1.7.7
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz" \
+         | tar -xz -C /usr/local/bin actionlint \
+    && chmod +x /usr/local/bin/actionlint
+
+# hadolint — Dockerfile linter (nova code-format Dockerfile pass).
+# Hadolint releases use kernel-arch (x86_64 / arm64) rather than
+# dpkg-arch (amd64 / arm64).
+ARG HADOLINT_VERSION=2.12.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) HADOLINT_ARCH=x86_64 ;; \
+        arm64) HADOLINT_ARCH=arm64 ;; \
+        *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-${HADOLINT_ARCH}" \
+         -o /usr/local/bin/hadolint \
+    && chmod +x /usr/local/bin/hadolint
+
+# Helm — chart linting + manifest introspection.
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+      | DESIRED_VERSION=v3.16.3 USE_SUDO=false HELM_INSTALL_DIR=/usr/local/bin bash
+
 RUN useradd -m -s /usr/bin/zsh -u 1000 agent
 
 USER agent
@@ -42,6 +104,11 @@ ENV PATH="/home/agent/.venv/bin:$PATH"
 
 COPY --chown=agent:agent backends/gemini/requirements.txt /home/agent/gemini/requirements.txt
 RUN pip install --no-cache-dir -r /home/agent/gemini/requirements.txt
+
+# Code-hygiene Python tooling for nova (ruff = formatter+lint, yamllint
+# = YAML semantic linter). Installed in the agent venv alongside
+# gemini's runtime deps. Pinned for reproducibility.
+RUN pip install --no-cache-dir 'ruff==0.6.9' 'yamllint==1.35.1'
 
 COPY --chown=agent:agent backends/gemini/ /home/agent/gemini/
 COPY --chown=agent:agent shared/ /home/agent/shared/
