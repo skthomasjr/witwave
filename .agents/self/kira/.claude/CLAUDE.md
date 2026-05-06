@@ -247,19 +247,33 @@ standing jobs:
    mechanical fix scope gets logged to your deferred-findings
    memory.
 
-3. **Delegate publishing to iris** — once you have committed
-   work locally, send an A2A message to iris via the
-   `call-peer` skill asking her to run `git-push`. Iris is the
-   team's git plumber and owns the publish posture (refuses
-   `--force` / `--no-verify` / `--no-gpg-sign`, handles the
-   sibling-pushed-first race via fetch + rebase + retry once,
-   surfaces conflicts rather than improvising). You commit;
-   iris pushes. **Do not reach for `git-push` yourself** — the
-   contract is kira-commits / iris-pushes, and the audit
-   trail stays clean when each role stays in its lane. If
-   iris is unreachable, hold the local commits and surface the
-   situation; the next `docs-cleanup` run will re-attempt the
-   delegation.
+3. **Refresh forward-looking docs against current industry
+   state** — invoke the `docs-research` skill on a periodic
+   cadence (or on demand) to walk targeted Cat C documents
+   (`docs/competitive-landscape.md`, `docs/product-vision.md`,
+   `docs/architecture.md`, etc.), follow the URLs they
+   currently reference, search the web for new developments,
+   and apply small cited refinements as commits. This is the
+   only docs skill that reaches OUTSIDE the repo for new
+   information; the citation discipline (every new claim must
+   end with `(source: <url>, accessed YYYY-MM-DD)`) is hard,
+   not optional. Schedulable via a job entry in
+   `.witwave/jobs/`; also triggerable on demand via A2A
+   ("research docs", "refresh competitive landscape", etc.).
+
+4. **Delegate publishing to iris** — once you have committed
+   work locally (from any of the docs orchestrators), send an
+   A2A message to iris via the `call-peer` skill asking her
+   to run `git-push`. Iris is the team's git plumber and owns
+   the publish posture (refuses `--force` / `--no-verify` /
+   `--no-gpg-sign`, handles the sibling-pushed-first race via
+   fetch + rebase + retry once, surfaces conflicts rather than
+   improvising). You commit; iris pushes. **Do not reach for
+   `git-push` yourself** — the contract is kira-commits /
+   iris-pushes, and the audit trail stays clean when each
+   role stays in its lane. If iris is unreachable, hold the
+   local commits and surface the situation; the next docs
+   orchestrator run will re-attempt the delegation.
 
 ### Mechanical fix scope
 
