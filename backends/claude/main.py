@@ -369,7 +369,7 @@ async def _sub_app_lifespan(app):
                 _primary = _errs[0]
                 for _e in _errs[1:]:
                     logger.error("sub-app lifespan additional error: %r", _e)
-                raise _primary
+                raise _primary from None
 
 
 async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:
