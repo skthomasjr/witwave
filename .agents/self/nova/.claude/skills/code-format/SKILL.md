@@ -11,38 +11,28 @@ version: 0.1.0
 
 # code-format
 
-Bring source files into compliance with each language's project-pinned
-formatter / linter. Pure mechanical pass — only changes the tools' own
-auto-fix modes produce. No prose changes, no comment authoring, no
-behavioural changes.
+Bring source files into compliance with each language's project-pinned formatter / linter. Pure mechanical pass — only
+changes the tools' own auto-fix modes produce. No prose changes, no comment authoring, no behavioural changes.
 
 The tools come from the project itself wherever possible:
 
-- Python — `ruff` configured via `pyproject.toml` (or root `ruff.toml`
-  if present)
-- Go — `gofmt` and `goimports` (no project-side config; they encode
-  community style directly)
-- JSON / YAML / TS / Vue / TOML — `prettier` configured via
-  `.prettierrc.yaml`, with `.prettierignore` honoured
-- YAML semantic warnings — `yamllint` configured via `.yamllint` if
-  present, otherwise default config
-- Shell scripts — `shfmt -w` for formatting (auto-fix) and `shellcheck`
-  for lint diagnostics (no auto-fix in this skill — surface findings)
+- Python — `ruff` configured via `pyproject.toml` (or root `ruff.toml` if present)
+- Go — `gofmt` and `goimports` (no project-side config; they encode community style directly)
+- JSON / YAML / TS / Vue / TOML — `prettier` configured via `.prettierrc.yaml`, with `.prettierignore` honoured
+- YAML semantic warnings — `yamllint` configured via `.yamllint` if present, otherwise default config
+- Shell scripts — `shfmt -w` for formatting (auto-fix) and `shellcheck` for lint diagnostics (no auto-fix in this skill
+  — surface findings)
 - Helm charts — `helm lint <chart-dir>` for each chart; sanity-only
-- Dockerfiles — `hadolint` for lint diagnostics (no auto-fix mode);
-  findings logged to memory
-- GitHub Actions workflows — `actionlint` for workflow diagnostics
-  (no auto-fix); findings logged to memory
+- Dockerfiles — `hadolint` for lint diagnostics (no auto-fix mode); findings logged to memory
+- GitHub Actions workflows — `actionlint` for workflow diagnostics (no auto-fix); findings logged to memory
 
-Markdown is **never** touched by this skill — kira owns that surface
-via `docs-validate`.
+Markdown is **never** touched by this skill — kira owns that surface via `docs-validate`.
 
 ## Instructions
 
 Read these from CLAUDE.md:
 
-- **`<checkout>`** — local working-tree path (Primary repository → Local
-  checkout)
+- **`<checkout>`** — local working-tree path (Primary repository → Local checkout)
 
 ### 1. Verify the source tree is in place
 
@@ -50,15 +40,14 @@ Read these from CLAUDE.md:
 git -C <checkout> rev-parse --show-toplevel
 ```
 
-If the checkout is missing or empty, log to deferred-findings memory and
-**stop** (per CLAUDE.md → Responsibilities → 1).
+If the checkout is missing or empty, log to deferred-findings memory and **stop** (per CLAUDE.md → Responsibilities →
+1).
 
 ### 2. Confirm the toolchain is reachable
 
-Each formatter must be runnable. The container's `claude` image needs
-each tool present. If any are missing, log a `tooling-missing:<tool>`
-entry to memory and skip THAT language's pass — but continue with the
-other languages so a partial pass still produces value.
+Each formatter must be runnable. The container's `claude` image needs each tool present. If any are missing, log a
+`tooling-missing:<tool>` entry to memory and skip THAT language's pass — but continue with the other languages so a
+partial pass still produces value.
 
 ```sh
 command -v ruff       || echo "MISSING: ruff"
@@ -75,8 +64,7 @@ command -v actionlint || echo "MISSING: actionlint"
 
 ### 3. Enumerate target files per language
 
-Use `git ls-files` to walk only tracked source. Exclude generated /
-vendored content per CLAUDE.md → Code categories.
+Use `git ls-files` to walk only tracked source. Exclude generated / vendored content per CLAUDE.md → Code categories.
 
 ```sh
 # Python
@@ -122,8 +110,7 @@ git -C <checkout> ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml'
 
 ### 4. Run each language's formatter
 
-Run each tool against its file list. Capture: (a) files modified, (b)
-remaining diagnostics that weren't auto-fixable.
+Run each tool against its file list. Capture: (a) files modified, (b) remaining diagnostics that weren't auto-fixable.
 
 #### Python — ruff
 
@@ -151,8 +138,8 @@ cd <checkout>
 npx --yes prettier@<pinned-version> --write <file-list>
 ```
 
-Use the version pinned in `.github/workflows/ci-docs.yml` if discoverable;
-otherwise the latest 3.x. Capture files reformatted.
+Use the version pinned in `.github/workflows/ci-docs.yml` if discoverable; otherwise the latest 3.x. Capture files
+reformatted.
 
 #### yamllint
 
@@ -161,8 +148,7 @@ cd <checkout>
 yamllint --strict <file-list>
 ```
 
-yamllint has no auto-fix — capture all warnings as deferred-findings
-memory entries (rule + line + message).
+yamllint has no auto-fix — capture all warnings as deferred-findings memory entries (rule + line + message).
 
 #### helm lint
 
@@ -173,8 +159,7 @@ for chart in <chart-dirs>; do
 done
 ```
 
-Captures any chart-template or values issues. No auto-fix; failures go
-to memory.
+Captures any chart-template or values issues. No auto-fix; failures go to memory.
 
 #### Shell — shfmt + shellcheck
 
@@ -184,12 +169,9 @@ shfmt -w <shell-file-list>          # mechanical reformat
 shellcheck -f gcc <shell-file-list> # diagnostics only
 ```
 
-`shfmt` is byte-deterministic when given a consistent indent flag
-(default = tabs; pass `-i 2` if the project's existing scripts use
-two-space indent — check by sampling a couple of existing scripts
-first). `shellcheck` outputs diagnostics for unquoted vars,
-shadowed names, portability concerns; log all of those to memory
-since their fixes can be subtle.
+`shfmt` is byte-deterministic when given a consistent indent flag (default = tabs; pass `-i 2` if the project's existing
+scripts use two-space indent — check by sampling a couple of existing scripts first). `shellcheck` outputs diagnostics
+for unquoted vars, shadowed names, portability concerns; log all of those to memory since their fixes can be subtle.
 
 #### Dockerfile — hadolint
 
@@ -200,10 +182,8 @@ for dockerfile in <dockerfile-list>; do
 done
 ```
 
-`hadolint` has no auto-fix mode (deliberately — many of its rules
-flag judgment-call patterns like ADD-vs-COPY or CMD-vs-ENTRYPOINT
-where the right answer depends on intent). Capture rule IDs +
-file:line + message for each finding.
+`hadolint` has no auto-fix mode (deliberately — many of its rules flag judgment-call patterns like ADD-vs-COPY or
+CMD-vs-ENTRYPOINT where the right answer depends on intent). Capture rule IDs + file:line + message for each finding.
 
 #### GitHub Actions — actionlint
 
@@ -212,10 +192,8 @@ cd <checkout>
 actionlint <workflow-file-list>
 ```
 
-Validates workflow YAML against the GitHub Actions schema, checks
-shell-syntax inside `run:` blocks via shellcheck, validates
-expression syntax in `${{ ... }}`, and flags missing / wrong
-permissions. No auto-fix; log diagnostics.
+Validates workflow YAML against the GitHub Actions schema, checks shell-syntax inside `run:` blocks via shellcheck,
+validates expression syntax in `${{ ... }}`, and flags missing / wrong permissions. No auto-fix; log diagnostics.
 
 ### 5. Commit per language
 
@@ -240,8 +218,7 @@ git -C <checkout> add <prettier-files-modified>
 git -C <checkout> commit -m "code: prettier format JSON/YAML/TS"
 ```
 
-Then for shell scripts (only `shfmt` produces auto-fixes — shellcheck,
-hadolint, and actionlint are diagnostic-only):
+Then for shell scripts (only `shfmt` produces auto-fixes — shellcheck, hadolint, and actionlint are diagnostic-only):
 
 ```sh
 git -C <checkout> add <shell-files-modified>
@@ -294,9 +271,8 @@ Return a structured summary to the caller:
 - Total commits produced this run
 - Pointer to deferred-findings memory if new entries landed
 
-Do NOT delegate the push from this skill — `code-cleanup` (the
-orchestrator) owns push delegation. When this skill is run standalone,
-the caller can ask iris to push the batch directly.
+Do NOT delegate the push from this skill — `code-cleanup` (the orchestrator) owns push delegation. When this skill is
+run standalone, the caller can ask iris to push the batch directly.
 
 ## When to invoke
 
@@ -307,11 +283,9 @@ the caller can ask iris to push the batch directly.
 ## Out of scope for this skill
 
 - **Markdown formatting** — kira's domain via `docs-validate`.
-- **Generated / vendored code** — explicitly off-limits per CLAUDE.md →
-  Code categories. Don't reformat what's regenerated.
+- **Generated / vendored code** — explicitly off-limits per CLAUDE.md → Code categories. Don't reformat what's
+  regenerated.
 - **Comment authoring or rewriting** — Tier 3 (`code-document`).
 - **Comment-vs-code semantic verification** — Tier 2 (`code-verify`).
-- **Pushing the batch** — orchestrator's job; or caller delegates to
-  iris if running this skill standalone.
-- **Behaviour-changing fixes** — even if a linter flags a real bug,
-  this skill doesn't fix it. Log + move on.
+- **Pushing the batch** — orchestrator's job; or caller delegates to iris if running this skill standalone.
+- **Behaviour-changing fixes** — even if a linter flags a real bug, this skill doesn't fix it. Log + move on.

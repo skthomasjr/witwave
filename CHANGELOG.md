@@ -21,8 +21,8 @@ long-running relays at the 5-minute default.
   `max(TASK_TIMEOUT_SECONDS - 10, 10)`). Closes the failure mode where iris→kira docs-scan calls retried mid-relay and
   produced duplicate work because the backend's longer timeout wasn't matched on the harness.
 - **backends**: nova's code-hygiene toolchain installed uniformly in claude, codex, and gemini images — Go 1.23.4 +
-  goimports, shfmt 3.10.0, shellcheck, actionlint 1.7.7, hadolint 2.12.0, helm 3.16.3, ruff 0.6.9, yamllint 1.35.1.
-  ~205 MB image growth (Go is the bulk). Echo image stays minimal by design.
+  goimports, shfmt 3.10.0, shellcheck, actionlint 1.7.7, hadolint 2.12.0, helm 3.16.3, ruff 0.6.9, yamllint 1.35.1. ~205
+  MB image growth (Go is the bulk). Echo image stays minimal by design.
 
 ### Agent identity
 
@@ -50,10 +50,10 @@ long-running relays at the 5-minute default.
 - **kira**: Tier 2 docs skills — `docs-verify` cross-checks Cat C documentation against current code (broken paths,
   command examples, env-var names, version numbers, identifiers); `docs-consistency` runs cross-doc agreement checks on
   Cat C (versions, subproject README claims, command-surface drift). Both are memory-log only — every finding is an
-  "update doc OR fix code" judgment call. New `docs-cleanup` orchestrator runs the full sweep (Tier 1 on all `.md`,
-  Tier 2 on Cat C only) and delegates publishing to iris. `docs-validate` extended to wrap long YAML frontmatter
-  `description:` strings via folded scalars so the `printWidth=120` convention applies there too. `docs-scan` updated
-  to delegate push via `call-peer` instead of invoking `git-push` directly — kira-commits / iris-pushes contract now
+  "update doc OR fix code" judgment call. New `docs-cleanup` orchestrator runs the full sweep (Tier 1 on all `.md`, Tier
+  2 on Cat C only) and delegates publishing to iris. `docs-validate` extended to wrap long YAML frontmatter
+  `description:` strings via folded scalars so the `printWidth=120` convention applies there too. `docs-scan` updated to
+  delegate push via `call-peer` instead of invoking `git-push` directly — kira-commits / iris-pushes contract now
   applied uniformly across both orchestrators.
 - **kira**: identity tightened around the docs-as-communication-channel framing (CLAUDE.md + agent-card). Two distinct
   audiences — humans reading the repo and downstream automated processes that ingest forward-looking docs for feature

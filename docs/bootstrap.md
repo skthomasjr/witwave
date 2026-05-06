@@ -15,8 +15,8 @@ is running:
   paths.
 - Three **WitwaveAgent**s (`iris`, `kira`, `nova`) with `Spec.WorkspaceRefs` pointing at `witwave-self` so they share
   the workspace. Iris owns source-tree initialization + release captaincy; kira owns documentation hygiene; nova owns
-  code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to
-  iris via `call-peer`. Additional named agents can be added later in the same shape.
+  code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to iris
+  via `call-peer`. Additional named agents can be added later in the same shape.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap
@@ -270,9 +270,9 @@ ww agent create nova \
 ```
 
 Same paired-timeout lift as iris and kira (harness + backend both 2700s). Nova's `code-format` runs language-specific
-formatters across the entire source surface and her `code-document` Tier 3 pass reads function bodies + chart
-templates to ground each authored comment — both are within the default 5-minute budget when she's warm but can hit
-the ceiling on cold containers. The headroom matters.
+formatters across the entire source surface and her `code-document` Tier 3 pass reads function bodies + chart templates
+to ground each authored comment — both are within the default 5-minute budget when she's warm but can hit the ceiling on
+cold containers. The headroom matters.
 
 Verify all three agents are now bound to the workspace:
 
@@ -281,8 +281,8 @@ ww agent list \
   --namespace witwave-self
 ```
 
-`ww agent list` should now show three rows (`iris`, `kira`, `nova`) all in state `Ready`. `ww workspace status
-witwave-self` should report all three under the bound-agents section.
+`ww agent list` should now show three rows (`iris`, `kira`, `nova`) all in state `Ready`.
+`ww workspace status witwave-self` should report all three under the bound-agents section.
 
 ## Tear it down
 
