@@ -42,8 +42,7 @@ describe("AutomationView", () => {
 
   it("renders a prompt card per scheduler endpoint with section headers", async () => {
     mockFetch({
-      "/api/team": () =>
-        okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
+      "/api/team": () => okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
       "/agents/bob/jobs": () =>
         okJson([
           {
@@ -94,8 +93,7 @@ describe("AutomationView", () => {
 
   it("hides a kind's section when its filter pill is toggled off", async () => {
     mockFetch({
-      "/api/team": () =>
-        okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
+      "/api/team": () => okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
       "/agents/bob/jobs": () =>
         okJson([
           {
@@ -114,9 +112,7 @@ describe("AutomationView", () => {
     expect(wrapper.text()).toContain("ping");
 
     // Toggle the "job" filter pill off.
-    const jobPill = wrapper
-      .findAll("button.kind-pill")
-      .find((b) => b.text() === "job");
+    const jobPill = wrapper.findAll("button.kind-pill").find((b) => b.text() === "job");
     expect(jobPill).toBeDefined();
     await jobPill!.trigger("click");
 

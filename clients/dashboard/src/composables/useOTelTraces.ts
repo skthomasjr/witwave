@@ -117,10 +117,7 @@ function isSameOrigin(parsed: URL): boolean {
   }
 }
 
-function validateTraceBaseUrl(
-  raw: string | undefined | null,
-  allowCrossOrigin: boolean,
-): string | null {
+function validateTraceBaseUrl(raw: string | undefined | null, allowCrossOrigin: boolean): string | null {
   if (typeof raw !== "string" || raw.length === 0) return null;
   const trimmed = raw.replace(/\/+$/, "");
   let parsed: URL;
@@ -128,18 +125,12 @@ function validateTraceBaseUrl(
     parsed = new URL(trimmed);
   } catch {
     // eslint-disable-next-line no-console
-    console.warn(
-      "[witwave] traceApiUrl rejected: not a valid absolute URL:",
-      trimmed,
-    );
+    console.warn("[witwave] traceApiUrl rejected: not a valid absolute URL:", trimmed);
     return null;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     // eslint-disable-next-line no-console
-    console.warn(
-      `[witwave] traceApiUrl rejected: protocol ${parsed.protocol} not in {http:, https:}`,
-      trimmed,
-    );
+    console.warn(`[witwave] traceApiUrl rejected: protocol ${parsed.protocol} not in {http:, https:}`, trimmed);
     return null;
   }
   if (!allowCrossOrigin && !isSameOrigin(parsed)) {
@@ -169,16 +160,14 @@ function resolveBaseUrl(): string | null {
   // rebuild. Kept optional: when nginx hasn't injected anything we fall
   // through to the build-time env, and then to null — which triggers
   // the in-cluster fallback below.
-  const runtime = (window as unknown as { __WITWAVE_CONFIG__?: WitwaveRuntimeConfig })
-    .__WITWAVE_CONFIG__;
+  const runtime = (window as unknown as { __WITWAVE_CONFIG__?: WitwaveRuntimeConfig }).__WITWAVE_CONFIG__;
   const allowCrossOrigin = runtime?.traceApiAllowCrossOrigin === true;
   if (runtime && typeof runtime.traceApiUrl === "string" && runtime.traceApiUrl) {
     const safe = validateTraceBaseUrl(runtime.traceApiUrl, allowCrossOrigin);
     if (safe !== null) return safe;
     // Fall through to build-time when the runtime value is rejected.
   }
-  const env = (import.meta as unknown as { env?: Record<string, string | undefined> })
-    .env;
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
   const build = env?.VITE_TRACE_API_URL;
   if (build && build.length > 0) {
     const safe = validateTraceBaseUrl(build, allowCrossOrigin);
@@ -285,15 +274,14 @@ async function inClusterFetchList(
     team.map(async (m) => {
       const perCallSignal =
         typeof (AbortSignal as { any?: unknown }).any === "function"
-          ? (AbortSignal as unknown as {
-              any: (signals: AbortSignal[]) => AbortSignal;
-            }).any([signal, AbortSignal.timeout(timeoutMs)])
+          ? (
+              AbortSignal as unknown as {
+                any: (signals: AbortSignal[]) => AbortSignal;
+              }
+            ).any([signal, AbortSignal.timeout(timeoutMs)])
           : signal;
       try {
-        const r = await fetch(
-          `/api/agents/${encodeURIComponent(m.name)}${path}`,
-          { signal: perCallSignal },
-        );
+        const r = await fetch(`/api/agents/${encodeURIComponent(m.name)}${path}`, { signal: perCallSignal });
         if (!r.ok) return [] as JaegerTrace[];
         const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
         const traces = body.data ?? [];
@@ -362,15 +350,16 @@ async function inClusterFetchDetail(
       team.map(async (m) => {
         const perCallSignal =
           typeof (AbortSignal as { any?: unknown }).any === "function"
-            ? (AbortSignal as unknown as {
-                any: (signals: AbortSignal[]) => AbortSignal;
-              }).any([signal, AbortSignal.timeout(timeoutMs)])
+            ? (
+                AbortSignal as unknown as {
+                  any: (signals: AbortSignal[]) => AbortSignal;
+                }
+              ).any([signal, AbortSignal.timeout(timeoutMs)])
             : signal;
         try {
-          const r = await fetch(
-            `/api/agents/${encodeURIComponent(m.name)}/api/traces/${encodeURIComponent(traceId)}`,
-            { signal: perCallSignal },
-          );
+          const r = await fetch(`/api/agents/${encodeURIComponent(m.name)}/api/traces/${encodeURIComponent(traceId)}`, {
+            signal: perCallSignal,
+          });
           if (!r.ok) return [] as JaegerTrace[];
           const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
           return body.data ?? [];
@@ -411,31 +400,19 @@ async function inClusterFetchDetail(
   // before /api/team resolves, or browsers without AbortSignal.any).
   // #952: Cap the fallback at 50 rather than 500 so a single click on a
   // stale URL cannot amplify into a multi-megabyte harness fan-out.
-  const full = await inClusterFetchList(
-    `/api/traces?limit=50`,
-    signal,
-    timeoutMs,
-  );
+  const full = await inClusterFetchList(`/api/traces?limit=50`, signal, timeoutMs);
   const match = (full.data ?? []).find((t) => t.traceID === traceId);
   return match ? { data: [match], total: 1 } : { data: [], total: 0 };
 }
 
-async function jaegerFetch<T>(
-  baseUrl: string,
-  path: string,
-  signal: AbortSignal,
-  timeoutMs: number,
-): Promise<T> {
+async function jaegerFetch<T>(baseUrl: string, path: string, signal: AbortSignal, timeoutMs: number): Promise<T> {
   // Combine caller abort + a local timeout. jsdom in vitest lacks
   // AbortSignal.any, so wire the timer manually.
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort((signal as AbortSignal).reason);
   if (signal.aborted) onAbort();
   else signal.addEventListener("abort", onAbort, { once: true });
-  const timer = setTimeout(
-    () => ctrl.abort(new DOMException("timeout", "TimeoutError")),
-    timeoutMs,
-  );
+  const timer = setTimeout(() => ctrl.abort(new DOMException("timeout", "TimeoutError")), timeoutMs);
   try {
     const resp = await fetch(`${baseUrl}${path}`, { signal: ctrl.signal });
     if (!resp.ok) {
@@ -457,17 +434,15 @@ function summariseTrace(trace: JaegerTrace): TraceListRow {
   let minStart = Number.POSITIVE_INFINITY;
   for (const s of trace.spans) {
     if (s.startTime < minStart) minStart = s.startTime;
-    const parented = (s.references ?? []).some(
-      (r) => ids.has(r.spanID) && r.traceID === trace.traceID,
-    );
+    const parented = (s.references ?? []).some((r) => ids.has(r.spanID) && r.traceID === trace.traceID);
     if (!parented && !root) root = s;
   }
   const rootStart = root?.startTime ?? minStart;
   const rootDuration = root?.duration ?? 0;
   const processes = trace.processes ?? {};
   const rootService = root
-    ? processes[root.processID]?.serviceName ?? "unknown"
-    : Object.values(processes)[0]?.serviceName ?? "unknown";
+    ? (processes[root.processID]?.serviceName ?? "unknown")
+    : (Object.values(processes)[0]?.serviceName ?? "unknown");
   const rootOperation = root?.operationName ?? trace.spans[0]?.operationName ?? "";
   return {
     traceID: trace.traceID,
@@ -515,9 +490,7 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   // has nothing to query. The probe is recomputed on team refresh so
   // the flag goes true the first time a backend becomes reachable.
   const inClusterReachable = ref<boolean>(false);
-  const configured: ComputedRef<boolean> = computed(
-    () => baseUrl !== null || inClusterReachable.value,
-  );
+  const configured: ComputedRef<boolean> = computed(() => baseUrl !== null || inClusterReachable.value);
   // Probe: fetch /api/team; a non-empty response means the dashboard
   // can fan out to at least one agent's /api/traces endpoint. Errors
   // leave configured=false so consumers render a "not configured" empty
@@ -599,11 +572,7 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
       params.set("limit", String(limit.value));
       if (service.value) params.set("service", service.value);
       const resp = inClusterMode
-        ? await inClusterFetchList(
-            `/api/traces?${params.toString()}`,
-            signal,
-            timeoutMs,
-          )
+        ? await inClusterFetchList(`/api/traces?${params.toString()}`, signal, timeoutMs)
         : await jaegerFetch<JaegerResponse<JaegerTrace[]>>(
             baseUrl as string,
             `/api/traces?${params.toString()}`,
@@ -757,9 +726,7 @@ export function buildSpanTree(trace: JaegerTrace): {
   const childrenOf = new Map<string, JaegerSpan[]>();
   const rootSpans: JaegerSpan[] = [];
   for (const s of trace.spans) {
-    const parentRef = (s.references ?? []).find(
-      (r) => byId.has(r.spanID) && r.traceID === trace.traceID,
-    );
+    const parentRef = (s.references ?? []).find((r) => byId.has(r.spanID) && r.traceID === trace.traceID);
     if (!parentRef) {
       rootSpans.push(s);
       continue;
@@ -791,9 +758,7 @@ export function buildSpanTree(trace: JaegerTrace): {
     };
   }
 
-  const roots = rootSpans
-    .sort((a, b) => a.startTime - b.startTime)
-    .map((s) => build(s, 0));
+  const roots = rootSpans.sort((a, b) => a.startTime - b.startTime).map((s) => build(s, 0));
   return { roots, traceStart, traceEnd };
 }
 

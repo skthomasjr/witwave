@@ -57,15 +57,9 @@ const filtered = computed(() => {
   );
 });
 
-const degradedEntries = computed<[string, string][]>(() =>
-  Object.entries(props.perAgentErrors ?? {}),
-);
+const degradedEntries = computed<[string, string][]>(() => Object.entries(props.perAgentErrors ?? {}));
 
-const degradedTooltip = computed(() =>
-  degradedEntries.value
-    .map(([agent, msg]) => `${agent}: ${msg}`)
-    .join("\n"),
-);
+const degradedTooltip = computed(() => degradedEntries.value.map(([agent, msg]) => `${agent}: ${msg}`).join("\n"));
 
 const updatedLabel = computed(() => {
   if (props.lastUpdated == null) return "";
@@ -94,11 +88,7 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
         :placeholder="searchPlaceholder ?? `filter ${title.toLowerCase()}…`"
       />
       <span class="count">{{ filtered.length }} / {{ items.length }}</span>
-      <span
-        v-if="updatedLabel"
-        class="ts"
-        :data-testid="`list-${title.toLowerCase()}-updated`"
-      >
+      <span v-if="updatedLabel" class="ts" :data-testid="`list-${title.toLowerCase()}-updated`">
         {{ updatedLabel }}
       </span>
       <!-- Screen readers hear the degraded-count transition via role=status
@@ -114,12 +104,7 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
         <i class="pi pi-exclamation-triangle" aria-hidden="true" />
         {{ degradedEntries.length }} degraded
       </span>
-      <button
-        class="refresh"
-        type="button"
-        :disabled="loading"
-        @click="emit('refresh')"
-      >
+      <button class="refresh" type="button" :disabled="loading" @click="emit('refresh')">
         <i class="pi pi-refresh" aria-hidden="true" />
         <span class="refresh-label">refresh</span>
       </button>
@@ -128,21 +113,9 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
     <!-- aria-busy flips while an inflight refresh is mutating the list (#820).
          role=region + aria-label anchors the feed so screen readers can
          jump directly to the data set being displayed. -->
-    <div
-      class="feed"
-      role="region"
-      :aria-label="`${title} list`"
-      :aria-busy="loading"
-    >
-      <div v-if="loading && items.length === 0" class="state" role="status" aria-live="polite">
-        Loading…
-      </div>
-      <div
-        v-else-if="error && items.length === 0"
-        class="state state-error"
-        role="status"
-        aria-live="polite"
-      >
+    <div class="feed" role="region" :aria-label="`${title} list`" :aria-busy="loading">
+      <div v-if="loading && items.length === 0" class="state" role="status" aria-live="polite">Loading…</div>
+      <div v-else-if="error && items.length === 0" class="state state-error" role="status" aria-live="polite">
         {{ error }}
       </div>
       <div v-else-if="filtered.length === 0" class="state">
@@ -151,25 +124,14 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
       <table v-else class="list-table">
         <thead>
           <tr>
-            <th
-              v-for="col in columns"
-              :key="col.key"
-              :style="col.width ? { width: col.width + 'px' } : undefined"
-            >
+            <th v-for="col in columns" :key="col.key" :style="col.width ? { width: col.width + 'px' } : undefined">
               {{ col.label }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(row, i) in filtered" :key="i">
-            <td
-              v-for="col in columns"
-              :key="col.key"
-              :class="[
-                col.dim ? 'cell-dim' : '',
-                cellFor(row, col).className,
-              ]"
-            >
+            <td v-for="col in columns" :key="col.key" :class="[col.dim ? 'cell-dim' : '', cellFor(row, col).className]">
               {{ cellFor(row, col).text }}
             </td>
           </tr>

@@ -4,14 +4,7 @@ import { useAgentFanout } from "../composables/useAgentFanout";
 import PromptCard, { type PromptKind } from "../components/PromptCard.vue";
 import ConversationDrawer from "../components/ConversationDrawer.vue";
 import { formatShortTime, toIsoDateTime } from "../utils/intl";
-import type {
-  Continuation,
-  Heartbeat,
-  Job,
-  Task,
-  Trigger,
-  Webhook,
-} from "../types/scheduler";
+import type { Continuation, Heartbeat, Job, Task, Trigger, Webhook } from "../types/scheduler";
 
 // Unified "Automation" view (#prompt-cards-v1). Replaces the six
 // separate nav tabs for jobs, tasks, triggers, webhooks, continuations,
@@ -83,15 +76,7 @@ function matchesDisabled(item: Record<string, unknown>): boolean {
 function matchesSearch(item: Record<string, unknown>): boolean {
   const q = searchTerm.value.trim().toLowerCase();
   if (!q) return true;
-  const haystack = [
-    item.name,
-    item._agent,
-    item.schedule,
-    item.url,
-    item.endpoint,
-    item.backend_id,
-    item.description,
-  ]
+  const haystack = [item.name, item._agent, item.schedule, item.url, item.endpoint, item.backend_id, item.description]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -140,28 +125,17 @@ const sections = computed(() => {
   ];
   return raw.map((s) => ({
     ...s,
-    items: activeKinds.value[s.kind]
-      ? s.items.filter((it) => passes(it as unknown as Record<string, unknown>))
-      : [],
+    items: activeKinds.value[s.kind] ? s.items.filter((it) => passes(it as unknown as Record<string, unknown>)) : [],
   }));
 });
 
-const totalCount = computed(() =>
-  sections.value.reduce((n, s) => n + s.items.length, 0),
-);
+const totalCount = computed(() => sections.value.reduce((n, s) => n + s.items.length, 0));
 
 // Aggregate error + loading state across the six fan-outs. Any agent
 // that failed on ANY endpoint shows up in the degraded tooltip.
 const allErrors = computed<Record<string, string>>(() => {
   const out: Record<string, string> = {};
-  const sources = [
-    jobsFan,
-    tasksFan,
-    triggersFan,
-    webhooksFan,
-    continuationsFan,
-    heartbeatFan,
-  ];
+  const sources = [jobsFan, tasksFan, triggersFan, webhooksFan, continuationsFan, heartbeatFan];
   for (const s of sources) {
     for (const [agent, msg] of Object.entries(s.perAgentErrors.value)) {
       if (!out[agent]) out[agent] = msg;
@@ -194,21 +168,13 @@ const latestUpdate = computed<number | null>(() => {
 // Locale-aware "updated HH:MM" label (#827). Formatters live in
 // src/utils/intl.ts so a future i18n wiring (#819) can thread an
 // explicit locale in at one seam.
-const updatedLabel = computed(() =>
-  latestUpdate.value ? `updated ${formatShortTime(latestUpdate.value)}` : "",
-);
+const updatedLabel = computed(() => (latestUpdate.value ? `updated ${formatShortTime(latestUpdate.value)}` : ""));
 // ISO-8601 datetime for the <time datetime="..."> attribute so screen
 // readers and tools that ingest HTML semantics can parse the timestamp.
-const updatedIso = computed(() =>
-  latestUpdate.value ? toIsoDateTime(latestUpdate.value) : "",
-);
+const updatedIso = computed(() => (latestUpdate.value ? toIsoDateTime(latestUpdate.value) : ""));
 
-const degradedEntries = computed<[string, string][]>(() =>
-  Object.entries(allErrors.value),
-);
-const degradedTooltip = computed(() =>
-  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
-);
+const degradedEntries = computed<[string, string][]>(() => Object.entries(allErrors.value));
+const degradedTooltip = computed(() => degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"));
 
 function refreshAll() {
   jobsFan.refresh();
@@ -251,27 +217,15 @@ const drawerSessionId = computed<string | null>(() => {
   // null — the drawer handles that gracefully.
   return (t.item.session_id as string | undefined) ?? null;
 });
-const drawerAgent = computed<string | null>(
-  () => (drawerTarget.value?.item._agent as string | undefined) ?? null,
-);
+const drawerAgent = computed<string | null>(() => (drawerTarget.value?.item._agent as string | undefined) ?? null);
 </script>
 
 <template>
   <div class="automation-view" data-testid="list-automation">
     <div class="toolbar">
       <h2 class="title">Automation</h2>
-      <input
-        v-model="searchTerm"
-        class="search"
-        type="text"
-        placeholder="filter prompts…"
-      />
-      <select
-        v-model="agentFilter"
-        class="select"
-        aria-label="agent filter"
-        title="Filter by agent"
-      >
+      <input v-model="searchTerm" class="search" type="text" placeholder="filter prompts…" />
+      <select v-model="agentFilter" class="select" aria-label="agent filter" title="Filter by agent">
         <option value="">all agents</option>
         <option v-for="a in agentOptions" :key="a" :value="a">{{ a }}</option>
       </select>
@@ -299,21 +253,10 @@ const drawerAgent = computed<string | null>(
         >
           {{ k }}
         </button>
-        <button
-          type="button"
-          class="kind-pill reset"
-          title="Show all kinds"
-          @click="showAll"
-        >
-          all
-        </button>
+        <button type="button" class="kind-pill reset" title="Show all kinds" @click="showAll">all</button>
       </div>
       <time v-if="updatedLabel" class="ts" :datetime="updatedIso">{{ updatedLabel }}</time>
-      <span
-        v-if="degradedEntries.length > 0"
-        class="degraded"
-        :title="degradedTooltip"
-      >
+      <span v-if="degradedEntries.length > 0" class="degraded" :title="degradedTooltip">
         <i class="pi pi-exclamation-triangle" aria-hidden="true" />
         {{ degradedEntries.length }} scrape failed
       </span>
@@ -325,9 +268,7 @@ const drawerAgent = computed<string | null>(
 
     <div class="scroll">
       <div v-if="isLoading && totalCount === 0" class="state">Loading…</div>
-      <div v-else-if="totalCount === 0" class="state">
-        No prompts match the current filter.
-      </div>
+      <div v-else-if="totalCount === 0" class="state">No prompts match the current filter.</div>
       <template v-else>
         <section
           v-for="sec in sections"

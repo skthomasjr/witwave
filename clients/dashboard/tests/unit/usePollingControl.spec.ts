@@ -114,9 +114,7 @@ describe("usePollingControl", () => {
     mod.usePollingControl();
     mod.usePollingControl();
     mod.usePollingControl();
-    const visibilityCalls = addSpy.mock.calls.filter(
-      (c) => c[0] === "visibilitychange",
-    );
+    const visibilityCalls = addSpy.mock.calls.filter((c) => c[0] === "visibilitychange");
     expect(visibilityCalls).toHaveLength(1);
     addSpy.mockRestore();
   });
@@ -125,9 +123,7 @@ describe("usePollingControl", () => {
     const addSpy = vi.spyOn(document, "addEventListener");
     const mod = await freshImport();
     mod.ensureVisibilityListenerInstalled();
-    const visibilityCalls = addSpy.mock.calls.filter(
-      (c) => c[0] === "visibilitychange",
-    );
+    const visibilityCalls = addSpy.mock.calls.filter((c) => c[0] === "visibilitychange");
     expect(visibilityCalls).toHaveLength(1);
     addSpy.mockRestore();
   });
@@ -150,11 +146,9 @@ describe("usePollingControl", () => {
   it("toggle() does not throw when localStorage.setItem rejects (private mode / quota)", async () => {
     const mod = await freshImport();
     const api = mod.usePollingControl();
-    const setItem = vi
-      .spyOn(window.localStorage, "setItem")
-      .mockImplementation(() => {
-        throw new Error("QuotaExceededError");
-      });
+    const setItem = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
     expect(() => api.toggle()).not.toThrow();
     // In-memory ref still flips even when persistence fails.
     expect(api.paused.value).toBe(true);
@@ -197,9 +191,7 @@ describe("usePollingControl", () => {
     expect(api.visible.value).toBe(true);
     // Listener install should NOT happen again — the reset hook is
     // intentionally permissive (the install path is itself idempotent).
-    const visibilityCalls = addSpy.mock.calls.filter(
-      (c) => c[0] === "visibilitychange",
-    );
+    const visibilityCalls = addSpy.mock.calls.filter((c) => c[0] === "visibilitychange");
     expect(visibilityCalls.length).toBeLessThanOrEqual(1);
     addSpy.mockRestore();
   });

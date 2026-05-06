@@ -47,16 +47,12 @@ describe("useOTelTraces / validateTraceBaseUrl", () => {
 
   it("rejects javascript: URLs", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl("javascript:alert(1)", true),
-    ).toBeNull();
+    expect(mod.__validateTraceBaseUrl("javascript:alert(1)", true)).toBeNull();
   });
 
   it("rejects data: URLs", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl("data:text/html,<script>", true),
-    ).toBeNull();
+    expect(mod.__validateTraceBaseUrl("data:text/html,<script>", true)).toBeNull();
   });
 
   it("rejects gopher:// URLs", async () => {
@@ -83,79 +79,56 @@ describe("useOTelTraces / validateTraceBaseUrl", () => {
 
   it("strips trailing slashes from accepted URLs", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl(
-        "https://dashboard.witwave.example/api////",
-        true,
-      ),
-    ).toBe("https://dashboard.witwave.example/api");
+    expect(mod.__validateTraceBaseUrl("https://dashboard.witwave.example/api////", true)).toBe(
+      "https://dashboard.witwave.example/api",
+    );
   });
 
   // ----- cross-origin gate -----
 
   it("rejects cross-origin URL when allowCrossOrigin=false", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl("https://other.example/jaeger", false),
-    ).toBeNull();
+    expect(mod.__validateTraceBaseUrl("https://other.example/jaeger", false)).toBeNull();
     expect(warnSpy).toHaveBeenCalled();
   });
 
   it("accepts cross-origin URL when allowCrossOrigin=true", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl("https://other.example/jaeger", true),
-    ).toBe("https://other.example/jaeger");
+    expect(mod.__validateTraceBaseUrl("https://other.example/jaeger", true)).toBe("https://other.example/jaeger");
   });
 
   it("accepts same-origin URL even when allowCrossOrigin=false", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl(
-        "https://dashboard.witwave.example/api/traces",
-        false,
-      ),
-    ).toBe("https://dashboard.witwave.example/api/traces");
+    expect(mod.__validateTraceBaseUrl("https://dashboard.witwave.example/api/traces", false)).toBe(
+      "https://dashboard.witwave.example/api/traces",
+    );
   });
 
   it("rejects http URL when current origin is https (different origin)", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__validateTraceBaseUrl(
-        "http://dashboard.witwave.example/api",
-        false,
-      ),
-    ).toBeNull();
+    expect(mod.__validateTraceBaseUrl("http://dashboard.witwave.example/api", false)).toBeNull();
   });
 
   // ----- isSameOrigin direct -----
 
   it("isSameOrigin accepts URL with matching origin", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__isSameOrigin(new URL("https://dashboard.witwave.example/x")),
-    ).toBe(true);
+    expect(mod.__isSameOrigin(new URL("https://dashboard.witwave.example/x"))).toBe(true);
   });
 
   it("isSameOrigin rejects URL with different host", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__isSameOrigin(new URL("https://other.example/x")),
-    ).toBe(false);
+    expect(mod.__isSameOrigin(new URL("https://other.example/x"))).toBe(false);
   });
 
   it("isSameOrigin rejects URL with different port", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__isSameOrigin(new URL("https://dashboard.witwave.example:8443/x")),
-    ).toBe(false);
+    expect(mod.__isSameOrigin(new URL("https://dashboard.witwave.example:8443/x"))).toBe(false);
   });
 
   it("isSameOrigin rejects URL with different scheme", async () => {
     const mod = await freshImport();
-    expect(
-      mod.__isSameOrigin(new URL("http://dashboard.witwave.example/x")),
-    ).toBe(false);
+    expect(mod.__isSameOrigin(new URL("http://dashboard.witwave.example/x"))).toBe(false);
   });
 
   // ----- security defense: window.location.origin missing -----
@@ -184,8 +157,6 @@ describe("useOTelTraces / validateTraceBaseUrl", () => {
       },
     });
     const mod = await freshImport();
-    expect(
-      mod.__isSameOrigin(new URL("https://anywhere.example/x")),
-    ).toBe(false);
+    expect(mod.__isSameOrigin(new URL("https://anywhere.example/x"))).toBe(false);
   });
 });

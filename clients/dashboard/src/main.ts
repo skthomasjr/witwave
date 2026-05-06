@@ -78,11 +78,7 @@ function stackHead(stack: string | undefined): string {
   return (first.slice(0, 120) + "|" + after.slice(0, 120)).trim();
 }
 
-function bucketKey(
-  kind: DashboardClientError["kind"],
-  message: string,
-  stack: string | undefined,
-): string {
+function bucketKey(kind: DashboardClientError["kind"], message: string, stack: string | undefined): string {
   return kind + "::" + (message || "").slice(0, 200) + "::" + stackHead(stack);
 }
 
@@ -162,8 +158,7 @@ app.config.errorHandler = (err, instance, info) => {
     message: e?.message ?? String(err),
     stack: e?.stack,
     route: typeof window !== "undefined" ? window.location.pathname : undefined,
-    componentName: (instance as { $options?: { name?: string } } | null)
-      ?.$options?.name,
+    componentName: (instance as { $options?: { name?: string } } | null)?.$options?.name,
     info,
     ts: new Date().toISOString(),
   });

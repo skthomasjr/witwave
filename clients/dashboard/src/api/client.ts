@@ -66,10 +66,7 @@ function buildTimeoutSignal(timeoutMs: number | undefined): {
     return { signal: AnyAbortSignal.timeout(timeoutMs), cleanup: () => {} };
   }
   const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new DOMException("timeout", "TimeoutError")),
-    timeoutMs,
-  );
+  const timer = setTimeout(() => controller.abort(new DOMException("timeout", "TimeoutError")), timeoutMs);
   return {
     signal: controller.signal,
     cleanup: () => clearTimeout(timer),
@@ -101,11 +98,7 @@ export async function apiGet<T>(path: string, opts: ApiRequestOptions = {}): Pro
   }
 }
 
-export async function apiPost<T, B = unknown>(
-  path: string,
-  body: B,
-  opts: ApiRequestOptions = {},
-): Promise<T> {
+export async function apiPost<T, B = unknown>(path: string, body: B, opts: ApiRequestOptions = {}): Promise<T> {
   const timeout = buildTimeoutSignal(opts.timeoutMs);
   const merged = mergeSignals(opts.signal, timeout.signal);
   try {

@@ -61,9 +61,9 @@ function getFake(url: string): FakeStream {
 }
 
 vi.mock("../../src/composables/useEventStream", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../src/composables/useEventStream")
-  >("../../src/composables/useEventStream");
+  const actual = await vi.importActual<typeof import("../../src/composables/useEventStream")>(
+    "../../src/composables/useEventStream",
+  );
   return {
     ...actual,
     useEventStream: (url: string) => makeFakeStream(url),
@@ -139,14 +139,9 @@ describe("useTimelineStore — bookkeeping", () => {
     store.__pushForTest(make("3", "stream.gap", null));
 
     expect(store.filterByAgent(["iris"]).map((e) => e.id)).toEqual(["1"]);
-    expect(store.filterByAgent(["iris", "nova"]).map((e) => e.id)).toEqual([
-      "1",
-      "2",
-    ]);
+    expect(store.filterByAgent(["iris", "nova"]).map((e) => e.id)).toEqual(["1", "2"]);
     // Null agent_id matches the `__global__` sentinel only.
-    expect(store.filterByAgent(["__global__"]).map((e) => e.id)).toEqual([
-      "3",
-    ]);
+    expect(store.filterByAgent(["__global__"]).map((e) => e.id)).toEqual(["3"]);
   });
 
   it("search matches across payload fields", () => {
@@ -197,15 +192,11 @@ describe("useTimelineStore — bookkeeping", () => {
     // cap is exceeded is re-admitted (because it was evicted from the
     // dedup set), whereas without the cap it would be deduped forever.
     const oldId = "old-1";
-    store.__pushForTest(
-      make(oldId, "t", "iris", "2026-04-18T00:00:00.000Z"),
-    );
+    store.__pushForTest(make(oldId, "t", "iris", "2026-04-18T00:00:00.000Z"));
     for (let i = 0; i < SEEN_IDS_CAP + 100; i += 1) {
       // Unique ids and monotonic ts so we exercise the fast-append path.
       const ms = String(i).padStart(6, "0");
-      store.__pushForTest(
-        make(`fill-${i}`, "t", "iris", `2026-04-18T01:00:00.${ms.slice(-3)}Z`),
-      );
+      store.__pushForTest(make(`fill-${i}`, "t", "iris", `2026-04-18T01:00:00.${ms.slice(-3)}Z`));
     }
 
     const beforeReadmit = store.events.length;
@@ -213,9 +204,7 @@ describe("useTimelineStore — bookkeeping", () => {
     // id was evicted from seenIds and the re-push lands as a fresh event.
     // Without the cap the re-push would be silently deduped, so the
     // length would not change.
-    store.__pushForTest(
-      make(oldId, "t", "iris", "2026-04-18T02:00:00.000Z"),
-    );
+    store.__pushForTest(make(oldId, "t", "iris", "2026-04-18T02:00:00.000Z"));
     expect(store.events.length).toBe(beforeReadmit + 1);
 
     // Sanity: ring stayed under its (very generous) limit, proving the
@@ -292,13 +281,7 @@ describe("useTimelineStore — fanout path", () => {
     await nextTick();
 
     const urls = fakeStreams.map((s) => s.url).sort();
-    expect(urls).toEqual(
-      [
-        agentStreamUrl("iris"),
-        agentStreamUrl("kira"),
-        agentStreamUrl("nova"),
-      ].sort(),
-    );
+    expect(urls).toEqual([agentStreamUrl("iris"), agentStreamUrl("kira"), agentStreamUrl("nova")].sort());
   });
 
   it("merges events from different agents in ts order regardless of arrival order", async () => {

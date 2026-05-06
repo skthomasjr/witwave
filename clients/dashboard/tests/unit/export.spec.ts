@@ -38,9 +38,7 @@ describe("csvEscape", () => {
   // treated as literal text. Newline/CR-leading cells additionally need
   // RFC 4180 quoting on top.
   it("prefixes apostrophe to cells starting with formula sigils", () => {
-    expect(csvEscape("=HYPERLINK(\"http://x/\", \"y\")")).toBe(
-      '"\'=HYPERLINK(""http://x/"", ""y"")"',
-    );
+    expect(csvEscape('=HYPERLINK("http://x/", "y")')).toBe('"\'=HYPERLINK(""http://x/"", ""y"")"');
     expect(csvEscape("+1+1")).toBe("'+1+1");
     expect(csvEscape("-1+1")).toBe("'-1+1");
     expect(csvEscape("@SUM(A1:A2)")).toBe("'@SUM(A1:A2)");

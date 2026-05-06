@@ -148,10 +148,7 @@ describe("useTeamPreferences", () => {
   });
 
   it("readPins ignores non-string array entries (e.g. corrupted entry)", async () => {
-    window.localStorage.setItem(
-      PINS_KEY,
-      JSON.stringify(["iris", 42, null, "kira"]),
-    );
+    window.localStorage.setItem(PINS_KEY, JSON.stringify(["iris", 42, null, "kira"]));
     const mod = await freshImport();
     const api = mod.useTeamPreferences();
     expect(api.pinnedAgents.value).toEqual(["iris", "kira"]);
@@ -169,11 +166,9 @@ describe("useTeamPreferences", () => {
   it("togglePin works in-memory even when localStorage.setItem throws", async () => {
     const mod = await freshImport();
     const api = mod.useTeamPreferences();
-    const setItem = vi
-      .spyOn(window.localStorage, "setItem")
-      .mockImplementation(() => {
-        throw new Error("QuotaExceededError");
-      });
+    const setItem = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
     expect(() => api.togglePin("iris")).not.toThrow();
     // The watcher will fire and the write will throw, but in-memory state
     // still updates.

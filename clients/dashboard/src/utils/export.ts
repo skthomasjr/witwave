@@ -74,12 +74,7 @@ export function csvEscape(value: unknown): string {
   if (s.length > 0 && /^[=+\-@\t\r\n]/.test(s)) {
     s = `'${s}`;
   }
-  const needsQuoting =
-    s.includes(",") ||
-    s.includes('"') ||
-    s.includes("\n") ||
-    s.includes("\r") ||
-    /^\s|\s$/.test(s);
+  const needsQuoting = s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r") || /^\s|\s$/.test(s);
   if (!needsQuoting) return s;
   return `"${s.replace(/"/g, '""')}"`;
 }
@@ -88,22 +83,13 @@ export function csvEscape(value: unknown): string {
 // list (in order). Missing fields render as empty cells. Values are
 // JSON-stringified when they aren't primitive strings so nested structures
 // survive the round-trip instead of rendering as `[object Object]`.
-export function exportCsv(
-  rows: Record<string, unknown>[],
-  columns: string[],
-  filename: string,
-): void {
+export function exportCsv(rows: Record<string, unknown>[], columns: string[], filename: string): void {
   const header = columns.map(csvEscape).join(",");
-  const body = rows
-    .map((row) => columns.map((c) => csvEscape(row[c])).join(","))
-    .join("\n");
+  const body = rows.map((row) => columns.map((c) => csvEscape(row[c])).join(",")).join("\n");
   // Prepend a UTF-8 BOM so Excel on Windows opens the file as UTF-8
   // instead of Windows-1252; harmless for other consumers.
   const csv = body.length > 0 ? `${header}\n${body}\n` : `${header}\n`;
-  downloadBlob(
-    new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }),
-    filename,
-  );
+  downloadBlob(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }), filename);
 }
 
 // Timestamped filename helper so export files sort chronologically in

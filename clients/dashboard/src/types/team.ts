@@ -53,12 +53,7 @@ export type TeamResponse = TeamMember[];
 export type BackendType = "claude" | "codex" | "gemini" | "echo" | "unknown";
 
 // Known families. Keep in sync with BackendType above.
-const KNOWN_FAMILIES: ReadonlySet<BackendType> = new Set([
-  "claude",
-  "codex",
-  "gemini",
-  "echo",
-]);
+const KNOWN_FAMILIES: ReadonlySet<BackendType> = new Set(["claude", "codex", "gemini", "echo"]);
 
 // Structured id-suffix mapping. Matches the canonical backend container names
 // (e.g. "iris-claude", "nova-codex", "kira-gemini", "iris-echo") without
@@ -104,9 +99,7 @@ function isKnownFamily(value: string): value is BackendType {
 // when present and recognized. Falls back to the id-suffix / substring
 // inference otherwise, emitting a one-time console.warn per unknown id in dev
 // so missing `family` fields surface without flooding the console.
-export function backendType(
-  agentOrId: Agent | AgentCard | string | undefined | null,
-): BackendType {
+export function backendType(agentOrId: Agent | AgentCard | string | undefined | null): BackendType {
   if (agentOrId == null) return "unknown";
 
   let id = "";
@@ -132,25 +125,16 @@ export function backendType(
     if (import.meta.env?.DEV && !warnedFallbackIds.has(`family:${f}`)) {
       warnedFallbackIds.add(`family:${f}`);
       // eslint-disable-next-line no-console
-      console.warn(
-        `[backendType] unknown family "${family}" — falling back to id inference`,
-      );
+      console.warn(`[backendType] unknown family "${family}" — falling back to id inference`);
     }
   }
 
   const inferred = fallbackFromId(id);
 
-  if (
-    import.meta.env?.DEV &&
-    (family === undefined || family === "") &&
-    id.length > 0 &&
-    !warnedFallbackIds.has(id)
-  ) {
+  if (import.meta.env?.DEV && (family === undefined || family === "") && id.length > 0 && !warnedFallbackIds.has(id)) {
     warnedFallbackIds.add(id);
     // eslint-disable-next-line no-console
-    console.warn(
-      `[backendType] no "family" on agent-card for "${id}" — inferred "${inferred}" from id`,
-    );
+    console.warn(`[backendType] no "family" on agent-card for "${id}" — inferred "${inferred}" from id`);
   }
 
   return inferred;

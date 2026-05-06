@@ -163,9 +163,9 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       # slsa-github-generator needs these specific scopes per its docs.
-      actions: read       # read the workflow run that built the artifacts
-      id-token: write     # OIDC for keyless signing via Sigstore
-      contents: write     # upload the predicate to the GitHub Release
+      actions: read # read the workflow run that built the artifacts
+      id-token: write # OIDC for keyless signing via Sigstore
+      contents: write # upload the predicate to the GitHub Release
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.goreleaser.outputs.subjects }}"

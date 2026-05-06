@@ -11,10 +11,7 @@ import { effectScope } from "vue";
 const apiGetMock = vi.fn();
 
 vi.mock("../../src/api/client", async () => {
-  const actual =
-    await vi.importActual<typeof import("../../src/api/client")>(
-      "../../src/api/client",
-    );
+  const actual = await vi.importActual<typeof import("../../src/api/client")>("../../src/api/client");
   return {
     ...actual,
     apiGet: (...args: unknown[]) => apiGetMock(...args),

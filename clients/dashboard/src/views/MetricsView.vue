@@ -12,29 +12,14 @@ import {
   Tooltip,
 } from "chart.js";
 import { useMetrics } from "../composables/useMetrics";
-import {
-  breakdownByLabel,
-  histAvg,
-  maxGauge,
-  sumGauge,
-  sumTotal,
-  type FamilyMap,
-} from "../utils/prometheus";
+import { breakdownByLabel, histAvg, maxGauge, sumGauge, sumTotal, type FamilyMap } from "../utils/prometheus";
 
 // Metrics view — organised into thematic sections so operators can scan
 // agent health, automation activity, LLM behaviour, and performance at a
 // glance without knowing which prometheus family to look at. Polling
 // cadence is user-controlled via the toolbar.
 
-Chart.register(
-  BarController,
-  BarElement,
-  DoughnutController,
-  ArcElement,
-  CategoryScale,
-  LinearScale,
-  Tooltip,
-);
+Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip);
 Chart.defaults.color = "#777";
 Chart.defaults.borderColor = "#262626";
 Chart.defaults.font.family = "'SF Mono','Fira Code',monospace";
@@ -43,23 +28,13 @@ Chart.defaults.font.size = 11;
 // Palette — green for success, red for failure, amber for warning,
 // plus neutral tones for categorical data. Outcome-charts pick
 // semantically when possible.
-const PALETTE = [
-  "#7c6af7",
-  "#3ecfcf",
-  "#4ade80",
-  "#fbbf24",
-  "#f87171",
-  "#fb923c",
-  "#a78bfa",
-  "#34d399",
-];
+const PALETTE = ["#7c6af7", "#3ecfcf", "#4ade80", "#fbbf24", "#f87171", "#fb923c", "#a78bfa", "#34d399"];
 const OK = "#4ade80";
 const WARN = "#fbbf24";
 const ERR = "#f87171";
 
 const intervalMs = ref<number>(5000);
-const { merged, loading, error, lastUpdated, perAgentErrors, refresh } =
-  useMetrics({ intervalMs });
+const { merged, loading, error, lastUpdated, perAgentErrors, refresh } = useMetrics({ intervalMs });
 
 // Raw-metrics escape hatch (toggle off by default). Useful when the
 // curated sections don't show something the user needs to eyeball —
@@ -68,12 +43,8 @@ const { merged, loading, error, lastUpdated, perAgentErrors, refresh } =
 // families + their samples in a collapsible mono panel.
 const showRaw = ref<boolean>(false);
 
-const degradedEntries = computed<[string, string][]>(() =>
-  Object.entries(perAgentErrors.value),
-);
-const degradedTooltip = computed(() =>
-  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
-);
+const degradedEntries = computed<[string, string][]>(() => Object.entries(perAgentErrors.value));
+const degradedTooltip = computed(() => degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"));
 
 function fmtNum(n: number | null): string {
   if (n === null || !Number.isFinite(n)) return "—";
@@ -230,9 +201,7 @@ function byLabel(m: FamilyMap, key: string, label: string) {
 }
 
 function histBuckets(m: FamilyMap, key: string) {
-  const samples = (m.get(key)?.samples ?? []).filter(
-    (s) => s.name.endsWith("_bucket") && s.labels.le !== "+Inf",
-  );
+  const samples = (m.get(key)?.samples ?? []).filter((s) => s.name.endsWith("_bucket") && s.labels.le !== "+Inf");
   // Aggregate bucket counts across label sets — we want the cumulative
   // count per `le` bucket for the cluster-wide view.
   const acc = new Map<string, number>();
@@ -241,9 +210,7 @@ function histBuckets(m: FamilyMap, key: string) {
     acc.set(le, (acc.get(le) ?? 0) + s.value);
   }
   // Sort numerically.
-  const entries = [...acc.entries()].sort(
-    (a, b) => parseFloat(a[0]) - parseFloat(b[0]),
-  );
+  const entries = [...acc.entries()].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
   return {
     labels: entries.map(([le]) => `${le}s`),
     values: entries.map(([, v]) => v),
@@ -494,16 +461,13 @@ const preparedSections = computed<PreparedSection[]>(() => {
     for (const spec of section.charts) {
       const built = spec.build(merged.value);
       if (!built.labels.length) continue;
-      const colors = built.colors && built.colors.length
-        ? built.colors
-        : colorize(built.labels);
+      const colors = built.colors && built.colors.length ? built.colors : colorize(built.labels);
       const data = {
         labels: built.labels,
         datasets: [
           {
             data: built.values,
-            backgroundColor:
-              spec.type === "doughnut" ? colors : colors.map((c) => `${c}bb`),
+            backgroundColor: spec.type === "doughnut" ? colors : colors.map((c) => `${c}bb`),
             borderColor: colors,
             borderWidth: spec.type === "doughnut" ? 0 : 1,
             borderRadius: spec.type === "bar" ? 3 : 0,
@@ -625,18 +589,10 @@ const rawRows = computed<RawRow[]>(() => {
         <!-- Overview stat row -->
         <div class="section-header">
           <h3 class="section-title">Overview</h3>
-          <p class="section-sub">
-            Agent health + the metrics operators check first.
-          </p>
+          <p class="section-sub">Agent health + the metrics operators check first.</p>
         </div>
         <div class="stat-row">
-          <div
-            v-for="s in stats"
-            :key="s.label"
-            class="stat"
-            :class="s.tone ? `stat-${s.tone}` : ''"
-            :title="s.hint"
-          >
+          <div v-for="s in stats" :key="s.label" class="stat" :class="s.tone ? `stat-${s.tone}` : ''" :title="s.hint">
             <div class="stat-lbl">{{ s.label }}</div>
             <div class="stat-val">{{ s.val }}</div>
           </div>
@@ -653,8 +609,7 @@ const rawRows = computed<RawRow[]>(() => {
           <div class="section-header">
             <h3 class="section-title">Raw Prometheus output</h3>
             <p class="section-sub">
-              Every parsed metric family across the team, sorted by name.
-              Toggle off once you've found what you needed.
+              Every parsed metric family across the team, sorted by name. Toggle off once you've found what you needed.
             </p>
           </div>
           <div class="raw-table-wrap">
@@ -676,10 +631,7 @@ const rawRows = computed<RawRow[]>(() => {
                       {{ row.help || "(no samples)" }}
                     </td>
                   </tr>
-                  <tr
-                    v-for="(s, i) in row.samples"
-                    :key="`${row.name}-${i}`"
-                  >
+                  <tr v-for="(s, i) in row.samples" :key="`${row.name}-${i}`">
                     <td>{{ i === 0 ? row.name : "" }}</td>
                     <td>{{ i === 0 ? row.type || "—" : "" }}</td>
                     <td class="labels">{{ s.labels || "—" }}</td>
@@ -700,16 +652,8 @@ const rawRows = computed<RawRow[]>(() => {
             <div v-for="c in sec.charts" :key="c.id" class="chart-card">
               <h4>{{ c.title }}</h4>
               <div class="chart-body">
-                <Bar
-                  v-if="c.type === 'bar'"
-                  :data="c.data as never"
-                  :options="c.options as never"
-                />
-                <Doughnut
-                  v-else
-                  :data="c.data as never"
-                  :options="c.options as never"
-                />
+                <Bar v-if="c.type === 'bar'" :data="c.data as never" :options="c.options as never" />
+                <Doughnut v-else :data="c.data as never" :options="c.options as never" />
               </div>
             </div>
           </div>

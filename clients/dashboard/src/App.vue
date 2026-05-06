@@ -34,9 +34,7 @@ const navSchema: NavItem[] = [
   { labelKey: "nav.timeline", to: { name: "timeline" } },
 ];
 
-const navItems = computed(() =>
-  navSchema.map((n) => ({ label: t(n.labelKey), to: n.to })),
-);
+const navItems = computed(() => navSchema.map((n) => ({ label: t(n.labelKey), to: n.to })));
 
 const { state, detail } = useHealth();
 // Global pause toggle (#1107). Setting `paused=true` tells every polling
@@ -78,13 +76,7 @@ const themeLabel = computed(() => {
     <header class="app-header">
       <h1 class="brand">witwave</h1>
       <nav class="app-nav">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.label"
-          :to="item.to"
-          class="nav-link"
-          active-class="is-active"
-        >
+        <RouterLink v-for="item in navItems" :key="item.label" :to="item.to" class="nav-link" active-class="is-active">
           {{ item.label }}
         </RouterLink>
       </nav>
@@ -127,10 +119,7 @@ const themeLabel = computed(() => {
         data-testid="header-pause-toggle"
         @click="togglePolling"
       >
-        <i
-          :class="paused || !visible ? 'pi pi-pause' : 'pi pi-play'"
-          aria-hidden="true"
-        />
+        <i :class="paused || !visible ? 'pi pi-pause' : 'pi pi-play'" aria-hidden="true" />
         <span class="pause-label">
           {{ paused ? "paused" : !visible ? "hidden" : "live" }}
         </span>
@@ -201,7 +190,9 @@ const themeLabel = computed(() => {
   letter-spacing: 0.04em;
   text-decoration: none;
   white-space: nowrap;
-  transition: color 0.12s, background 0.12s;
+  transition:
+    color 0.12s,
+    background 0.12s;
 }
 
 .nav-link:hover {
@@ -276,7 +267,10 @@ const themeLabel = computed(() => {
   font-family: var(--witwave-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .pause-toggle:hover {
@@ -310,7 +304,10 @@ const themeLabel = computed(() => {
   font-family: var(--witwave-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .theme-toggle:hover {

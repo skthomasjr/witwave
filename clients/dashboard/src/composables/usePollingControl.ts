@@ -34,9 +34,7 @@ function writePersisted(val: boolean): void {
 }
 
 const pausedRef = ref<boolean>(readPersisted());
-const visibleRef = ref<boolean>(
-  typeof document === "undefined" ? true : !document.hidden,
-);
+const visibleRef = ref<boolean>(typeof document === "undefined" ? true : !document.hidden);
 
 // The visibility listener is intentionally long-lived: installed once at
 // module scope on the first use and never removed. A single listener on

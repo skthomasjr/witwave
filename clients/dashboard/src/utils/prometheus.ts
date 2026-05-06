@@ -24,8 +24,7 @@ const MAX_LINE_BYTES = 64 * 1024;
 // literal tokens +Inf / -Inf / NaN. Previously Number(valueToken) was
 // called on whatever non-whitespace string followed the labels, which
 // silently accepted almost anything JavaScript's coercion understood.
-const NUMERIC_VALUE_RE =
-  /^(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?Inf|NaN)$/;
+const NUMERIC_VALUE_RE = /^(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?Inf|NaN)$/;
 
 export interface Sample {
   name: string;
@@ -247,9 +246,7 @@ export function maxGauge(m: FamilyMap, key: string): number | null {
 }
 
 export function sumTotal(m: FamilyMap, key: string): number {
-  return (m.get(key)?.samples ?? [])
-    .filter((s) => s.name.endsWith("_total"))
-    .reduce((a, s) => a + s.value, 0);
+  return (m.get(key)?.samples ?? []).filter((s) => s.name.endsWith("_total")).reduce((a, s) => a + s.value, 0);
 }
 
 export function histAvg(m: FamilyMap, key: string): number | null {

@@ -174,9 +174,7 @@ describe("OTelTracesView", () => {
     expect(wrapper.text()).not.toContain("in-cluster");
     // /api/team must not have been called — fallback path is skipped when
     // an external base URL is configured.
-    const calls = fetchSpy.mock.calls.map((c) =>
-      typeof c[0] === "string" ? c[0] : (c[0] as URL).toString(),
-    );
+    const calls = fetchSpy.mock.calls.map((c) => (typeof c[0] === "string" ? c[0] : (c[0] as URL).toString()));
     expect(calls.some((u) => u === "/api/team")).toBe(false);
   });
 

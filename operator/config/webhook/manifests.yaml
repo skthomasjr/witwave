@@ -4,89 +4,89 @@ kind: MutatingWebhookConfiguration
 metadata:
   name: mutating-webhook-configuration
 webhooks:
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-witwave-ai-v1alpha1-witwaveagent
-  failurePolicy: Fail
-  name: mwitwaveagent.kb.io
-  rules:
-  - apiGroups:
-    - witwave.ai
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - witwaveagents
-  sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /mutate-witwave-ai-v1alpha1-witwaveagent
+    failurePolicy: Fail
+    name: mwitwaveagent.kb.io
+    rules:
+      - apiGroups:
+          - witwave.ai
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - witwaveagents
+    sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: validating-webhook-configuration
 webhooks:
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-witwave-ai-v1alpha1-witwaveagent
-  failurePolicy: Fail
-  name: vwitwaveagent.kb.io
-  rules:
-  - apiGroups:
-    - witwave.ai
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - witwaveagents
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-witwave-ai-v1alpha1-witwaveprompt
-  failurePolicy: Fail
-  name: vwitwaveprompt.kb.io
-  rules:
-  - apiGroups:
-    - witwave.ai
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - witwaveprompts
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-witwave-ai-v1alpha1-witwaveworkspace
-  failurePolicy: Fail
-  name: vwitwaveworkspace.kb.io
-  rules:
-  - apiGroups:
-    - witwave.ai
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - witwaveworkspaces
-  sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-witwave-ai-v1alpha1-witwaveagent
+    failurePolicy: Fail
+    name: vwitwaveagent.kb.io
+    rules:
+      - apiGroups:
+          - witwave.ai
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - witwaveagents
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-witwave-ai-v1alpha1-witwaveprompt
+    failurePolicy: Fail
+    name: vwitwaveprompt.kb.io
+    rules:
+      - apiGroups:
+          - witwave.ai
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - witwaveprompts
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-witwave-ai-v1alpha1-witwaveworkspace
+    failurePolicy: Fail
+    name: vwitwaveworkspace.kb.io
+    rules:
+      - apiGroups:
+          - witwave.ai
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - witwaveworkspaces
+    sideEffects: None

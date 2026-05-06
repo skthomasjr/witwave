@@ -20,15 +20,9 @@ const emit = defineEmits<{
   (e: "select-backend", backendId: string): void;
 }>();
 
-const {
-  messages,
-  sending,
-  loadingHistory,
-  historyError,
-  loadHistory,
-  send,
-  cancel,
-} = useChat({ agentName: props.agentName });
+const { messages, sending, loadingHistory, historyError, loadHistory, send, cancel } = useChat({
+  agentName: props.agentName,
+});
 
 const input = ref("");
 const feed = useTemplateRef<HTMLElement>("feed");
@@ -119,20 +113,10 @@ onMounted(async () => {
 
     <div class="chat-feed" ref="feed" data-testid="chat-feed">
       <div v-if="loadingHistory" class="chat-empty">Loading conversation…</div>
-      <div v-else-if="historyError" class="chat-empty chat-error">
-        Could not load history: {{ historyError }}
-      </div>
-      <div v-else-if="messages.length === 0" class="chat-empty">
-        No messages yet. Say something!
-      </div>
+      <div v-else-if="historyError" class="chat-empty chat-error">Could not load history: {{ historyError }}</div>
+      <div v-else-if="messages.length === 0" class="chat-empty">No messages yet. Say something!</div>
       <template v-else>
-        <div
-          v-for="m in messages"
-          :key="m.id"
-          class="cm"
-          :class="m.role"
-          :data-testid="`chat-msg-${m.role}`"
-        >
+        <div v-for="m in messages" :key="m.id" class="cm" :class="m.role" :data-testid="`chat-msg-${m.role}`">
           <!--
             The user's own messages are already visually distinct (right-
             aligned, accent-tinted) — a "you" / "user" label above them is
@@ -140,11 +124,7 @@ onMounted(async () => {
             can see which backend answered.
           -->
           <div v-if="m.role !== 'user'" class="role">{{ m.label || m.role }}</div>
-          <div
-            v-if="m.role === 'agent'"
-            class="bbl"
-            v-html="renderMarkdown(m.text)"
-          />
+          <div v-if="m.role === 'agent'" class="bbl" v-html="renderMarkdown(m.text)" />
           <div v-else class="bbl">{{ m.text }}</div>
         </div>
         <div v-if="sending" class="cm thinking" data-testid="chat-thinking">

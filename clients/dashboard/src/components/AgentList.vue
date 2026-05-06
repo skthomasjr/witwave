@@ -38,16 +38,9 @@ function pinnedFor(name: string): boolean {
       <div v-else-if="error && members.length === 0" class="agents-placeholder" data-testid="team-error">
         Could not load team: {{ error }}
       </div>
-      <div v-else-if="members.length === 0" class="agents-placeholder" data-testid="team-empty">
-        No agents found.
-      </div>
+      <div v-else-if="members.length === 0" class="agents-placeholder" data-testid="team-empty">No agents found.</div>
       <template v-else>
-        <div
-          v-for="m in members"
-          :key="m.name"
-          class="agents-card-row"
-          :class="{ 'is-pinned': pinnedFor(m.name) }"
-        >
+        <div v-for="m in members" :key="m.name" class="agents-card-row" :class="{ 'is-pinned': pinnedFor(m.name) }">
           <AgentCard
             :member="m"
             :selected="selectedName === m.name"
@@ -66,12 +59,7 @@ function pinnedFor(name: string): boolean {
             :data-testid="`team-pin-${m.name}`"
             @click.stop="emit('toggle-pin', m.name)"
           >
-            <i
-              :class="
-                pinnedFor(m.name) ? 'pi pi-bookmark-fill' : 'pi pi-bookmark'
-              "
-              aria-hidden="true"
-            />
+            <i :class="pinnedFor(m.name) ? 'pi pi-bookmark-fill' : 'pi pi-bookmark'" aria-hidden="true" />
           </button>
         </div>
       </template>
@@ -128,7 +116,9 @@ function pinnedFor(name: string): boolean {
   border-radius: var(--witwave-radius);
   font-size: 12px;
   opacity: 0;
-  transition: opacity 0.12s, color 0.12s;
+  transition:
+    opacity 0.12s,
+    color 0.12s;
 }
 
 .agents-card-row:hover .pin-btn,

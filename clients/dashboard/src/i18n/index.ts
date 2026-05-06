@@ -25,17 +25,18 @@ const messages = { en } as const;
 function detectLocale(): SupportedLocale {
   // Build-time env wins when explicitly set.
   const envLocale =
-    typeof import.meta !== "undefined" &&
-    typeof import.meta.env !== "undefined"
+    typeof import.meta !== "undefined" && typeof import.meta.env !== "undefined"
       ? (import.meta.env.VITE_LOCALE as string | undefined)
       : undefined;
   if (envLocale && envLocale in messages) {
     return envLocale as SupportedLocale;
   }
   if (typeof window !== "undefined") {
-    const runtime = (window as unknown as {
-      __WITWAVE_CONFIG__?: { locale?: string };
-    }).__WITWAVE_CONFIG__?.locale;
+    const runtime = (
+      window as unknown as {
+        __WITWAVE_CONFIG__?: { locale?: string };
+      }
+    ).__WITWAVE_CONFIG__?.locale;
     if (runtime && runtime in messages) {
       return runtime as SupportedLocale;
     }
@@ -54,8 +55,6 @@ export const i18n = createI18n({
   fallbackLocale: "en",
   messages,
   // Silence the "Not found key" warnings in production; dev keeps them.
-  missingWarn:
-    typeof import.meta !== "undefined" && import.meta.env?.DEV !== false,
-  fallbackWarn:
-    typeof import.meta !== "undefined" && import.meta.env?.DEV !== false,
+  missingWarn: typeof import.meta !== "undefined" && import.meta.env?.DEV !== false,
+  fallbackWarn: typeof import.meta !== "undefined" && import.meta.env?.DEV !== false,
 });

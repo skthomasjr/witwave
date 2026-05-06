@@ -47,9 +47,7 @@ function readPinnedFromStorage(): string[] {
     const raw = window.localStorage.getItem(PINNED_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((x): x is string => typeof x === "string")
-      : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
   } catch {
     return [];
   }
@@ -72,10 +70,7 @@ function persistPinned(): void {
     if (arr.length > PINNED_PERSIST_CAP) {
       arr = arr.slice(-PINNED_PERSIST_CAP);
     }
-    window.localStorage.setItem(
-      PINNED_STORAGE_KEY,
-      JSON.stringify(arr),
-    );
+    window.localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(arr));
   } catch {
     // Ignore quota / serialisation errors — pins are a UX nicety.
   }
@@ -303,9 +298,7 @@ function formatPayload(e: EventEnvelope): string {
           {{ kt }}
         </option>
       </select>
-      <span class="count" data-testid="timeline-count">
-        {{ filtered.length }} / {{ events.length }}
-      </span>
+      <span class="count" data-testid="timeline-count"> {{ filtered.length }} / {{ events.length }} </span>
       <span
         class="pill"
         :class="`pill-${pillState}`"
@@ -343,20 +336,11 @@ function formatPayload(e: EventEnvelope): string {
               class="pin-btn"
               :class="{ 'is-pinned': pinnedIds.has(row.id) }"
               :aria-pressed="pinnedIds.has(row.id)"
-              :aria-label="
-                pinnedIds.has(row.id)
-                  ? t('timeline.pin.unpinLabel')
-                  : t('timeline.pin.pinLabel')
-              "
+              :aria-label="pinnedIds.has(row.id) ? t('timeline.pin.unpinLabel') : t('timeline.pin.pinLabel')"
               :data-testid="`timeline-pin-${row.id}`"
               @click="togglePinned(row.id, $event)"
             >
-              <i
-                :class="
-                  pinnedIds.has(row.id) ? 'pi pi-bookmark-fill' : 'pi pi-bookmark'
-                "
-                aria-hidden="true"
-              />
+              <i :class="pinnedIds.has(row.id) ? 'pi pi-bookmark-fill' : 'pi pi-bookmark'" aria-hidden="true" />
             </button>
             <span class="ts">{{ formatTs(row.ts) }}</span>
             <span class="chip chip-agent">
@@ -365,9 +349,7 @@ function formatPayload(e: EventEnvelope): string {
             <span class="chip chip-type">{{ row.type }}</span>
             <span class="summary">{{ summarise(row) }}</span>
           </div>
-          <pre v-if="expandedIds.has(row.id)" class="payload">{{
-            formatPayload(row)
-          }}</pre>
+          <pre v-if="expandedIds.has(row.id)" class="payload">{{ formatPayload(row) }}</pre>
         </li>
       </ul>
     </div>

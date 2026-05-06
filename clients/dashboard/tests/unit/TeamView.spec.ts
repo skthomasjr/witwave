@@ -71,9 +71,7 @@ function mockEndpoints(team: MockTeamMember[]) {
         return Promise.resolve(okJson(member.agents ?? []));
       }
       if (url.endsWith("/api/team") || url.endsWith("/team")) {
-        return Promise.resolve(
-          okJson(team.map((m) => ({ name: m.name, url: m.url }))),
-        );
+        return Promise.resolve(okJson(team.map((m) => ({ name: m.name, url: m.url }))));
       }
       return Promise.resolve(okJson(null));
     }),
@@ -142,10 +140,7 @@ describe("TeamView", () => {
   });
 
   it("renders error placeholder on fetch failure", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: false, status: 503 } as unknown as Response),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 } as unknown as Response));
 
     const wrapper = mountView();
     await flushPromises();

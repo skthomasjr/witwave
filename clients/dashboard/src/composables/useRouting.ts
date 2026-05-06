@@ -55,10 +55,10 @@ export function useRouting(agentName: () => string) {
       return;
     }
     try {
-      const response = await apiGet<RoutingResponse>(
-        `/agents/${encodeURIComponent(name)}/routing`,
-        { signal: localAborter.signal, timeoutMs: 10_000 },
-      );
+      const response = await apiGet<RoutingResponse>(`/agents/${encodeURIComponent(name)}/routing`, {
+        signal: localAborter.signal,
+        timeoutMs: 10_000,
+      });
       // #1005: identity guard. A rapid agentName() change would have
       // aborted this cycle already and started a newer one; if the
       // module-level aborter no longer points at ours, the response is
@@ -86,9 +86,7 @@ export function useRouting(agentName: () => string) {
   // Resolve the default backend for a given kind, falling back to
   // routing.default, then null. Callers typically use kind="a2a" since
   // the dashboard chat maps to the A2A entrypoint.
-  function defaultBackendFor(
-    kind: keyof RoutingResponse["routing"] = "a2a",
-  ): string | null {
+  function defaultBackendFor(kind: keyof RoutingResponse["routing"] = "a2a"): string | null {
     const r = routing.value;
     if (!r) return null;
     return r.routing[kind]?.agent ?? r.default ?? null;

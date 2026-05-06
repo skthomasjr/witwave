@@ -92,10 +92,7 @@ function applyToDocument(resolved: ResolvedTheme): void {
   el.setAttribute("data-theme", resolved);
 }
 
-function resolveChoice(
-  choice: ThemeChoice,
-  systemLight: boolean,
-): ResolvedTheme {
+function resolveChoice(choice: ThemeChoice, systemLight: boolean): ResolvedTheme {
   if (choice === "light") return "light";
   if (choice === "dark") return "dark";
   return systemLight ? "light" : "dark";
@@ -135,9 +132,7 @@ export function useTheme(): UseThemeApi {
   ensureSystemListener();
   return {
     theme: choiceRef,
-    resolved: computed(() =>
-      resolveChoice(choiceRef.value, systemPrefersLightRef.value),
-    ),
+    resolved: computed(() => resolveChoice(choiceRef.value, systemPrefersLightRef.value)),
     setTheme(choice: ThemeChoice) {
       if (!VALID.has(choice)) return;
       choiceRef.value = choice;

@@ -10,9 +10,7 @@ import { createPinia, setActivePinia } from "pinia";
 // no-problems state so the event-driven paths are observable in isolation,
 // and drive the timeline store via its `__pushForTest` hook.
 
-const sharedMembers = ref<Array<{ name: string; error?: string }>>([
-  { name: "iris" },
-]);
+const sharedMembers = ref<Array<{ name: string; error?: string }>>([{ name: "iris" }]);
 const sharedError = ref<string>("");
 const sharedLoading = ref<boolean>(false);
 
@@ -140,11 +138,17 @@ describe("useAlerts (timeline-driven)", () => {
     // 11th within the window should not toast again (upsert de-dupes; armed
     // flag prevents re-firing).
     store.__pushForTest(
-      make("11", "hook.decision", "iris", {
-        backend: "claude",
-        decision: "deny",
-        tool: "Bash",
-      }, new Date(base + 10_000).toISOString()),
+      make(
+        "11",
+        "hook.decision",
+        "iris",
+        {
+          backend: "claude",
+          decision: "deny",
+          tool: "Bash",
+        },
+        new Date(base + 10_000).toISOString(),
+      ),
     );
     await nextTick();
     const stillOne = value.alerts.value.filter((a) => a.id === "hook-deny.claude");
@@ -207,18 +211,14 @@ describe("useAlerts (timeline-driven)", () => {
     const store = useTimelineStore();
     const { value } = run(() => useAlerts());
 
-    store.__pushForTest(
-      make("1", "agent.lifecycle", "iris", { backend: "claude", event: "stopped" }),
-    );
+    store.__pushForTest(make("1", "agent.lifecycle", "iris", { backend: "claude", event: "stopped" }));
     await nextTick();
     const stopped = value.alerts.value.find((a) => a.id === "lifecycle.iris");
     expect(stopped).toBeDefined();
     expect(stopped!.severity).toBe("error");
     expect(stopped!.title).toContain("iris");
 
-    store.__pushForTest(
-      make("2", "agent.lifecycle", "iris", { backend: "claude", event: "started" }),
-    );
+    store.__pushForTest(make("2", "agent.lifecycle", "iris", { backend: "claude", event: "started" }));
     await nextTick();
     expect(value.alerts.value.find((a) => a.id === "lifecycle.iris")).toBeUndefined();
   });
@@ -275,9 +275,7 @@ describe("useAlerts (timeline-driven)", () => {
       }),
     );
     // error
-    store.__pushForTest(
-      make("3", "agent.lifecycle", "iris", { backend: "claude", event: "stopped" }),
-    );
+    store.__pushForTest(make("3", "agent.lifecycle", "iris", { backend: "claude", event: "stopped" }));
     await nextTick();
 
     expect(value.active.value).not.toBeNull();

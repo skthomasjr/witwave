@@ -92,15 +92,12 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   let timer: ReturnType<typeof setInterval> | null = null;
   let aborter: AbortController | null = null;
 
-  async function fetchOne(
-    member: TeamDirectoryEntry,
-    signal: AbortSignal,
-  ): Promise<FetchOneResult<T>> {
+  async function fetchOne(member: TeamDirectoryEntry, signal: AbortSignal): Promise<FetchOneResult<T>> {
     try {
-      const raw = await apiGet<T | T[]>(
-        `/agents/${encodeURIComponent(member.name)}/${opts.endpoint}`,
-        { signal, query: resolveQuery(opts.query) },
-      );
+      const raw = await apiGet<T | T[]>(`/agents/${encodeURIComponent(member.name)}/${opts.endpoint}`, {
+        signal,
+        query: resolveQuery(opts.query),
+      });
       const arr = Array.isArray(raw) ? raw : [raw];
       warnedAgents.delete(member.name);
       return {
@@ -113,9 +110,7 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
       const message = e instanceof ApiError ? e.message : (e as Error).message;
       if (!warnedAgents.has(member.name)) {
         warnedAgents.add(member.name);
-        console.warn(
-          `[useAgentFanout] /${opts.endpoint} failed for agent "${member.name}": ${message}`,
-        );
+        console.warn(`[useAgentFanout] /${opts.endpoint} failed for agent "${member.name}": ${message}`);
       }
       return { agent: member.name, items: [], error: message };
     }
@@ -139,9 +134,7 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
         name: m.name,
         url: m.url,
       }));
-      const perAgent = await Promise.all(
-        directory.map((entry) => fetchOne(entry, signal)),
-      );
+      const perAgent = await Promise.all(directory.map((entry) => fetchOne(entry, signal)));
       if (signal.aborted) {
         // #1542: an aborted cycle must still clear stale per-agent
         // errors for agents that recovered before the abort fired.

@@ -18,8 +18,7 @@ import type { TeamMember } from "../types/team";
 // surface the currently-selected agent without re-threading props.
 
 const { members, loading, error } = useTeam();
-const { pinnedAgents, onlyDegraded, isPinned, togglePin, setOnlyDegraded } =
-  useTeamPreferences();
+const { pinnedAgents, onlyDegraded, isPinned, togglePin, setOnlyDegraded } = useTeamPreferences();
 
 const selectionStore = useSelectionStore();
 const { selectedName, activeBackendId } = storeToRefs(selectionStore);
@@ -30,9 +29,7 @@ const { selectedName, activeBackendId } = storeToRefs(selectionStore);
 //   2. Stable sort so pinned entries float to the top in pin-order;
 //      unpinned entries keep the directory's original order.
 const displayedMembers = computed<TeamMember[]>(() => {
-  const base = onlyDegraded.value
-    ? members.value.filter((m) => Boolean(m.error))
-    : members.value.slice();
+  const base = onlyDegraded.value ? members.value.filter((m) => Boolean(m.error)) : members.value.slice();
   // Stable partition: pinned members first in pin order, the rest in the
   // directory's natural order. Array.prototype.sort is stable in V8 /
   // Safari since 2018 but we avoid relying on that by partitioning.
@@ -43,16 +40,11 @@ const displayedMembers = computed<TeamMember[]>(() => {
     if (pinSet.has(m.name)) pinned.push(m);
     else rest.push(m);
   }
-  pinned.sort(
-    (a, b) =>
-      pinnedAgents.value.indexOf(a.name) - pinnedAgents.value.indexOf(b.name),
-  );
+  pinned.sort((a, b) => pinnedAgents.value.indexOf(a.name) - pinnedAgents.value.indexOf(b.name));
   return [...pinned, ...rest];
 });
 
-const selectedMember = computed(
-  () => members.value.find((m) => m.name === selectedName.value) ?? null,
-);
+const selectedMember = computed(() => members.value.find((m) => m.name === selectedName.value) ?? null);
 
 function selectAgent(name: string) {
   // Drop backend selection when switching agents — the legacy UI syncs a
@@ -78,9 +70,7 @@ function onTogglePin(name: string): void {
             type="checkbox"
             :checked="onlyDegraded"
             data-testid="team-only-degraded"
-            @change="
-              setOnlyDegraded(($event.target as HTMLInputElement).checked)
-            "
+            @change="setOnlyDegraded(($event.target as HTMLInputElement).checked)"
           />
           only degraded
         </label>

@@ -1,10 +1,6 @@
 import { onUnmounted, ref, shallowRef } from "vue";
 import { apiGet, apiPost, ApiError } from "../api/client";
-import type {
-  A2AResponse,
-  ChatMessage,
-  ConversationEntry,
-} from "../types/chat";
+import type { A2AResponse, ChatMessage, ConversationEntry } from "../types/chat";
 import { extractReplyText } from "../types/chat";
 
 // Tier 1 chat state for a single agent. No panel cache, no localStorage —
@@ -36,8 +32,7 @@ function resolveMaxMessages(override?: number): number {
     }
   ).env?.VITE_CHAT_MAX_MESSAGES;
   if (fromEnv !== undefined) {
-    const parsed =
-      typeof fromEnv === "number" ? fromEnv : parseInt(String(fromEnv), 10);
+    const parsed = typeof fromEnv === "number" ? fromEnv : parseInt(String(fromEnv), 10);
     if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
   }
   return DEFAULT_MAX_MESSAGES;
@@ -112,14 +107,11 @@ export function useChat(opts: UseChatOptions) {
     try {
       // Direct to the named agent's own /conversations — routed by the
       // dashboard nginx to that agent's service, no harness fan-out (#470).
-      const entries = await apiGet<ConversationEntry[]>(
-        `/agents/${encodeURIComponent(opts.agentName)}/conversations`,
-        {
-          query: { limit: "50" },
-          signal: controller.signal,
-          timeoutMs: historyTimeoutMs,
-        },
-      );
+      const entries = await apiGet<ConversationEntry[]>(`/agents/${encodeURIComponent(opts.agentName)}/conversations`, {
+        query: { limit: "50" },
+        signal: controller.signal,
+        timeoutMs: historyTimeoutMs,
+      });
       // Sort ascending by parsed timestamp before cap(): cap() keeps the
       // tail via slice(-N), which only yields the "most recent" window when
       // the list is chronologically ordered. Backend order is not
@@ -140,8 +132,7 @@ export function useChat(opts: UseChatOptions) {
       );
     } catch (e) {
       if (isAbortError(e)) return;
-      historyError.value =
-        e instanceof ApiError ? e.message : (e as Error).message;
+      historyError.value = e instanceof ApiError ? e.message : (e as Error).message;
     } finally {
       if (historyController === controller) historyController = null;
       loadingHistory.value = false;
@@ -186,11 +177,10 @@ export function useChat(opts: UseChatOptions) {
     };
 
     try {
-      const resp = await apiPost<A2AResponse>(
-        `/agents/${encodeURIComponent(opts.agentName)}/`,
-        body,
-        { signal: controller.signal, timeoutMs: sendTimeoutMs },
-      );
+      const resp = await apiPost<A2AResponse>(`/agents/${encodeURIComponent(opts.agentName)}/`, body, {
+        signal: controller.signal,
+        timeoutMs: sendTimeoutMs,
+      });
       if (resp.error) {
         push({
           role: "error",

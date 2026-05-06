@@ -1,10 +1,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
 import type { Agent, TeamMember, TeamResponse } from "../types/team";
-import {
-  ensureVisibilityListenerInstalled,
-  pollingShouldSkipTick,
-} from "./usePollingControl";
+import { ensureVisibilityListenerInstalled, pollingShouldSkipTick } from "./usePollingControl";
 
 // Team state — discovery + per-agent fan-out.
 //
@@ -108,10 +105,10 @@ async function fetchMember(
   memberTimeoutMs: number,
 ): Promise<TeamMember> {
   try {
-    const agents = await apiGet<Agent[]>(
-      `/agents/${encodeURIComponent(entry.name)}/agents`,
-      { signal, timeoutMs: memberTimeoutMs },
-    );
+    const agents = await apiGet<Agent[]>(`/agents/${encodeURIComponent(entry.name)}/agents`, {
+      signal,
+      timeoutMs: memberTimeoutMs,
+    });
     return { name: entry.name, url: entry.url, agents };
   } catch (e) {
     if ((e as { name?: string }).name === "AbortError") throw e;
@@ -130,11 +127,7 @@ async function sharedRefresh(): Promise<void> {
       signal,
       timeoutMs: currentDirectoryTimeoutMs,
     });
-    const resolved = await Promise.all(
-      directory.map((entry) =>
-        fetchMember(entry, signal, currentMemberTimeoutMs),
-      ),
-    );
+    const resolved = await Promise.all(directory.map((entry) => fetchMember(entry, signal, currentMemberTimeoutMs)));
     if (signal.aborted) return;
     sharedMembers.value = resolved;
     sharedError.value = "";
@@ -143,14 +136,10 @@ async function sharedRefresh(): Promise<void> {
     // this rejection belongs to the OLD refresh cycle — stay silent
     // regardless of the specific error, so bursty refreshes don't
     // surface spurious AbortError toasts or 'degraded' badges.
-    if (
-      pollerAborter !== localAborter ||
-      (e as { name?: string }).name === "AbortError"
-    ) {
+    if (pollerAborter !== localAborter || (e as { name?: string }).name === "AbortError") {
       return;
     }
-    sharedError.value =
-      e instanceof ApiError ? e.message : (e as Error).message;
+    sharedError.value = e instanceof ApiError ? e.message : (e as Error).message;
   } finally {
     // Only clear loading for the currently-active cycle. A stale
     // refresh completing late should not flip the spinner off if a
@@ -159,11 +148,7 @@ async function sharedRefresh(): Promise<void> {
   }
 }
 
-function startShared(
-  intervalMs: number,
-  memberTimeoutMs: number,
-  directoryTimeoutMs: number,
-): symbol {
+function startShared(intervalMs: number, memberTimeoutMs: number, directoryTimeoutMs: number): symbol {
   // Register this subscriber's interval + timeouts and recompute the
   // effective (min) cadence + (max) timeouts. A later subscriber that
   // needs a tighter interval than the current one restarts the timer
@@ -180,8 +165,7 @@ function startShared(
   subscribers.set(token, { intervalMs, memberTimeoutMs, directoryTimeoutMs });
   recomputeTimeouts();
   const _timeoutsChanged =
-    _prevMemberTimeout !== currentMemberTimeoutMs
-    || _prevDirTimeout !== currentDirectoryTimeoutMs;
+    _prevMemberTimeout !== currentMemberTimeoutMs || _prevDirTimeout !== currentDirectoryTimeoutMs;
 
   const newEffective = recomputeEffectiveInterval();
 

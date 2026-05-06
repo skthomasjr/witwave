@@ -13,15 +13,15 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: witwaveagent-admin-role
 rules:
-- apiGroups:
-  - witwave.ai
-  resources:
-  - witwaveagents
-  verbs:
-  - '*'
-- apiGroups:
-  - witwave.ai
-  resources:
-  - witwaveagents/status
-  verbs:
-  - get
+  - apiGroups:
+      - witwave.ai
+    resources:
+      - witwaveagents
+    verbs:
+      - "*"
+  - apiGroups:
+      - witwave.ai
+    resources:
+      - witwaveagents/status
+    verbs:
+      - get

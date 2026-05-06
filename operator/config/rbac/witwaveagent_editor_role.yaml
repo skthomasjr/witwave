@@ -13,21 +13,21 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: witwaveagent-editor-role
 rules:
-- apiGroups:
-  - witwave.ai
-  resources:
-  - witwaveagents
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - witwave.ai
-  resources:
-  - witwaveagents/status
-  verbs:
-  - get
+  - apiGroups:
+      - witwave.ai
+    resources:
+      - witwaveagents
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - witwave.ai
+    resources:
+      - witwaveagents/status
+    verbs:
+      - get

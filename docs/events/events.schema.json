@@ -36,40 +36,74 @@
     "payload": { "type": "object" }
   },
   "allOf": [
-    { "if": { "properties": { "type": { "const": "job.fired" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/JobFired" } } } },
-    { "if": { "properties": { "type": { "const": "task.fired" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/TaskFired" } } } },
-    { "if": { "properties": { "type": { "const": "heartbeat.fired" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/HeartbeatFired" } } } },
-    { "if": { "properties": { "type": { "const": "continuation.fired" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/ContinuationFired" } } } },
-    { "if": { "properties": { "type": { "const": "trigger.fired" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/TriggerFired" } } } },
-    { "if": { "properties": { "type": { "const": "webhook.delivered" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/WebhookDelivered" } } } },
-    { "if": { "properties": { "type": { "const": "webhook.failed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/WebhookFailed" } } } },
-    { "if": { "properties": { "type": { "const": "hook.decision" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/HookDecision" } } } },
-    { "if": { "properties": { "type": { "const": "a2a.request.received" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestReceived" } } } },
-    { "if": { "properties": { "type": { "const": "a2a.request.completed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestCompleted" } } } },
-    { "if": { "properties": { "type": { "const": "agent.lifecycle" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/AgentLifecycle" } } } },
-    { "if": { "properties": { "type": { "const": "conversation.turn" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/ConversationTurn" } } } },
-    { "if": { "properties": { "type": { "const": "conversation.chunk" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/ConversationChunk" } } } },
-    { "if": { "properties": { "type": { "const": "tool.use" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/ToolUse" } } } },
-    { "if": { "properties": { "type": { "const": "trace.span" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/TraceSpan" } } } },
-    { "if": { "properties": { "type": { "const": "stream.gap" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/StreamGap" } } } },
-    { "if": { "properties": { "type": { "const": "stream.overrun" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/StreamOverrun" } } } }
+    {
+      "if": { "properties": { "type": { "const": "job.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/JobFired" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "task.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TaskFired" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "heartbeat.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/HeartbeatFired" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "continuation.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ContinuationFired" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "trigger.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TriggerFired" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "webhook.delivered" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/WebhookDelivered" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "webhook.failed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/WebhookFailed" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "hook.decision" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/HookDecision" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "a2a.request.received" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestReceived" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "a2a.request.completed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestCompleted" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "agent.lifecycle" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/AgentLifecycle" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "conversation.turn" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ConversationTurn" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "conversation.chunk" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ConversationChunk" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tool.use" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ToolUse" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "trace.span" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TraceSpan" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "stream.gap" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/StreamGap" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "stream.overrun" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/StreamOverrun" } } }
+    }
   ],
   "$defs": {
     "Outcome": { "type": "string", "enum": ["success", "error", "timeout", "skipped"] },

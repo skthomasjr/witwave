@@ -135,7 +135,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # need tag history for the latest-tag probe
+          fetch-depth: 0 # need tag history for the latest-tag probe
 
       - name: Resolve latest existing release tag
         id: tag

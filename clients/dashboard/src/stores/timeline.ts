@@ -255,10 +255,7 @@ export const useTimelineStore = defineStore("timeline", () => {
     // Cheap path: if the batch is already newer than everything in the
     // ring (common for a single agent with monotonic ts), append in one
     // shot and skip binary search entirely.
-    const lastExisting =
-      events.value.length > 0
-        ? tsMillis(events.value[events.value.length - 1].ts)
-        : -Infinity;
+    const lastExisting = events.value.length > 0 ? tsMillis(events.value[events.value.length - 1].ts) : -Infinity;
     let allAppend = true;
     for (const env of batch) {
       if (tsMillis(env.ts) < lastExisting) {
@@ -354,9 +351,7 @@ export const useTimelineStore = defineStore("timeline", () => {
           // re-submitting the whole array is safe. (#1242)
           let startAt = 0;
           if (handle.lastSeenEnvelopeId) {
-            const idx = arr.findIndex(
-              (e) => e.id === handle.lastSeenEnvelopeId,
-            );
+            const idx = arr.findIndex((e) => e.id === handle.lastSeenEnvelopeId);
             startAt = idx === -1 ? 0 : idx + 1;
           }
           const fresh = arr.slice(startAt);

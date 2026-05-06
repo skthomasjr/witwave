@@ -4,10 +4,7 @@ import { ref, nextTick } from "vue";
 import { createI18n } from "vue-i18n";
 import ConversationsView from "../../src/views/ConversationsView.vue";
 import en from "../../src/i18n/locales/en.json";
-import type {
-  ConversationTurn,
-  UseConversationStreamReturn,
-} from "../../src/composables/useConversationStream";
+import type { ConversationTurn, UseConversationStreamReturn } from "../../src/composables/useConversationStream";
 
 // Smoke spec for ConversationsView (#607, streaming coverage #1110 phase 5).
 // Covers fan-out merge + chronological sort + the formatTs millisecond
@@ -47,9 +44,9 @@ function mockStreamReturn(): UseConversationStreamReturn {
 }
 
 vi.mock("../../src/composables/useConversationStream", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../src/composables/useConversationStream")
-  >("../../src/composables/useConversationStream");
+  const actual = await vi.importActual<typeof import("../../src/composables/useConversationStream")>(
+    "../../src/composables/useConversationStream",
+  );
   return {
     ...actual,
     useConversationStream: () => mockStreamReturn(),
@@ -151,9 +148,7 @@ describe("ConversationsView", () => {
       vi.fn((input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
-          return Promise.resolve(
-            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
-          );
+          return Promise.resolve(okJson([{ name: "bob", url: "http://witwave-bob:8099" }]));
         }
         if (url.includes("/agents/bob/conversations")) {
           return Promise.resolve(
@@ -202,9 +197,7 @@ describe("ConversationsView", () => {
       vi.fn((input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
-          return Promise.resolve(
-            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
-          );
+          return Promise.resolve(okJson([{ name: "bob", url: "http://witwave-bob:8099" }]));
         }
         if (url.includes("/agents/bob/conversations")) {
           // Both the fanout call and the stream-mode backlog refetch
@@ -277,9 +270,7 @@ describe("ConversationsView", () => {
       vi.fn((input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
-          return Promise.resolve(
-            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
-          );
+          return Promise.resolve(okJson([{ name: "bob", url: "http://witwave-bob:8099" }]));
         }
         if (url.includes("/agents/bob/conversations")) {
           return Promise.resolve(
@@ -315,9 +306,7 @@ describe("ConversationsView", () => {
     await flushPromises();
 
     // Live label first.
-    expect(
-      wrapper.find("[data-testid='conversations-stream-pill']").text(),
-    ).toContain("Streaming live");
+    expect(wrapper.find("[data-testid='conversations-stream-pill']").text()).toContain("Streaming live");
 
     // Flip the mock to reconnecting and re-render.
     mockConnected.value = false;
@@ -325,9 +314,7 @@ describe("ConversationsView", () => {
     await nextTick();
     await flushPromises();
 
-    expect(
-      wrapper.find("[data-testid='conversations-stream-pill']").text(),
-    ).toContain("Reconnecting");
+    expect(wrapper.find("[data-testid='conversations-stream-pill']").text()).toContain("Reconnecting");
   });
 
   it("does not duplicate rows when a streaming turn overlaps the backlog", async () => {
@@ -336,9 +323,7 @@ describe("ConversationsView", () => {
       vi.fn((input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
-          return Promise.resolve(
-            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
-          );
+          return Promise.resolve(okJson([{ name: "bob", url: "http://witwave-bob:8099" }]));
         }
         if (url.includes("/agents/bob/conversations")) {
           return Promise.resolve(

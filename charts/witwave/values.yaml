@@ -50,7 +50,8 @@ dashboard:
   # Non-secret values only. The harness bearer token goes through the
   # separate harnessBearerTokenSecret block below — a plain
   # `kubectl get cm` must not leak it.
-  runtimeConfig: {}
+  runtimeConfig:
+    {}
     # # External trace backend URL (Jaeger / Tempo / Grafana). Empty
     # # disables the OTelTraces view. Must be same-origin OR operators
     # # must set traceApiAllowCrossOrigin=true AND widen the dashboard
@@ -137,7 +138,7 @@ certManager:
   # "Issuer" you MUST set kind explicitly.
   issuerRef:
     name: ""
-    kind: ""   # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
+    kind: "" # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
 
 ingress:
   enabled: false
@@ -1021,7 +1022,7 @@ defaults:
 backends:
   credentials:
     existingSecret: ""
-    secrets: {}                  # map of env-var-name → value; dev only
+    secrets: {} # map of env-var-name → value; dev only
     acknowledgeInsecureInline: false
 
 # MCP tool servers (#644). Each enabled entry renders one Deployment +
@@ -1115,13 +1116,20 @@ mcpTools:
       clusterWide: false
       rules:
         - apiGroups: [""]
-          resources: ["namespaces", "pods", "services", "configmaps",
-                      "persistentvolumeclaims", "persistentvolumes",
-                      "events", "nodes"]
+          resources:
+            [
+              "namespaces",
+              "pods",
+              "services",
+              "configmaps",
+              "persistentvolumeclaims",
+              "persistentvolumes",
+              "events",
+              "nodes",
+            ]
           verbs: ["get", "list", "watch"]
         - apiGroups: ["apps"]
-          resources: ["deployments", "statefulsets", "daemonsets",
-                      "replicasets"]
+          resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
           verbs: ["get", "list", "watch"]
         - apiGroups: ["batch"]
           resources: ["jobs", "cronjobs"]

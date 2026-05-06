@@ -35,11 +35,7 @@ export type PerAgentErrors = Record<string, string>;
 // at module scope so a future unit test can reference the limit.
 const METRICS_MAX_BYTES = 2 * 1024 * 1024;
 
-async function fetchText(
-  url: string,
-  signal: AbortSignal,
-  timeoutMs?: number,
-): Promise<string> {
+async function fetchText(url: string, signal: AbortSignal, timeoutMs?: number): Promise<string> {
   // Combine the outer abort signal with a per-request timeout (#743).
   // When AbortSignal.any is available we merge; otherwise we fall back
   // to a manual timer.
@@ -50,10 +46,7 @@ async function fetchText(
       any?: (signals: AbortSignal[]) => AbortSignal;
       timeout?: (ms: number) => AbortSignal;
     };
-    if (
-      typeof AnyAbortSignal.any === "function" &&
-      typeof AnyAbortSignal.timeout === "function"
-    ) {
+    if (typeof AnyAbortSignal.any === "function" && typeof AnyAbortSignal.timeout === "function") {
       // #1540: AbortSignal.timeout() allocates an internal timer that
       // can't be cancelled from the outside, but the combined signal
       // returned by AbortSignal.any can be dropped from our retained
@@ -111,10 +104,7 @@ async function fetchText(
     if (cl != null) {
       const n = Number.parseInt(cl, 10);
       if (Number.isFinite(n) && n > METRICS_MAX_BYTES) {
-        throw new ApiError(
-          resp.status,
-          `metrics response too large (${n} > ${METRICS_MAX_BYTES} bytes)`,
-        );
+        throw new ApiError(resp.status, `metrics response too large (${n} > ${METRICS_MAX_BYTES} bytes)`);
       }
     }
     // Stream so we can enforce the cap even when Content-Length is absent
@@ -124,10 +114,7 @@ async function fetchText(
     if (!reader) {
       const txt = await resp.text();
       if (txt.length > METRICS_MAX_BYTES) {
-        throw new ApiError(
-          resp.status,
-          `metrics response too large (>${METRICS_MAX_BYTES} bytes)`,
-        );
+        throw new ApiError(resp.status, `metrics response too large (>${METRICS_MAX_BYTES} bytes)`);
       }
       return txt;
     }
@@ -144,10 +131,7 @@ async function fetchText(
         } catch {
           // ignore
         }
-        throw new ApiError(
-          resp.status,
-          `metrics response too large (>${METRICS_MAX_BYTES} bytes)`,
-        );
+        throw new ApiError(resp.status, `metrics response too large (>${METRICS_MAX_BYTES} bytes)`);
       }
       chunks.push(value);
     }
@@ -196,8 +180,7 @@ export function useMetrics(options: UseMetricsOptions = {}) {
   const memberTimeoutMs = options.memberTimeoutMs ?? 5000;
   const directoryTimeoutMs = options.directoryTimeoutMs ?? 5000;
   const intervalSource = options.intervalMs ?? 5000;
-  const intervalRef: Ref<number> =
-    typeof intervalSource === "number" ? ref(intervalSource) : intervalSource;
+  const intervalRef: Ref<number> = typeof intervalSource === "number" ? ref(intervalSource) : intervalSource;
 
   function clearTimer(): void {
     if (timer !== null) {
@@ -262,9 +245,7 @@ export function useMetrics(options: UseMetricsOptions = {}) {
             // Throttled: warn once per agent per outage, not every poll tick.
             if (!warnedAgents.has(entry.name)) {
               warnedAgents.add(entry.name);
-              console.warn(
-                `[useMetrics] /metrics failed for agent "${entry.name}": ${message}`,
-              );
+              console.warn(`[useMetrics] /metrics failed for agent "${entry.name}": ${message}`);
             }
             return {
               agent: entry.name,
@@ -296,9 +277,7 @@ export function useMetrics(options: UseMetricsOptions = {}) {
     }
   }
 
-  const merged = computed<FamilyMap>(() =>
-    mergeFamilies(perAgent.value.map((p) => p.families)),
-  );
+  const merged = computed<FamilyMap>(() => mergeFamilies(perAgent.value.map((p) => p.families)));
 
   onMounted(() => {
     void refresh();

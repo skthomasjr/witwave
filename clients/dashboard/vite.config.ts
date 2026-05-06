@@ -65,8 +65,7 @@ function buildProxy(): Record<string, ProxyOptions> {
     proxy[pattern] = {
       target: entry.url,
       changeOrigin: true,
-      rewrite: (path) =>
-        path.replace(new RegExp(`^/api/agents/${entry.name}/`), "/"),
+      rewrite: (path) => path.replace(new RegExp(`^/api/agents/${entry.name}/`), "/"),
     };
   }
 

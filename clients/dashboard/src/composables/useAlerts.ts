@@ -120,7 +120,7 @@ function upsertAlert(next: Alert, opts: UpsertOptions = {}): void {
     ...next,
     firstSeenAt: prev?.firstSeenAt ?? next.firstSeenAt ?? now(),
     lastSeenAt: next.lastSeenAt ?? now(),
-    count: prev ? (prev.count ?? 1) + 1 : next.count ?? 1,
+    count: prev ? (prev.count ?? 1) + 1 : (next.count ?? 1),
   };
 
   if (prev) {

@@ -1,5 +1,5 @@
 ## Append samples of your project ##
 resources:
-- witwave_v1alpha1_witwaveagent.yaml
-- witwave_v1alpha1_witwaveworkspace.yaml
+  - witwave_v1alpha1_witwaveagent.yaml
+  - witwave_v1alpha1_witwaveworkspace.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

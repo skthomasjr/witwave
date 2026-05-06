@@ -53,12 +53,8 @@ const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<TraceE
   query: computed(() => ({ limit: String(limit.value) })),
 });
 
-const degradedEntries = computed<[string, string][]>(() =>
-  Object.entries(perAgentErrors.value),
-);
-const degradedTooltip = computed(() =>
-  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
-);
+const degradedEntries = computed<[string, string][]>(() => Object.entries(perAgentErrors.value));
+const degradedTooltip = computed(() => degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"));
 
 // Pair tool_use rows with their tool_result (for duration) and any
 // matching tool_audit row (for response preview + hook decision).
@@ -114,13 +110,8 @@ const rendered = computed<RenderRow[]>(() => {
       if (!Number.isNaN(a) && !Number.isNaN(b)) duration = b - a;
     }
     const decision = (aud?.decision ?? null) || null;
-    const status: RenderRow["status"] = decision === "deny"
-      ? "denied"
-      : !res
-        ? "pending"
-        : res.is_error
-          ? "error"
-          : "ok";
+    const status: RenderRow["status"] =
+      decision === "deny" ? "denied" : !res ? "pending" : res.is_error ? "error" : "ok";
     const _tool = r.name ?? aud?.tool_name ?? "";
     const _sid = r.session_id ?? "";
     const _preview = (aud?.tool_response_preview ?? null) || null;
@@ -253,17 +244,10 @@ function exportRowToPlain(row: RenderRow): Record<string, unknown> {
   };
 }
 function onExportTraceJson(): void {
-  exportJson(
-    filtered.value.map(exportRowToPlain),
-    timestamped("witwave-trace", "json"),
-  );
+  exportJson(filtered.value.map(exportRowToPlain), timestamped("witwave-trace", "json"));
 }
 function onExportTraceCsv(): void {
-  exportCsv(
-    filtered.value.map(exportRowToPlain),
-    traceExportColumns,
-    timestamped("witwave-trace", "csv"),
-  );
+  exportCsv(filtered.value.map(exportRowToPlain), traceExportColumns, timestamped("witwave-trace", "csv"));
 }
 
 function formatDuration(ms: number | null): string {
@@ -287,12 +271,7 @@ function formatInput(v: unknown): string {
   <div class="trace-view" data-testid="list-trace">
     <div class="toolbar">
       <h2 class="title">Trace</h2>
-      <input
-        v-model="searchTerm"
-        class="search"
-        type="text"
-        placeholder="filter tool / input / session…"
-      />
+      <input v-model="searchTerm" class="search" type="text" placeholder="filter tool / input / session…" />
       <select v-model="agentFilter" class="select" aria-label="agent">
         <option value="">all agents</option>
         <option v-for="a in agentOptions" :key="a" :value="a">{{ a }}</option>
@@ -374,11 +353,7 @@ function formatInput(v: unknown): string {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="row in filtered"
-            :key="row.key"
-            :class="`status-row-${row.status}`"
-          >
+          <tr v-for="row in filtered" :key="row.key" :class="`status-row-${row.status}`">
             <td class="ts">{{ formatTs(row.ts) }}</td>
             <td class="kind">
               <span :class="`pill pill-kind-${row.kind}`">{{ row.kind }}</span>

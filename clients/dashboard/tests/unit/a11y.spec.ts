@@ -81,7 +81,10 @@ describe("a11y smoke", () => {
   it("AgentList empty state has no detectable a11y violations", async () => {
     // AgentList in the "no agents found" terminal state — cheap mount
     // that exercises the placeholder branch without needing fetch mocks.
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: true, status: 200, json: async () => [] } as unknown as Response)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, json: async () => [] } as unknown as Response)),
+    );
     const wrapper = mount(AgentList, {
       global: { plugins: [PrimeVue] },
       props: {

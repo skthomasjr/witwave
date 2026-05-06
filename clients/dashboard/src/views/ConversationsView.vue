@@ -73,12 +73,8 @@ const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Conver
   paused: () => streamMode.value,
 });
 
-const degradedEntries = computed<[string, string][]>(() =>
-  Object.entries(perAgentErrors.value),
-);
-const degradedTooltip = computed(() =>
-  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
-);
+const degradedEntries = computed<[string, string][]>(() => Object.entries(perAgentErrors.value));
+const degradedTooltip = computed(() => degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"));
 
 const agentOptions = computed(() => {
   const set = new Set<string>();
@@ -106,9 +102,7 @@ const sessionOptions = computed<{ value: string; label: string }[]>(() => {
 });
 
 // Stream mode is active iff we can address a single backend + session.
-const streamMode = computed(
-  () => agentFilter.value !== "" && sessionFilter.value !== "",
-);
+const streamMode = computed(() => agentFilter.value !== "" && sessionFilter.value !== "");
 
 // -- Stream + backlog state (only used when streamMode is true) -----------
 
@@ -245,9 +239,7 @@ function openStream(agent: string, session: string): void {
       immediate: true,
     }),
   );
-  streamWatchers.push(
-    watch(stream.error, (v) => (streamError.value = v), { immediate: true }),
-  );
+  streamWatchers.push(watch(stream.error, (v) => (streamError.value = v), { immediate: true }));
   streamWatchers.push(
     watch(
       stream.turns,
@@ -314,20 +306,23 @@ function streamTurnsAsRows(agent: string, session: string): Row[] {
   // would otherwise get mis-tagged with the new (agent, session). (#1165)
   return streamTurns.value
     .filter((turn) => streamTurnGens.get(turn.turnId) === gen)
-    .map((turn) => ({
-      ts: turn.ts,
-      agent,
-      session_id: session,
-      role: turn.role === "assistant" ? "agent" : "user",
-      text: turn.content,
-      _agent: agent,
-      // Attach the turn id + in-progress flag so the template can show a
-      // typing indicator and so the v-for key survives chunk appends.
-      // Not part of the ConversationEntry wire shape; we carry it as
-      // extra own-properties and cast on use.
-      __turnId: turn.turnId,
-      __incomplete: !turn.complete,
-    }) as Row & { __turnId: string; __incomplete: boolean });
+    .map(
+      (turn) =>
+        ({
+          ts: turn.ts,
+          agent,
+          session_id: session,
+          role: turn.role === "assistant" ? "agent" : "user",
+          text: turn.content,
+          _agent: agent,
+          // Attach the turn id + in-progress flag so the template can show a
+          // typing indicator and so the v-for key survives chunk appends.
+          // Not part of the ConversationEntry wire shape; we carry it as
+          // extra own-properties and cast on use.
+          __turnId: turn.turnId,
+          __incomplete: !turn.complete,
+        }) as Row & { __turnId: string; __incomplete: boolean },
+    );
 }
 
 // Pure chronological order. Within a session, a response's ts is always
@@ -343,8 +338,7 @@ const merged = computed<Row[]>(() => {
   const stream = streamTurnsAsRows(agentFilter.value, sessionFilter.value);
   const seen = new Set<string>();
   const out: Row[] = [];
-  const keyOf = (r: Row): string =>
-    `${r._agent}|${r.session_id ?? ""}|${r.ts}|${r.role}`;
+  const keyOf = (r: Row): string => `${r._agent}|${r.session_id ?? ""}|${r.ts}|${r.role}`;
   for (const r of backlog) {
     const k = keyOf(r);
     if (seen.has(k)) continue;
@@ -428,9 +422,7 @@ const rowKeys = computed(() => {
       continue;
     }
     const turnId = (row as Row & { __turnId?: string }).__turnId;
-    const base = turnId
-      ? `turn:${turnId}`
-      : `${row._agent}|${row.session_id ?? ""}|${row.ts}|${row.role}`;
+    const base = turnId ? `turn:${turnId}` : `${row._agent}|${row.session_id ?? ""}|${row.ts}|${row.role}`;
     let key: string;
     if (!usedKeys.has(base)) {
       key = base;
@@ -482,17 +474,7 @@ const pillLabel = computed(() => {
 // Export handlers (#1105). Exports the currently-filtered view so the
 // downloaded file reflects what the operator is looking at on screen
 // (agent/role/search filters, current limit). For post-mortem use.
-const exportColumns = [
-  "ts",
-  "_agent",
-  "agent",
-  "session_id",
-  "role",
-  "model",
-  "tokens",
-  "trace_id",
-  "text",
-];
+const exportColumns = ["ts", "_agent", "agent", "session_id", "role", "model", "tokens", "trace_id", "text"];
 function onExportJson(): void {
   exportJson(filtered.value, timestamped("witwave-conversations", "json"));
 }
@@ -524,29 +506,16 @@ function formatTs(ts: string): string {
 // Computed views mostly used by the existing "empty/loading/error" block.
 // In stream mode the backlog is authoritative for the initial render so
 // we prefer its loading/error state when available.
-const activeLoading = computed(() =>
-  streamMode.value ? backlogLoading.value : loading.value,
-);
-const activeError = computed(() =>
-  streamMode.value
-    ? backlogError.value || streamError.value
-    : error.value,
-);
-const activeItemCount = computed(() =>
-  streamMode.value ? merged.value.length : items.value.length,
-);
+const activeLoading = computed(() => (streamMode.value ? backlogLoading.value : loading.value));
+const activeError = computed(() => (streamMode.value ? backlogError.value || streamError.value : error.value));
+const activeItemCount = computed(() => (streamMode.value ? merged.value.length : items.value.length));
 </script>
 
 <template>
   <div class="conversations-view" data-testid="list-conversations">
     <div class="toolbar">
       <h2 class="title">Conversations</h2>
-      <input
-        v-model="searchTerm"
-        class="search"
-        type="text"
-        placeholder="filter messages…"
-      />
+      <input v-model="searchTerm" class="search" type="text" placeholder="filter messages…" />
       <select v-model="agentFilter" class="select" aria-label="agent">
         <option value="">all agents</option>
         <option v-for="a in agentOptions" :key="a" :value="a">{{ a }}</option>
@@ -559,11 +528,7 @@ const activeItemCount = computed(() =>
       </select>
       <select v-model="sessionFilter" class="select" aria-label="session">
         <option value="">all sessions</option>
-        <option
-          v-for="s in sessionOptions"
-          :key="s.value"
-          :value="s.value"
-        >
+        <option v-for="s in sessionOptions" :key="s.value" :value="s.value">
           {{ s.label }}
         </option>
       </select>
@@ -574,17 +539,8 @@ const activeItemCount = computed(() =>
         <option :value="500">500</option>
       </select>
       <span class="count">{{ filtered.length }} / {{ activeItemCount }}</span>
-      <span
-        v-if="streamMode"
-        class="pill"
-        :class="`pill-${pillState}`"
-        data-testid="conversations-stream-pill"
-      >
-        <i
-          class="pi"
-          :class="pillState === 'live' ? 'pi-circle-fill' : 'pi-sync'"
-          aria-hidden="true"
-        />
+      <span v-if="streamMode" class="pill" :class="`pill-${pillState}`" data-testid="conversations-stream-pill">
+        <i class="pi" :class="pillState === 'live' ? 'pi-circle-fill' : 'pi-sync'" aria-hidden="true" />
         {{ pillLabel }}
       </span>
       <span
@@ -600,11 +556,7 @@ const activeItemCount = computed(() =>
         class="refresh"
         type="button"
         :disabled="activeLoading"
-        @click="
-          streamMode
-            ? loadBacklog(agentFilter, sessionFilter)
-            : refresh()
-        "
+        @click="streamMode ? loadBacklog(agentFilter, sessionFilter) : refresh()"
       >
         <i class="pi pi-refresh" aria-hidden="true" />
       </button>
@@ -661,11 +613,7 @@ const activeItemCount = computed(() =>
             open trace
           </RouterLink>
         </div>
-        <div
-          v-if="row.role === 'agent'"
-          class="bbl"
-          v-html="renderMarkdown(row.text ?? '')"
-        />
+        <div v-if="row.role === 'agent'" class="bbl" v-html="renderMarkdown(row.text ?? '')" />
         <div v-else class="bbl">{{ row.text ?? "" }}</div>
         <div
           v-if="isIncomplete(row)"

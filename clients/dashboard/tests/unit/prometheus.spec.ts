@@ -3,13 +3,7 @@ import { parseProm } from "../../src/utils/prometheus";
 
 describe("parseProm", () => {
   it("parses a basic counter sample", () => {
-    const out = parseProm(
-      [
-        "# HELP foo help",
-        "# TYPE foo counter",
-        'foo_total{a="1"} 42',
-      ].join("\n"),
-    );
+    const out = parseProm(["# HELP foo help", "# TYPE foo counter", 'foo_total{a="1"} 42'].join("\n"));
     const fam = out.get("foo");
     expect(fam).toBeDefined();
     expect(fam!.samples[0].labels).toEqual({ a: "1" });

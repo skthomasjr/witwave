@@ -67,14 +67,7 @@ function closeDrawer(): void {
 // (one row per trace) in the order currently rendered; the detail drawer
 // exports the span tree of the open trace as JSON. CSV on the detail
 // view would lose the span-tree structure, so it's JSON-only.
-const otelListColumns = [
-  "traceID",
-  "startTime",
-  "duration",
-  "spanCount",
-  "rootService",
-  "rootOperation",
-];
+const otelListColumns = ["traceID", "startTime", "duration", "spanCount", "rootService", "rootOperation"];
 function onExportListJson(): void {
   exportJson(list.value, timestamped("witwave-otel-traces", "json"));
 }
@@ -87,10 +80,7 @@ function onExportListCsv(): void {
 }
 function onExportDetailJson(): void {
   if (!detail.value) return;
-  exportJson(
-    [detail.value],
-    timestamped(`witwave-otel-trace-${detail.value.traceID}`, "json"),
-  );
+  exportJson([detail.value], timestamped(`witwave-otel-trace-${detail.value.traceID}`, "json"));
 }
 
 watch(
@@ -138,9 +128,7 @@ const flatSpans = computed<FlatRow[]>(() => {
   });
 });
 
-const selectedId = computed<string>(
-  () => (route.params.traceId as string | undefined) ?? "",
-);
+const selectedId = computed<string>(() => (route.params.traceId as string | undefined) ?? "");
 
 const totalDuration = computed<number>(() => {
   const tree = spanTree.value;
@@ -203,26 +191,22 @@ const totalDuration = computed<number>(() => {
     <div v-if="!configured" class="state state-unconfigured" data-testid="otel-not-configured">
       <h3>Trace viewer is not configured</h3>
       <p>
-        No external trace backend is set and the in-cluster span source is not
-        reachable. The dashboard renders traces from one of two sources:
+        No external trace backend is set and the in-cluster span source is not reachable. The dashboard renders traces
+        from one of two sources:
       </p>
       <ul>
         <li>
-          <strong>External Jaeger / Tempo.</strong> Set
-          <code>VITE_TRACE_API_URL</code> at build time (or
-          <code>traceApiUrl</code> in the chart values) to point at your
-          collector's HTTP API.
+          <strong>External Jaeger / Tempo.</strong> Set <code>VITE_TRACE_API_URL</code> at build time (or
+          <code>traceApiUrl</code> in the chart values) to point at your collector's HTTP API.
         </li>
         <li>
-          <strong>In-cluster in-memory ring buffer.</strong> Ensure
-          <code>OTEL_IN_MEMORY_SPANS</code> is enabled on the backends and the
-          dashboard can reach <code>/api/team</code>. This path recovers
-          automatically once at least one backend responds.
+          <strong>In-cluster in-memory ring buffer.</strong> Ensure <code>OTEL_IN_MEMORY_SPANS</code> is enabled on the
+          backends and the dashboard can reach <code>/api/team</code>. This path recovers automatically once at least
+          one backend responds.
         </li>
       </ul>
       <p class="hint">
-        If you expect in-cluster mode to be active, the probe retries every
-        minute — or you can retry now.
+        If you expect in-cluster mode to be active, the probe retries every minute — or you can retry now.
       </p>
       <button class="btn" type="button" @click="retryProbe">Retry probe</button>
     </div>
@@ -309,16 +293,10 @@ const totalDuration = computed<number>(() => {
               <span class="span-dur">{{ formatMicros(row.node.span.duration) }}</span>
             </div>
             <div class="span-bar-track">
-              <div
-                class="span-bar"
-                :style="{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }"
-              />
+              <div class="span-bar" :style="{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }" />
             </div>
             <div v-if="highlightsForSpan(row.node.span).length > 0" class="span-tags">
-              <span
-                v-for="h in highlightsForSpan(row.node.span)"
-                :key="h.key"
-                class="tag"
+              <span v-for="h in highlightsForSpan(row.node.span)" :key="h.key" class="tag"
                 >{{ h.key }}={{ h.value }}</span
               >
             </div>

@@ -122,9 +122,7 @@ interface ParsedMessage {
 // Minimal SSE message assembler. The spec is byte-oriented; we work in
 // strings here since fetch's ReadableStream hands us decoded text. The
 // assembler yields one `ParsedMessage` per `\n\n`-terminated block.
-export function __parseSSEChunk(
-  buffer: string,
-): { messages: ParsedMessage[]; remainder: string } {
+export function __parseSSEChunk(buffer: string): { messages: ParsedMessage[]; remainder: string } {
   const messages: ParsedMessage[] = [];
   let remainder = buffer;
 
@@ -217,10 +215,7 @@ function makeSyntheticGapEvent(envelope: EventEnvelope): EventEnvelope {
   return envelope;
 }
 
-export function useEventStream(
-  url: string,
-  options: UseEventStreamOptions = {},
-): UseEventStreamReturn {
+export function useEventStream(url: string, options: UseEventStreamOptions = {}): UseEventStreamReturn {
   const maxEvents = clampMaxEvents(options.maxEvents ?? DEFAULT_MAX_EVENTS);
   const initialDelayMs = options.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
   const maxDelayMs = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
@@ -481,10 +476,7 @@ export function useEventStream(
       }
       serverRetryHintMs = null;
     } else {
-      const ceiling = Math.min(
-        maxDelayMs,
-        initialDelayMs * Math.pow(2, Math.max(0, attempt)),
-      );
+      const ceiling = Math.min(maxDelayMs, initialDelayMs * Math.pow(2, Math.max(0, attempt)));
       delay = Math.floor(Math.random() * ceiling);
     }
     // Apply MIN_BACKOFF_MS floor across BOTH branches (#1531, #1615).

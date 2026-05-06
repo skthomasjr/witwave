@@ -76,9 +76,7 @@ describe("useRouting", () => {
   });
 
   it("falls through to routing.default when kind has no override", async () => {
-    mockedApiGet.mockResolvedValueOnce(
-      fullRouting({ default_name: "iris-claude" } as never),
-    );
+    mockedApiGet.mockResolvedValueOnce(fullRouting({ default_name: "iris-claude" } as never));
     const scope = effectScope();
     let resolver: ReturnType<typeof useRouting> | undefined;
     scope.run(() => {

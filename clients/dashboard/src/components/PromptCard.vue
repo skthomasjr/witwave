@@ -8,13 +8,7 @@ import { computed } from "vue";
 // consistent across the Automation view; each kind just picks which
 // secondary lines to show.
 
-export type PromptKind =
-  | "job"
-  | "task"
-  | "trigger"
-  | "webhook"
-  | "continuation"
-  | "heartbeat";
+export type PromptKind = "job" | "task" | "trigger" | "webhook" | "continuation" | "heartbeat";
 
 interface Props {
   kind: PromptKind;
@@ -184,12 +178,7 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
     </header>
     <div class="primary">{{ primaryLine }}</div>
     <footer v-if="chips.length > 0" class="chips">
-      <span
-        v-for="(c, i) in chips"
-        :key="i"
-        class="chip"
-        :class="c.tone ? `chip-${c.tone}` : ''"
-      >
+      <span v-for="(c, i) in chips" :key="i" class="chip" :class="c.tone ? `chip-${c.tone}` : ''">
         {{ c.label }}
       </span>
     </footer>
@@ -210,7 +199,9 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
   font-family: var(--witwave-mono);
   color: var(--witwave-text);
   cursor: default;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
   width: 100%;
 }
 .prompt-card.is-clickable {

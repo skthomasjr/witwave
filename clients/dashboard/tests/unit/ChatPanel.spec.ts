@@ -94,15 +94,11 @@ describe("ChatPanel", () => {
     // Confirms the request routed directly to the agent's service and
     // carried the selected backend as A2A message metadata (#470).
     const sendCall = fetchMock.mock.calls.find(
-      ([u, init]) =>
-        String(u).includes("/agents/iris/") &&
-        (init as RequestInit | undefined)?.method === "POST",
+      ([u, init]) => String(u).includes("/agents/iris/") && (init as RequestInit | undefined)?.method === "POST",
     );
     expect(sendCall).toBeDefined();
     expect(String(sendCall?.[0])).toContain("/agents/iris/");
-    const sentBody = JSON.parse(
-      String((sendCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
-    );
+    const sentBody = JSON.parse(String((sendCall?.[1] as RequestInit | undefined)?.body ?? "{}"));
     expect(sentBody.params.message.metadata.backend_id).toBe("iris-claude");
   });
 

@@ -39,17 +39,15 @@ async function fetchConversation() {
     // apiGet prepends the /api base internally (see api/client.ts).
     // Using `query:` rather than an inline ?limit= keeps encoding in
     // one place and avoids the doubled-prefix 404 I hit first pass.
-    const raw = await apiGet<ConversationEntry[]>(
-      `/agents/${encodeURIComponent(props.agent)}/conversations`,
-      { signal: aborter.signal, query: { limit: "500" } },
-    );
+    const raw = await apiGet<ConversationEntry[]>(`/agents/${encodeURIComponent(props.agent)}/conversations`, {
+      signal: aborter.signal,
+      query: { limit: "500" },
+    });
     // Filter by session_id if we have one. Otherwise take the latest
     // 50 entries as a best-effort preview (keeps the drawer useful
     // for kinds without a stable session — e.g. webhooks, which
     // return hasConversation=false today, but this keeps us safe).
-    const rows = props.sessionId
-      ? raw.filter((r) => r.session_id === props.sessionId)
-      : raw.slice(-50);
+    const rows = props.sessionId ? raw.filter((r) => r.session_id === props.sessionId) : raw.slice(-50);
     // Pure chronological order matches ConversationsView.
     entries.value = rows.sort((a, b) => {
       const ta = Date.parse(a.ts);
@@ -116,23 +114,13 @@ const subtitle = computed(() => {
   <Teleport to="body">
     <transition name="drawer">
       <div v-if="open" class="drawer-backdrop" @click.self="emit('close')">
-        <aside
-          class="drawer"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="`Conversation for ${title}`"
-        >
+        <aside class="drawer" role="dialog" aria-modal="true" :aria-label="`Conversation for ${title}`">
           <header class="drawer-head">
             <div class="heads">
               <h3 class="drawer-title">{{ title }}</h3>
               <div class="drawer-sub">{{ subtitle }}</div>
             </div>
-            <button
-              type="button"
-              class="drawer-close"
-              :aria-label="'Close conversation'"
-              @click="emit('close')"
-            >
+            <button type="button" class="drawer-close" :aria-label="'Close conversation'" @click="emit('close')">
               <i class="pi pi-times" aria-hidden="true" />
             </button>
           </header>
@@ -140,16 +128,9 @@ const subtitle = computed(() => {
           <div class="drawer-body">
             <div v-if="loading" class="state">Loading…</div>
             <div v-else-if="error" class="state state-error">{{ error }}</div>
-            <div v-else-if="entries.length === 0" class="state">
-              No conversation yet.
-            </div>
+            <div v-else-if="entries.length === 0" class="state">No conversation yet.</div>
             <div v-else class="messages">
-              <article
-                v-for="(e, i) in entries"
-                :key="`${e.ts}-${i}`"
-                class="msg"
-                :class="roleClass(e.role)"
-              >
+              <article v-for="(e, i) in entries" :key="`${e.ts}-${i}`" class="msg" :class="roleClass(e.role)">
                 <div class="msg-meta">
                   <span class="msg-role">{{ e.role }}</span>
                   <span class="msg-ts">{{ formatTs(e.ts) }}</span>
@@ -157,10 +138,7 @@ const subtitle = computed(() => {
                 </div>
                 <!-- Existing utility sanitises via DOMPurify, matches
                      ConversationsView. -->
-                <div
-                  class="msg-text"
-                  v-html="renderMarkdown(e.text ?? '')"
-                />
+                <div class="msg-text" v-html="renderMarkdown(e.text ?? '')" />
               </article>
             </div>
           </div>

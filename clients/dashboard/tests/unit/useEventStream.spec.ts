@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { effectScope } from "vue";
-import {
-  __parseSSEChunk,
-  useEventStream,
-} from "../../src/composables/useEventStream";
+import { __parseSSEChunk, useEventStream } from "../../src/composables/useEventStream";
 
 // Unit coverage for the SSE client that backs the timeline view
 // (#1110 phase 1). Covers three things:
@@ -49,7 +46,7 @@ function run<T>(fn: () => T): { value: T; scope: ReturnType<typeof effectScope> 
 
 describe("__parseSSEChunk", () => {
   it("parses a simple event with id and data", () => {
-    const buf = "event: job.fired\nid: 42\ndata: {\"type\":\"job.fired\"}\n\n";
+    const buf = 'event: job.fired\nid: 42\ndata: {"type":"job.fired"}\n\n';
     const { messages, remainder } = __parseSSEChunk(buf);
     expect(messages).toHaveLength(1);
     expect(messages[0].type).toBe("job.fired");
@@ -198,13 +195,9 @@ describe("useEventStream", () => {
     // 700ms keeps a comfortable margin without making the suite slow.
     await new Promise((r) => setTimeout(r, 700));
 
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "/api/events/stream",
-      expect.anything(),
-    );
+    expect(fetchImpl).toHaveBeenCalledWith("/api/events/stream", expect.anything());
     expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
-    const secondHeaders = (fetchImpl.mock.calls[1][1] as RequestInit)
-      .headers as Record<string, string>;
+    const secondHeaders = (fetchImpl.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
     expect(secondHeaders["Last-Event-ID"]).toBe("7");
     expect(value.events.value.map((e) => e.id)).toEqual(["7", "8"]);
 
@@ -362,9 +355,7 @@ describe("useEventStream", () => {
     expect(value.events.value.length).toBeLessThanOrEqual(TOTAL);
     expect(value.events.value.length).toBeGreaterThanOrEqual(CAP);
     expect(value.droppedEventCount.value).toBeGreaterThan(0);
-    expect(
-      value.events.value.length + value.droppedEventCount.value,
-    ).toBe(TOTAL);
+    expect(value.events.value.length + value.droppedEventCount.value).toBe(TOTAL);
     expect(warnSpy).toHaveBeenCalled();
 
     warnSpy.mockRestore();
@@ -412,9 +403,7 @@ describe("useEventStream", () => {
     try {
       // fetch always rejects so every loop iteration drains into
       // scheduleReconnect.
-      const fetchImpl = vi
-        .fn()
-        .mockRejectedValue(new Error("connection refused"));
+      const fetchImpl = vi.fn().mockRejectedValue(new Error("connection refused"));
 
       const { value, scope } = run(() =>
         useEventStream("/api/events/stream", {

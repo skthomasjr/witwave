@@ -34,12 +34,8 @@ function json(route: Route, body: unknown): Promise<void> {
 
 async function installApiMocks(page: import("@playwright/test").Page) {
   await page.route("**/api/team", (route) => json(route, TEAM_FIXTURE));
-  await page.route("**/api/agents/*/agents", (route) =>
-    json(route, AGENTS_FIXTURE),
-  );
-  await page.route("**/api/agents/*/conversations*", (route) =>
-    json(route, []),
-  );
+  await page.route("**/api/agents/*/agents", (route) => json(route, AGENTS_FIXTURE));
+  await page.route("**/api/agents/*/conversations*", (route) => json(route, []));
   // Generic catch-all for any other /api/* endpoint a view might try.
   await page.route("**/api/**", (route) => json(route, []));
 }

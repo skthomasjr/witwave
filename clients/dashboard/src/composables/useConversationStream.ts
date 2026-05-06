@@ -1,9 +1,5 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from "vue";
-import {
-  useEventStream,
-  type EventEnvelope,
-  type UseEventStreamOptions,
-} from "./useEventStream";
+import { useEventStream, type EventEnvelope, type UseEventStreamOptions } from "./useEventStream";
 
 // Phase-5 per-session conversation SSE consumer (#1110). Wraps the shared
 // `useEventStream` client pointed at a backend's
@@ -67,10 +63,7 @@ export interface ToolUseEvent {
 }
 
 export interface UseConversationStreamOptions
-  extends Pick<
-    UseEventStreamOptions,
-    "token" | "autoConnect" | "fetchImpl" | "initialDelayMs" | "maxDelayMs"
-  > {
+  extends Pick<UseEventStreamOptions, "token" | "autoConnect" | "fetchImpl" | "initialDelayMs" | "maxDelayMs"> {
   // Maximum number of turns to retain. The backlog call owns history;
   // the stream only supplies live tail, so a modest cap is fine.
   maxTurns?: number;
@@ -107,12 +100,14 @@ const DEFAULT_MAX_TURNS = 500;
 function resolveToken(explicit?: string): string | undefined {
   if (explicit) return explicit;
   if (typeof window === "undefined") return undefined;
-  const cfg = (window as unknown as {
-    __WITWAVE_CONFIG__?: {
-      harnessBearerToken?: string;
-      backendBearerToken?: string;
-    };
-  }).__WITWAVE_CONFIG__;
+  const cfg = (
+    window as unknown as {
+      __WITWAVE_CONFIG__?: {
+        harnessBearerToken?: string;
+        backendBearerToken?: string;
+      };
+    }
+  ).__WITWAVE_CONFIG__;
   // Prefer a backend-specific token when deployments have split auth.
   const backendTok = cfg?.backendBearerToken;
   if (typeof backendTok === "string" && backendTok.length > 0) {
@@ -126,13 +121,8 @@ function resolveToken(explicit?: string): string | undefined {
 // `/api/sessions/<session_id>/stream` mounted inside the
 // `/api/agents/<agent>/` proxy, so the dashboard-facing path is:
 //   /api/agents/<agent>/api/sessions/<session_id>/stream
-export function conversationStreamUrl(
-  agent: string,
-  sessionId: string,
-): string {
-  return `/api/agents/${encodeURIComponent(agent)}/api/sessions/${encodeURIComponent(
-    sessionId,
-  )}/stream`;
+export function conversationStreamUrl(agent: string, sessionId: string): string {
+  return `/api/agents/${encodeURIComponent(agent)}/api/sessions/${encodeURIComponent(sessionId)}/stream`;
 }
 
 interface ChunkPayload {
@@ -165,12 +155,7 @@ interface ToolUsePayload {
   [k: string]: unknown;
 }
 
-function makeTurnId(
-  role: ConversationTurnRole,
-  ts: string,
-  sessionHash: string | undefined,
-  counter: number,
-): string {
+function makeTurnId(role: ConversationTurnRole, ts: string, sessionHash: string | undefined, counter: number): string {
   // Stable across chunks for one turn. `counter` disambiguates
   // back-to-back same-role turns that happen to share the ms-truncated ts.
   const hashPart = (sessionHash ?? "").slice(0, 6);
@@ -330,14 +315,8 @@ export function useConversationStream(
     // keys (backlog-synthesised turns) fall back to the legacy
     // "append to any open same-role turn" behaviour. (#1240)
     const last = turns.value[turns.value.length - 1];
-    const keysAgree =
-      !last?.turnKey || !chunkTurnKey || last.turnKey === chunkTurnKey;
-    const canAppend =
-      !!last &&
-      last.role === "assistant" &&
-      !last.complete &&
-      seq > 0 &&
-      keysAgree;
+    const keysAgree = !last?.turnKey || !chunkTurnKey || last.turnKey === chunkTurnKey;
+    const canAppend = !!last && last.role === "assistant" && !last.complete && seq > 0 && keysAgree;
 
     if (canAppend) {
       appendToLastAssistant(content, final);
@@ -376,10 +355,7 @@ export function useConversationStream(
   function handleOverrun(env: EventEnvelope): void {
     // Surface for operator visibility; the stream layer handles resume.
     // eslint-disable-next-line no-console
-    console.warn(
-      "[useConversationStream] stream.overrun — reconnecting",
-      env.payload,
-    );
+    console.warn("[useConversationStream] stream.overrun — reconnecting", env.payload);
   }
 
   // Process every envelope that we haven't handled yet, keyed by `id`.
