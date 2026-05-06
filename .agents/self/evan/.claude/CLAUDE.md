@@ -297,6 +297,25 @@ The process is deliberately a single end-to-end pass per section, not a multi-st
 GitHub issues, and survives across LLM sessions; the team-deployed evan agent does NOT use that pattern. State lives in
 two places only: commits and your deferred-findings memory file. No GitHub issues. No labels. No multi-session funnel.
 
+### Step 0.5 — Recover stuck commits from a prior incomplete run
+
+Between Step 0 (verify source tree + git-identity) and Step 1 (scan), check for unpushed local commits that survived
+a prior run's mid-flight death. If `git rev-list --count origin/main..HEAD` returns non-zero, those commits are stuck
+in the working tree from a previous run that died after Step 5 (commit) but before Step 7 (push). The PVC kept them
+across pod restart but they never landed on main.
+
+The recovery move is to delegate a push + CI watch to iris BEFORE starting the new scan. If CI passes, the stuck
+commits land cleanly and the new run starts from a fresh main. If CI fails, batch-revert the stuck batch (same
+procedure as Step 7's batch-revert), log the failure, then proceed with the new scan from the post-revert state. If
+iris's recovery push hits an unresolvable conflict, STOP — don't start a new run on top of an unstable tree.
+
+This guard makes the agent self-healing against mid-run deaths. Without it, stuck commits accumulate in the local
+tree forever — eventually conflicting with new fixes or rotting silently. With it, every run's first move is "make
+sure prior work landed before producing new work."
+
+The full recovery procedure (commands, iris-prompt template, branching) is in the bug-work SKILL.md under "Step 0.5 —
+Recover stuck commits from a prior incomplete run."
+
 ### Step 1 — Scan
 
 Run the toolchain analyzers for the section's file types. Filter to bug-class rules only:

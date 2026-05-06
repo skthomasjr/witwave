@@ -69,7 +69,55 @@ to clone or sync — that's iris's responsibility.
 
 Pin your git identity by invoking the `git-identity` skill (idempotent).
 
-Capture the pre-sweep ref:
+### 0.5. Recover stuck commits from a prior incomplete run
+
+If a previous bug-work run died mid-flight (timeout, pod crash, OOM kill) after Step 5 (commits) but before Step 7
+(push), local commits will be sitting in the working tree, unpushed. The PVC kept them across the pod restart, but
+they need to land on `main` before this run produces more.
+
+```sh
+STUCK_COMMITS=$(git -C <checkout> rev-list --count origin/main..HEAD)
+```
+
+If `STUCK_COMMITS == 0`: nothing to recover, proceed to step 1.
+
+If `STUCK_COMMITS > 0`:
+
+1. **Identify the stuck commits:**
+
+   ```sh
+   git -C <checkout> log origin/main..HEAD --oneline
+   ```
+
+2. **Delegate recovery push + CI watch to iris** via `call-peer`. Frame it as recovery, not fresh fixing — iris should
+   know these commits are from a prior incomplete run, not from work she's seen before:
+
+   > Hi iris — evan here. I'm starting a new bug-work run, but I found N stuck commits in my local checkout from a
+   > prior run that didn't complete cleanly. Please run `git-push` to land them, then watch the CI workflows. Report
+   > back the per-workflow conclusion. If anything goes red, I'll handle the batch-revert; don't take action.
+   >
+   > Stuck commits:
+   >
+   > - `<SHA1>` `<subject>`
+   > - `<SHA2>` `<subject>`
+   > - …
+
+3. **Wait for iris's report.**
+
+   - **All green** → recovery complete. Proceed to step 1; the new run starts from a clean main.
+   - **Any red** → batch-revert the stuck commits (see step 7's batch-revert procedure), delegate the revert push to
+     iris, log the failure to deferred-findings memory with a "recovered batch failed CI" note, then proceed to
+     step 1. The reverted candidates re-surface naturally on a future run.
+   - **iris reports push failure** (rebase conflict she can't resolve) → STOP. Don't proceed with a new scan; surface
+     the situation in the run summary. The stuck commits stay stuck until the conflict is resolved manually.
+
+4. **Either way, continue:** once recovery is resolved (pushed clean, reverted clean, or stopped on conflict), proceed
+   to step 1. The recovery is not the new run — it's preflight.
+
+This step is the self-healing guard against mid-run deaths. Without it, stuck commits would accumulate forever in the
+local tree, eventually conflicting with new fixes or just rotting.
+
+Capture the pre-sweep ref AFTER recovery so it reflects the post-recovery main:
 
 ```sh
 PRE_SWEEP_SHA=$(git -C <checkout> rev-parse HEAD)
