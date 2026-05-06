@@ -145,6 +145,20 @@ category a file belongs to before deciding how to handle a finding.
 - **Stakes:** `values.yaml` comments are the user-facing documentation for chart consumers. They follow the helm-docs
   convention (each value gets a `#` comment block above it describing what it does, the default, and any caveats).
 
+### Infrastructure source
+
+- **Path patterns:**
+  - **Dockerfiles**: `**/Dockerfile`, `**/Dockerfile.*`, `**/Containerfile` (excluding `vendor/`).
+  - **Shell scripts**: `**/*.sh`, plus any file with a `#!/bin/sh` or `#!/usr/bin/env bash` shebang on its first
+    line (excluding `vendor/`, `clients/dashboard/dist/`, etc.).
+  - **GitHub Actions workflows**: `.github/workflows/*.{yml,yaml}`.
+- **Audience:** operators building and deploying images; CI maintainers debugging workflow failures; developers
+  running scripts locally; future agents (humans + AI) modifying the build / release / CI pipeline.
+- **Stakes:** these files are the build, release, and CI substrate of the project. A bad Dockerfile change breaks
+  image builds; a bad workflow change breaks CI; a bad shell script breaks local dev or release tooling.
+  Inline comments here document non-obvious layer ordering, security posture choices, version-pin justifications,
+  and step-ordering rationale that gets lost in PR descriptions.
+
 ### Generated / vendored code
 
 - **Path patterns:** `**/zz_generated.*`, `**/vendor/**`, `clients/ww/dist/**`,
@@ -216,7 +230,11 @@ Your autonomous fixes cover changes where the correction is unambiguous and reve
   `.prettierignore`. Markdown is excluded — kira owns that.
 - **YAML semantic linting** via `yamllint`; warnings logged to memory, no auto-fixes (yamllint doesn't have a fix
   mode).
+- **Shell script formatting** via `shfmt -w` (auto-fix) and `shellcheck` (diagnostics only — newer versions have a
+  `--fix` flag but we prefer to keep auto-fixes mechanical and surface anything semantic to memory).
 - **Helm chart linting** via `helm lint <chart-dir>` for each chart; failures logged, no auto-fix.
+- **Dockerfile linting** via `hadolint` (diagnostics only — no auto-fix mode); rule violations logged to memory.
+- **GitHub Actions workflow linting** via `actionlint` (diagnostics only); findings logged to memory.
 
 Out of scope for Tier 1: anything in the **Generated / vendored code** category above.
 
@@ -227,6 +245,12 @@ The trickiest tier; bears repeating. You author NEW comments / docstrings, but o
 - For **undocumented exported / public symbols** in active application code (Go exported symbols → godoc comments;
   Python public functions / classes → docstrings).
 - For **`values.yaml` entries** in Helm charts that lack helm-docs-style `#` comment blocks.
+- For **non-obvious instructions in Dockerfiles** that lack explanatory comments (layer ordering rationale,
+  version-pin justifications, security-posture choices like non-root user / dropped capabilities).
+- For **shell-script functions and non-obvious blocks** lacking explanatory comments (function header comments,
+  notes on subtle quoting / portability / `set -e` interactions).
+- For **GitHub Actions workflow steps** whose role isn't obvious from the action reference alone (why a particular
+  `if:` guard is there, why a specific permissions or environment block is set this way).
 
 Each new comment **must be grounded in the code's actual behaviour** — read the function / template body, derive the
 description from what the code demonstrably does, and cite concrete invariants the reader needs to know. If you

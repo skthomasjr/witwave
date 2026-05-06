@@ -89,6 +89,8 @@ What to skip:
 Targets: top-level keys in `charts/*/values.yaml` that lack a `#`
 comment block above them.
 
+
+
 Convention (project-specific, follow what the well-commented values
 in the same chart do):
 
@@ -115,6 +117,80 @@ What to skip:
   human review rather than over-simplifying.
 - Values that look like they're consumed by an external chart /
   operator rather than this chart's templates — log + skip.
+
+### D — Dockerfile non-obvious instructions
+
+Targets: `RUN`, `COPY`, `ADD`, `ENV`, `USER`, `EXPOSE`, `HEALTHCHECK`,
+`ARG`, `WORKDIR` instructions in active Dockerfiles whose intent
+isn't obvious from the line itself AND that lack a comment above
+them.
+
+What to write:
+
+- A 1-3 line `# ...` block immediately above the instruction.
+- State the *why*, not the *what* — the line itself shows the
+  what. Examples:
+  - `# Pinned to 0.43.0 because newer versions changed the
+    `--config` flag behaviour we depend on.`
+  - `# Layer ordering: package install runs before COPY .
+    so that source-only changes don't bust the build cache.`
+  - `# Dropped CAP_NET_ADMIN because the runtime can't modify
+    iptables under PSS-restricted (#1260).`
+- Match the comment style of well-commented instructions
+  elsewhere in the same Dockerfile.
+
+What to skip:
+
+- Trivial / canonical instructions (`WORKDIR /app`, `EXPOSE 8000`
+  on a Python web service) — comments there are noise, not
+  signal.
+- Instructions whose intent depends on cross-file context you
+  can't trace from the Dockerfile alone — log for human review.
+
+### E — Shell-script functions / non-obvious blocks
+
+Targets: function definitions in shell scripts that lack a header
+comment, plus non-obvious code blocks (complex `awk` invocations,
+non-obvious `set` flag combinations, subtle `IFS` usage, etc.).
+
+What to write:
+
+- For functions: 2-4 line header comment summarising the
+  function's purpose, key arguments (positional or named), exit-
+  code semantics if the function uses `return`.
+- For non-obvious blocks: 1-2 line inline comment explaining
+  why the construction is the way it is (POSIX portability,
+  avoiding a specific shellcheck warning, working around a
+  specific tool's quirks).
+- Match the comment style already used by well-commented
+  functions in the same script.
+
+What to skip:
+
+- Trivial one-line wrappers / aliases.
+- Functions whose body is genuinely opaque — log for review.
+
+### F — GitHub Actions workflow steps
+
+Targets: workflow steps whose role isn't obvious from the
+`uses:` / `run:` reference alone AND that lack a comment.
+
+What to write:
+
+- A `# ...` block above the step explaining the *why* of:
+  - `if:` guards (why this step is conditional)
+  - non-obvious `permissions:` / `env:` blocks
+  - choice of action version pin
+  - dependency on prior-step outputs
+- Match the comment style used elsewhere in the same workflow
+  file.
+
+What to skip:
+
+- Trivial steps (checkout, setup-go) where the action name
+  speaks for itself.
+- Steps whose logic depends on workflow-wide context you can't
+  trace from the file alone — log for review.
 
 ## Instructions
 
@@ -160,7 +236,13 @@ If the candidate pool is larger than 25, pick by priority:
    are the chart's user-facing surface).
 3. **Cat B — Python public functions in harness/ and backends/**
    (high internal visibility).
-4. Everything else.
+4. **Cat D — Dockerfile non-obvious instructions** (build / image
+   posture — drift here breaks images silently).
+5. **Cat F — Workflow steps** (CI surface — drift here breaks
+   release / publish flows silently).
+6. **Cat E — Shell-script functions** (often glue, lower per-item
+   visibility but still matters for release tooling).
+7. Everything else.
 
 Log the not-yet-documented remainder to memory so callers know what
 the queue looks like.
@@ -202,6 +284,18 @@ git -C <checkout> commit -m "code: add docstrings to public Python symbols"
 # Helm values
 git -C <checkout> add <values-yaml-files-modified>
 git -C <checkout> commit -m "code: add helm-docs-style comments to chart values"
+
+# Dockerfile comments
+git -C <checkout> add <dockerfile-files-modified>
+git -C <checkout> commit -m "code: comment non-obvious Dockerfile instructions"
+
+# Shell-script comments
+git -C <checkout> add <shell-files-modified>
+git -C <checkout> commit -m "code: add header comments to shell-script functions"
+
+# Workflow comments
+git -C <checkout> add <workflow-files-modified>
+git -C <checkout> commit -m "code: comment non-obvious workflow steps"
 ```
 
 One commit per category so a human reviewer can revert any single
@@ -235,6 +329,18 @@ to deferred-findings memory:
 ### Helm values
 
 - `<chart>:<value-path>` — <one-line reason>
+
+### Dockerfile instructions
+
+- `<path>:<line>` `<INSTRUCTION>` — <one-line reason>
+
+### Shell-script functions
+
+- `<path>:<func-name>` — <one-line reason>
+
+### Workflow steps
+
+- `<path>:<line>` `<step-name>` — <one-line reason>
 ```
 
 The reasons feed back into manual review — common reasons include

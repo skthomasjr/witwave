@@ -107,6 +107,66 @@ False-positive caution: some values are intentionally consumed by
 sub-charts or external operators; if the value name pattern matches
 a known-external pattern (e.g. `ingress.annotations.*`), don't flag.
 
+#### Check D — Dockerfile comments vs instruction layers
+
+For each Dockerfile in scope:
+
+- Walk the file line by line, pairing each non-trivial instruction
+  (`RUN`, `COPY`, `ADD`, `ENV`, `EXPOSE`, `USER`, etc.) with the
+  comment block immediately above it (if any).
+- For each commented instruction, evaluate whether the comment's
+  claim is consistent with the instruction:
+  - Comment says "for build cache efficiency" but the layer is at
+    the bottom of a long sequence with no cache benefit → **finding**
+  - Comment names a package / version that doesn't appear in the
+    `RUN apt-get install` line below it → **finding**
+  - Comment claims `ENV FOO=bar` is "required for X" but no later
+    instruction references `$FOO` → **finding**
+  - Comment claims a `USER agent` runs as non-root but a later
+    `USER root` undoes it → **finding**
+
+False-positive caution: Dockerfile comments are often general
+context, not strict claims. Only flag when a comment makes a
+SPECIFIC claim contradicted by the surrounding instructions.
+
+#### Check E — Shell-script comments vs function bodies
+
+For each shell script in scope:
+
+- Identify functions (POSIX `name()` or `function name` syntax).
+- For each function with a header comment, evaluate whether the
+  comment's description matches the body:
+  - Comment claims function takes an argument named `$path` but
+    the body references `$1` only → minor finding (style, not
+    contradiction)
+  - Comment claims function returns 0 on success / 1 on failure
+    but the body never explicitly `return`s → **finding** if the
+    claim is specific
+  - Comment claims a side effect (writes a file, sets a global)
+    that the body doesn't perform → **finding**
+
+False-positive caution: shell scripts are often glue code where
+comments describe intent rather than mechanics. Don't flag every
+loose description; focus on contradictions.
+
+#### Check F — GitHub Actions workflow comments vs step references
+
+For each workflow file in scope:
+
+- Walk steps with `# comment` blocks above them.
+- For each commented step, evaluate the comment's claim against
+  the step's `uses:` / `run:` / `with:`:
+  - Comment names an action or version that doesn't match the
+    step's `uses:` reference → **finding**
+  - Comment claims a step is conditional ("only on tags") but
+    the step lacks a corresponding `if:` guard → **finding**
+  - Comment claims the step's output feeds a later step but no
+    later step references this step's `outputs.*` → **finding**
+
+False-positive caution: workflow comments often describe the
+overall job intent, not strict per-step claims. Only flag when a
+comment makes a specific claim the YAML structure contradicts.
+
 ### 4. Log findings to memory
 
 Append to
@@ -127,6 +187,18 @@ under a new dated section:
 ### Helm values
 
 - `<chart>/values.yaml:<line>` `<value-path>` — <one-line summary>
+
+### Dockerfile comments
+
+- `<path>:<line>` — <one-line claim-vs-instruction mismatch>
+
+### Shell-script comments
+
+- `<path>:<line>` `<func-name>` — <one-line claim-vs-body mismatch>
+
+### Workflow comments
+
+- `<path>:<line>` — <one-line claim-vs-step mismatch>
 ```
 
 Group by language; one finding per line so a human reviewer can scan

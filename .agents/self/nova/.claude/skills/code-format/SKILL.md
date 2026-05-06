@@ -26,7 +26,13 @@ The tools come from the project itself wherever possible:
   `.prettierrc.yaml`, with `.prettierignore` honoured
 - YAML semantic warnings — `yamllint` configured via `.yamllint` if
   present, otherwise default config
+- Shell scripts — `shfmt -w` for formatting (auto-fix) and `shellcheck`
+  for lint diagnostics (no auto-fix in this skill — surface findings)
 - Helm charts — `helm lint <chart-dir>` for each chart; sanity-only
+- Dockerfiles — `hadolint` for lint diagnostics (no auto-fix mode);
+  findings logged to memory
+- GitHub Actions workflows — `actionlint` for workflow diagnostics
+  (no auto-fix); findings logged to memory
 
 Markdown is **never** touched by this skill — kira owns that surface
 via `docs-validate`.
@@ -60,7 +66,11 @@ command -v gofmt      || echo "MISSING: gofmt"
 command -v goimports  || echo "MISSING: goimports"
 command -v prettier   || command -v npx || echo "MISSING: prettier (npx fallback also missing)"
 command -v yamllint   || echo "MISSING: yamllint"
+command -v shfmt      || echo "MISSING: shfmt"
+command -v shellcheck || echo "MISSING: shellcheck"
 command -v helm       || echo "MISSING: helm"
+command -v hadolint   || echo "MISSING: hadolint"
+command -v actionlint || echo "MISSING: actionlint"
 ```
 
 ### 3. Enumerate target files per language
@@ -93,6 +103,21 @@ git -C <checkout> ls-files '*.yaml' '*.yml'
 # Helm charts — directories with Chart.yaml
 git -C <checkout> ls-files 'charts/*/Chart.yaml' \
   | xargs -n1 dirname
+
+# Shell scripts — explicit *.sh files plus shebang-detected
+git -C <checkout> ls-files '*.sh'
+# Plus any extensionless tracked file whose first line is a shell
+# shebang. Detect with `git grep -l '^#!/.*sh' -- ':!*.sh'` (ripgrep
+# / git-grep walks tracked files only; --files-with-matches gives the
+# set without their content).
+
+# Dockerfiles — explicit + variant naming
+git -C <checkout> ls-files \
+  '**/Dockerfile' '**/Dockerfile.*' '**/Containerfile' \
+  | grep -v '^vendor/'
+
+# GitHub Actions workflows
+git -C <checkout> ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml'
 ```
 
 ### 4. Run each language's formatter
@@ -151,6 +176,47 @@ done
 Captures any chart-template or values issues. No auto-fix; failures go
 to memory.
 
+#### Shell — shfmt + shellcheck
+
+```sh
+cd <checkout>
+shfmt -w <shell-file-list>          # mechanical reformat
+shellcheck -f gcc <shell-file-list> # diagnostics only
+```
+
+`shfmt` is byte-deterministic when given a consistent indent flag
+(default = tabs; pass `-i 2` if the project's existing scripts use
+two-space indent — check by sampling a couple of existing scripts
+first). `shellcheck` outputs diagnostics for unquoted vars,
+shadowed names, portability concerns; log all of those to memory
+since their fixes can be subtle.
+
+#### Dockerfile — hadolint
+
+```sh
+for dockerfile in <dockerfile-list>; do
+  cd <checkout>
+  hadolint "$dockerfile"
+done
+```
+
+`hadolint` has no auto-fix mode (deliberately — many of its rules
+flag judgment-call patterns like ADD-vs-COPY or CMD-vs-ENTRYPOINT
+where the right answer depends on intent). Capture rule IDs +
+file:line + message for each finding.
+
+#### GitHub Actions — actionlint
+
+```sh
+cd <checkout>
+actionlint <workflow-file-list>
+```
+
+Validates workflow YAML against the GitHub Actions schema, checks
+shell-syntax inside `run:` blocks via shellcheck, validates
+expression syntax in `${{ ... }}`, and flags missing / wrong
+permissions. No auto-fix; log diagnostics.
+
 ### 5. Commit per language
 
 Group fixes by language so the commit log stays readable:
@@ -174,6 +240,14 @@ git -C <checkout> add <prettier-files-modified>
 git -C <checkout> commit -m "code: prettier format JSON/YAML/TS"
 ```
 
+Then for shell scripts (only `shfmt` produces auto-fixes — shellcheck,
+hadolint, and actionlint are diagnostic-only):
+
+```sh
+git -C <checkout> add <shell-files-modified>
+git -C <checkout> commit -m "code: shfmt shell scripts"
+```
+
 Skip any commit whose file list is empty.
 
 ### 6. Log non-auto-fixable diagnostics
@@ -192,9 +266,21 @@ For each language's leftover diagnostics, append a section to
 
 - `<path>:<line>` — `<rule-id>` <message>
 
+### Shell (shellcheck)
+
+- `<path>:<line>` — `SC<NNNN>` <message>
+
 ### Helm (helm lint)
 
 - `<chart>/<file>` — <message>
+
+### Dockerfile (hadolint)
+
+- `<path>:<line>` — `DL<NNNN>` <message>
+
+### GitHub Actions (actionlint)
+
+- `<path>:<line>:<col>` — <rule> <message>
 ```
 
 Append, don't replace — preserves the trail across runs.
