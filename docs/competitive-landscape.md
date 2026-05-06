@@ -70,10 +70,14 @@ differentiator.
 but does not self-schedule)
 
 OpenHands is an open-source autonomous coding platform with a composable Python SDK (`software-agent-sdk`), CLI, local
-GUI, and cloud/enterprise deployment. Current version: v1.6.0 (March 30, 2026); 69,500+ GitHub stars. Scores 77.6+ on
-SWEBench Verified; community benchmarks report 87% of bug tickets resolved same-day. Key differentiators: multi-LLM
-support (Claude, GPT, any open-source model), deep integrations with Slack, Jira, Linear, GitHub, GitLab, Azure DevOps,
-Bitbucket, and MCP servers.
+GUI, and cloud/enterprise deployment. Current version: **v1.7.0 (May 1, 2026)** — an iterative release adding
+KVM-accelerated sandbox containers (`SANDBOX_KVM_ENABLED`), exposing the SDK settings schema to OpenHands, and folding
+the Tavily search key into MCP settings, plus dependency CVE patches; the v1.6.0 Kubernetes/RBAC narrative below remains
+the substantive recent headline. 72,500+ GitHub stars (sources:
+<https://github.com/All-Hands-AI/OpenHands/releases/tag/1.7.0> and <https://github.com/All-Hands-AI/OpenHands>, accessed
+2026-05-06). Scores 77.6+ on SWEBench Verified; community benchmarks report 87% of bug tickets resolved same-day. Key
+differentiators: multi-LLM support (Claude, GPT, any open-source model), deep integrations with Slack, Jira, Linear,
+GitHub, GitLab, Azure DevOps, Bitbucket, and MCP servers.
 
 **v1.5.0 headline feature — Planning Agent (BETA):** Implements a two-phase Plan/Code workflow. In Plan Mode, the agent
 has read-only tool access except for a single writable file (`PLAN.md` in the workspace root) — deliberately preventing
@@ -240,8 +244,12 @@ most transferable idea.
 **Autonomy model:** Human-driven (a crew is instantiated and kicked off by Python code a human runs; event-driven Flows
 add reactivity but crews do not self-schedule — they are called)
 
-Multi-agent orchestration framework. **Current: v1.14.2 (2026-04-17).** Headline 2025–2026 capabilities: **unified
-Memory class** (LLM-inferred hierarchical scopes, composite recall scoring, non-blocking background saves,
+Multi-agent orchestration framework. **Current: v1.14.4 (2026-04-30)** — adds Responses API support for the Azure OpenAI
+provider, You.com MCP tools (search / research / content extraction), Tavily Research integration, custom persistence
+keys for `@persist`, and a `litellm` bump for an SSTI fix. The v1.14.0 / v1.14.2 substance detailed below remains
+intact; v1.14.4 layers feature work and bug fixes on top (source:
+<https://github.com/crewAIInc/crewAI/releases/tag/1.14.4>, accessed 2026-05-06). Headline 2025–2026 capabilities:
+**unified Memory class** (LLM-inferred hierarchical scopes, composite recall scoring, non-blocking background saves,
 `crewai memory` terminal browser), **Tool search** (dynamic tool injection — loads only tools relevant to the current
 task rather than the full allow-list), Qdrant Edge for on-device vector storage, Enterprise Control Plane with real-time
 tracing.
@@ -266,9 +274,13 @@ Checkpoint/resume primitives at v1.14.0 advance the durability story. This proje
 **Autonomy model:** Human-driven to semi-autonomous (graphs are triggered by external events or human calls; **LangGraph
 Platform** adds persistent deployment + event-driven triggers, pushing toward semi-autonomous)
 
-**Current: LangGraph v1.1.0 (2026-03-10) + LangGraph Platform GA (late 2025).** An earlier pass of this doc mislabeled
-deferred nodes and node-level caching as "v2.0" features — they are **v1.x** features shipped during the 2025 LangGraph
-Release Week. There is no v2.0 on PyPI as of April 2026; the stable line is v1.x.
+**Current: LangGraph v1.1.10 (2026-04-27) + LangGraph Platform GA (late 2025).** v1.1.10 is a maintenance release
+(prebuilt 1.0.12, checkpoint 4.0.3, dep bumps, a reverted node-level-timeouts experiment, and a `ToolNode` change to
+allow tools returning `list[Command | ToolMessage]`); a v1.2.0 alpha series (1.2.0a1–a7, late April / early May 2026) is
+in development on the same v1 line (source: <https://github.com/langchain-ai/langgraph/releases/tag/1.1.10>, accessed
+2026-05-06). An earlier pass of this doc mislabeled deferred nodes and node-level caching as "v2.0" features — they are
+**v1.x** features shipped during the 2025 LangGraph Release Week. There is no v2.0 on PyPI as of May 2026; the stable
+line is v1.x.
 
 **Key v1.x capabilities (accumulated through v1.1.0):**
 
@@ -304,11 +316,13 @@ graph-execution model.
 **Autonomy model:** Protocol-level (A2A defines how agents communicate regardless of autonomy model; this project uses
 it as the coordination layer between autonomous agents)
 
-**A2A v1.0 is now the stable version.** Governance has been donated to the **Linux Foundation** as an official project;
-one-year anniversary milestone (2026-04-09) reports 150+ participating organizations and 22k+ GitHub stars. Production
-deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as their native cross-agent
-protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to prevent forgery and
-card-redirect attacks, closing a real multi-tenant security gap.
+**A2A v1.0 is now the stable version (tagged 2026-03-12).** Governance has been donated to the **Linux Foundation** as
+an official project; one-year anniversary milestone (2026-04-09) reports 150+ participating organizations. Star count at
+the `a2aproject/A2A` repo continues to grow — **23,600+ as of 2026-05-06**, up from the 22k+ figure quoted in the April
+pass (sources: <https://github.com/a2aproject/A2A/releases/tag/v1.0.0> and <https://github.com/a2aproject/A2A>, accessed
+2026-05-06). Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as
+their native cross-agent protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to
+prevent forgery and card-redirect attacks, closing a real multi-tenant security gap.
 
 The broader protocol ecosystem continues to be four layers: **MCP** (agent-to-tool), **A2A v1.0** (agent-to-agent),
 **ACP** (lightweight async messaging), and **UCP** (agentic commerce — co-developed with Shopify, Visa, Mastercard).
@@ -332,11 +346,13 @@ platform rather than a personal local daemon. OpenClaw targets the individual ru
 this project targets the team running coordinated agents as cluster workloads.
 
 OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
-pressure, and three days later settled on **OpenClaw**. Category-leading install base (six-figure GitHub stars; verify
-current number before quoting — it's grown through 2026 and drift-checkable numbers retire fast). Runs on
-user-controlled infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Connects to Claude,
-OpenAI, DeepSeek, and local models. **MIT licensed; calendar-versioned releases (`vYYYY.M.D`) with beta and dev
-channels; very active development cadence.**
+pressure, and three days later settled on **OpenClaw**. Category-leading install base — **368,700+ GitHub stars and
+75,900+ forks as of 2026-05-06**, with a very active commit cadence (latest release `v2026.5.4` on 2026-05-05) — the
+exact number drifts fast, so re-pin before quoting in marketing or external docs (sources:
+<https://github.com/openclaw/openclaw> and <https://github.com/openclaw/openclaw/releases/tag/v2026.5.4>, accessed
+2026-05-06). Runs on user-controlled infrastructure (notable community trend: a Mac Mini hardware rush for 24/7
+hosting). Connects to Claude, OpenAI, DeepSeek, and local models. **MIT licensed; calendar-versioned releases
+(`vYYYY.M.D`) with beta and dev channels; very active development cadence.**
 
 **Implementation + architecture:** TypeScript / Node.js (v22.16+, v24 recommended). The Gateway is a local control plane
 deployed on user machines (macOS, Linux, Windows via WSL2). No cloud requirement; runs entirely on user infrastructure.
@@ -429,8 +445,11 @@ hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
 
 **Autonomy model:** Semi-autonomous (orchestration framework + managed runtime)
 
-**Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows, public
-preview late 2025. First-class A2A, MCP, and OpenTelemetry — exactly the same tripod we ship.
+**Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows. **GA
+1.0 shipped 2026-04-02** (Python + .NET both tagged `1.0.0` the same day); on the v1 line the cadence has been brisk —
+Python `1.2.2` (2026-04-29), .NET `dotnet-1.4.0` (2026-05-05) — exiting the "public preview" framing the doc previously
+used (source: <https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-06). First-class A2A, MCP, and
+OpenTelemetry — exactly the same tripod we ship.
 
 **Foundry Agent Service:** GA announced March 2026. OpenAI Responses-compatible API; hosts DeepSeek, xAI, Meta,
 LangChain, LangGraph models (in addition to Azure OpenAI). Directly overlaps this project's cross-backend orchestration.
