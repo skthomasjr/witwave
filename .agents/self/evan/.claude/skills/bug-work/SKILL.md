@@ -277,8 +277,17 @@ For each candidate in the fix bin, processed in the order from step 3:
 4. **Run scoped tests locally:**
    - Go: `cd <checkout>/<section> && go test ./...`
    - Python: `cd <checkout> && pytest <section>/`
-   - If tests fail → REVERT the working-tree change (`git -C <checkout> checkout -- <file>`), move the candidate to
-     flag-only with a "fix broke local tests: <test name>" note, continue to next candidate.
+   - If tests pass → continue to step 5 (verify) below.
+   - If tests fail → **fix-forward, ONCE.** Read the failure output (failing test name, assertion, traceback).
+     Adjust the fix in-place (correct the code change; do NOT yet revert). Re-run the same scoped tests.
+     - **Pass on retry → continue to step 5.** That adjusted code becomes the commit.
+     - **Still fails on retry → revert.** `git -C <checkout> checkout -- <file>`. Move candidate to flag-only with
+       reason `fix-forward-failed: <one-line summary of why the second attempt didn't work>`. Move on to the next
+       candidate.
+
+   The bound is **exactly one fix-forward attempt per candidate.** Catches the common case (small mistake, easy to
+   adjust) without spiralling. A failing second attempt is the signal that something deeper is going on; revert and
+   surface for human review rather than chasing it autonomously.
 5. **Verify the bug condition is gone.** Re-read the changed code. The analyzer rule that originally flagged would no
    longer fire. The fix is complete (no half-measures, no `TODO`). No adjacent regressions in the surrounding 20 lines.
 6. **Commit (one bug per commit):**
@@ -363,8 +372,9 @@ correctness, not gh-CLI plumbing), and scales cleanly when future agents join th
    > 1. Run `git-push` to publish them.
    > 2. Watch the CI workflows that trigger on this push. Report each workflow's conclusion (green / red) and its
    >    `gh` run URL.
-   > 3. **If any workflow goes red**, do NOT take action — report the failure back to me and I'll handle the
-   >    batch-revert. (Trunk-based-dev contract: I committed; I'm responsible for reverting if CI fails.)
+   > 3. **If any workflow goes red**, also fetch the failing job's log via `gh run view <run-id> --log-failed` and
+   >    include the relevant excerpt in your report. Don't take remediation action yourself — I'll decide whether
+   >    to fix-forward or batch-revert based on the failure.
    >
    > Commits:
    >
@@ -374,7 +384,8 @@ correctness, not gh-CLI plumbing), and scales cleanly when future agents join th
    >
    > Pre-sweep SHA was `<PRE_SWEEP_SHA>`.
 
-   Wait for her reply. Capture the push outcome and the per-workflow CI outcomes.
+   Wait for her reply. Capture the push outcome, per-workflow CI outcomes, and (for any red workflow) the failing
+   job's log excerpt.
 
 2. **If iris reports push failure** (rebase conflict she couldn't resolve, etc.): STOP. Don't improvise. Surface the
    situation in the run summary. The next bug-work run will re-attempt the delegation naturally.
@@ -382,24 +393,56 @@ correctness, not gh-CLI plumbing), and scales cleanly when future agents join th
 3. **If iris reports push success and all CI workflows green**: done. Capture per-workflow conclusion + duration in
    the run summary.
 
-4. **If iris reports any CI workflow went red**: batch-revert (next step). Iris reports; evan acts on the report.
+4. **If iris reports any CI workflow went red**: **fix-forward, ONCE.** Don't reflexively batch-revert. The
+   trunk-based-dev contract is "if you break main, fix or revert immediately" — fix is the preferred move; revert
+   is the fallback when fix doesn't work. Procedure:
 
-   ```sh
-   git -C <checkout> revert --no-commit ${PRE_SWEEP_SHA}..HEAD
-   git -C <checkout> commit -m "Revert evan bug-work batch (CI red on <workflow-name>)
+   1. **Read the failure log excerpt** iris included in her report. Identify what broke. Common shapes:
 
-   Auto-revert: one or more bug-work commits broke <workflow-name>. Per
-   trunk-based dev contract (\"if you break main, fix or revert immediately\")
-   the entire batch reverts at once. The candidates re-surface on the next
-   sweep run with the test failure noted in deferred-findings.
+      - Test failure (assertion, traceback) — likely caused by one of evan's commits
+      - Lint / format failure — likely caused by one of evan's commits OR a pre-existing-on-main issue
+        surfaced by the path filter triggering
+      - Build / compile failure — likely caused by one of evan's commits, possibly a pre-existing
+        toolchain regression
+      - Drift / sync check failure (e.g., embedded chart drift) — almost always pre-existing on main,
+        not caused by evan
 
-   Failing run: <gh-run-url>
-   "
-   ```
+   2. **Decide if the failure is in scope for evan to fix-forward.** Yes if it's a small, targeted change
+      that's clearly remediable from the failure log alone. No if the fix would require redesigning the original
+      bug fix or reading large swaths of unrelated code.
 
-   Delegate the revert push to iris via `call-peer` (same flow). Append a "batch reverted" entry to the deferred-
-   findings memory listing each reverted commit's bug + the failing workflow URL, so the candidates re-evaluate next
-   run with the test failure as context.
+   3. **If in scope: write the fix-forward commit.** Apply the fix (could be: re-running a sync script, adjusting
+      a quoted variable, reverting one specific commit while keeping others). Run scoped local tests on the
+      fix-forward to make sure IT doesn't break tests too.
+
+      - Local tests pass → ask iris to push the fix-forward commit + re-watch CI on the new state.
+        - All CI green → DONE. Original batch + fix-forward all stay landed. Update memory: log the
+          fix-forward as `[ci-fix-forward: <commit-SHA>]` under the run section.
+        - CI still red → fall back to batch-revert (next branch). Don't recurse on fix-forward.
+      - Local tests fail → fall back to batch-revert.
+
+   4. **If out of scope OR fix-forward attempt failed: batch-revert.**
+
+      ```sh
+      git -C <checkout> revert --no-commit ${PRE_SWEEP_SHA}..HEAD
+      git -C <checkout> commit -m "Revert evan bug-work batch (CI red on <workflow-name>)
+
+      Fix-forward attempted: <one-line summary or 'not in scope: <reason>'>.
+      Batch-revert per trunk-based-dev fallback. The candidates re-surface
+      on the next sweep run with the test failure noted in deferred-findings.
+
+      Failing run: <gh-run-url>
+      "
+      ```
+
+   The bound: **exactly one fix-forward attempt per CI failure event.** Catches the common case (small targeted
+   adjustment unblocks main without losing the batch). Prevents the spiral case (a failed fix-forward followed by
+   another failed fix-forward followed by ...). When in doubt, revert and let the next run re-discover the
+   candidates.
+
+   If batch-reverting: delegate the revert push to iris via `call-peer` (same flow). Append a "batch reverted" entry
+   to deferred-findings memory listing each reverted commit's bug + the failing workflow URL, so the candidates
+   re-evaluate next run with the test failure as context.
 
    If iris's revert push also fails, surface the situation and stop. Don't loop.
 

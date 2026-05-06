@@ -454,8 +454,12 @@ For each candidate in the fix bin:
    - Go: `cd <checkout>/<section> && go test ./...`
    - Python: `cd <checkout> && pytest <section>/` (pytest + pytest-asyncio + httpx + python-kubernetes are pre-
      installed in the backend image alongside nova's hygiene tools)
-   - If tests fail → DO NOT COMMIT. Revert the working-tree change. Move the candidate to flag-only with a "fix broke
-     local tests: <test name>" note. Move on.
+   - If tests pass → continue to step 5.
+   - If tests fail → **fix-forward, ONCE.** Read the failure output, adjust the fix in-place (don't yet revert),
+     re-run the same scoped tests. If the second attempt passes, that adjusted code becomes the commit. If it still
+     fails, only THEN revert (`git -C <checkout> checkout -- <file>`) and flag the candidate with reason
+     `fix-forward-failed`. Bound: exactly one fix-forward attempt per candidate — catches the common "small
+     adjustment needed" case; prevents spirals from "bad fix begets worse fix" feedback.
 5. **Verify the bug condition is gone** by re-reading the changed code. Confirm: the analyzer rule that originally
    flagged it would no longer fire on this code; the fix is complete (no half-measures, no `TODO` markers); no adjacent
    regressions are introduced (re-read the surrounding 20 lines).
@@ -527,25 +531,47 @@ This is the right architecture regardless of who has which PAT. Keeping iris as 
 - Scales cleanly when future agents join the team — they delegate to iris too.
 
 1. **Delegate push + CI watch to iris** via `call-peer`. Send a self-contained prompt that asks her to (a) run
-   `git-push`, (b) watch the CI workflows that trigger on the push, and (c) report each workflow's conclusion + run
-   URL back without taking remediation action — the trunk-based-dev contract is "I committed; I revert if CI fails."
+   `git-push`, (b) watch the CI workflows that trigger on the push, (c) for any red workflow, ALSO fetch the failing
+   job's log via `gh run view --log-failed` and include the relevant excerpt in her report, and (d) NOT take
+   remediation action herself — the trunk-based-dev contract is "I committed; I'm responsible for the recovery move."
    Include the commit SHAs and subjects in the prompt so iris can echo them in her summary.
 
 2. **If iris reports a push success and all CI workflows green**: done. Capture the per-workflow durations + iris's
    summary in your run report.
 
-3. **If iris reports any CI workflow went red, revert the batch.** Trunk-based dev's contract from `AGENTS.md`: "If
-   you break `main`, fix or revert immediately." Batch-revert posture for v1 — we don't surgically bisect. Steps:
-   - Identify the range of commits you pushed in this run (the SHAs you committed in step 5).
-   - Build a single revert commit that reverts ALL of them in one shot:
-     ```sh
-     git -C <checkout> revert --no-commit <SHA1>..<SHA-LAST>
-     git -C <checkout> commit -m "Revert evan bug-work batch (CI red on <workflow>)"
-     ```
-     Or per-commit with `git revert --no-edit` if `--no-commit` doesn't apply cleanly.
-   - Delegate the revert push to iris (same `call-peer` flow).
-   - Log the revert + the failing workflow's run URL to `project_evan_findings.md` so the candidates can be
-     re-evaluated next run with the test failure in mind. The candidates are NOT lost — they re-surface.
+3. **If iris reports any CI workflow went red, fix-forward FIRST — revert is the fallback.** Trunk-based-dev's
+   contract from `AGENTS.md`: "If you break `main`, fix or revert immediately." Fix is the preferred move; revert is
+   the fallback when fix doesn't apply or doesn't work.
+
+   1. **Read iris's failure log excerpt.** Identify what broke. Common shapes: test failure, lint/format failure,
+      build/compile failure, drift/sync check failure (often pre-existing on `main` and merely surfaced by your
+      push triggering the path-filtered workflow).
+
+   2. **Decide: in scope to fix-forward?**
+      - YES if the fix is a small, targeted change clearly remediable from the failure log alone (e.g., re-run a
+        sync script, quote a shell variable, drop a stray import, adjust an exception chain).
+      - NO if the fix would require redesigning the original bug fix or reading large swaths of unrelated code.
+
+   3. **If in scope: write a fix-forward commit.** Apply the fix. Run scoped local tests on the fix-forward to make
+      sure IT doesn't break tests too. Then ask iris to push the fix-forward commit and re-watch CI on the new
+      state.
+      - All CI green → DONE. Original batch + fix-forward all stay landed. Log the fix-forward in
+        `project_evan_findings.md` as `[ci-fix-forward: <commit-SHA>]` under the run section.
+      - CI still red → fall back to batch-revert (next sub-step). Don't recurse on fix-forward.
+
+   4. **If out of scope OR fix-forward attempt failed: batch-revert.**
+      - Build a single revert commit:
+        ```sh
+        git -C <checkout> revert --no-commit <SHA1>..<SHA-LAST>
+        git -C <checkout> commit -m "Revert evan bug-work batch (CI red on <workflow>)"
+        ```
+      - Delegate the revert push to iris.
+      - Log the revert + the failing workflow's run URL + (if applicable) the fix-forward attempt's outcome to
+        `project_evan_findings.md` so the candidates re-evaluate next run with the failure as context.
+
+   The bound: **exactly one fix-forward attempt per CI failure event.** Catches the common case (small targeted
+   adjustment unblocks `main` without losing the batch). Prevents the spiral case (a failed fix-forward followed by
+   another failed fix-forward forever). When in doubt, revert and let the next run re-discover the candidates.
 
 4. **If iris reports a push failure** (rebase conflict she couldn't resolve, etc.), STOP. Don't improvise. Surface the
    situation to the caller. The next bug-work run will re-attempt the delegation naturally.
