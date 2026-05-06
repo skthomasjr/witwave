@@ -216,11 +216,16 @@ If `project_evan_findings.md` doesn't exist yet, create it with a header explain
 If `PRE_SWEEP_SHA` equals current `HEAD` (no commits produced), skip this entire step. Report "no fixes committed
 this run; M findings logged to memory" and exit cleanly.
 
-Otherwise: this step is **fully delegated to iris** via `call-peer`. Iris owns the publishing posture (push race
-handling, conflict surfacing, no-force rules) AND has a working `GITHUB_TOKEN` for `gh` CLI authentication. Evan's
-`GITHUB_TOKEN` is bound from `GITHUB_TOKEN_EVAN` which is a placeholder until the `evan-agent-witwave` GitHub account
-exists, so `gh run watch` from evan's container would fail authentication. Delegating to iris solves both concerns
-in one round-trip.
+Otherwise: this step is **fully delegated to iris** via `call-peer`. **Iris owns all git and GitHub authority for the
+team** — push posture (race handling, conflict surfacing, no-force rules), and `gh`-API operations including the CI
+watch. Other agents (kira, nova, evan, future siblings) commit locally and delegate publishing through iris, full
+stop. The pattern is parallel to kira-commits / iris-pushes and nova-commits / iris-pushes; for evan, the delegation
+extends one step further to include the CI watch because the trunk-based-dev contract ("if you break main, fix or
+revert immediately") couples the watch to the push as a single workflow.
+
+This is the right architecture regardless of credentials: keeping iris as the single GitHub-API gateway reduces the
+team's credential blast radius (only iris needs a working PAT), keeps each agent focused on its domain (evan does
+correctness, not gh-CLI plumbing), and scales cleanly when future agents join the team.
 
 1. **Delegate push + CI watch to iris** via `call-peer`. Send a self-contained prompt of the form:
 

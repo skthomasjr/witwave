@@ -401,11 +401,18 @@ the signal.
 ### Step 7 — Push + watch CI (via iris)
 
 Once all candidates have been processed (step 5 commits + step 6 memory writes), delegate **both** the push AND the CI
-watch to iris. Iris owns the publishing posture (push race handling, conflict surfacing, no-force rules) AND has a
-working `GITHUB_TOKEN` for `gh` CLI authentication. Your `GITHUB_TOKEN` is bound from `GITHUB_TOKEN_EVAN` which is a
-placeholder until the `evan-agent-witwave` GitHub account exists, so a `gh run watch` from your container would fail
-authentication. Single round-trip to iris solves both concerns; once the evan-agent GitHub account is created with a
-real PAT, this step can simplify to a direct evan-side CI watch.
+watch to iris. **Iris owns all git and GitHub authority for the team.** That includes push posture (race handling,
+conflict surfacing, no-force rules) and `gh`-API operations like watching the workflows your push triggered. Other
+agents (kira, nova, evan, future siblings) commit locally and route every git/GitHub touch through iris — same pattern
+that kira-commits / iris-pushes and nova-commits / iris-pushes already follow. For your work the delegation extends
+one beat further to include the CI watch, because the trunk-based-dev contract ("if you break main, fix or revert
+immediately") couples the watch to the push as a single workflow.
+
+This is the right architecture regardless of who has which PAT. Keeping iris as the single GitHub-API gateway:
+
+- Reduces the team's credential blast radius (only iris needs a working PAT).
+- Keeps each agent focused on its domain (you do correctness, not `gh` CLI plumbing).
+- Scales cleanly when future agents join the team — they delegate to iris too.
 
 1. **Delegate push + CI watch to iris** via `call-peer`. Send a self-contained prompt that asks her to (a) run
    `git-push`, (b) watch the CI workflows that trigger on the push, and (c) report each workflow's conclusion + run
