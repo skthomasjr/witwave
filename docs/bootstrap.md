@@ -16,8 +16,12 @@ is running:
 - Three **WitwaveAgent**s (`iris`, `kira`, `nova`) with `Spec.WorkspaceRefs` pointing at `witwave-self` so they share
   the workspace. Iris owns source-tree initialization + release captaincy; kira owns documentation hygiene; nova owns
   code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to iris
-  via `call-peer`. A fourth agent (`evan`) is scaffolded under `.agents/self/evan/` for correctness bug discovery, but
-  the design is in progress — no deploy step yet. Additional named agents can be added later in the same shape.
+  via `call-peer`. A fourth agent (`evan`) is scaffolded under `.agents/self/evan/` for correctness bug discovery
+  (logic-defect lens — unchecked errors, null derefs, races, dead writes, format-string mismatches). His v1 design is
+  burned in (CLAUDE.md, agent-card, `bug-sweep` skill, three cross-agent skills) but the deploy step waits on adding
+  `staticcheck`, `errcheck`, `ineffassign`, and `controller-gen` to the claude image — the day-one toolchain his
+  bug-sweep skill needs. Once those land, evan deploys identically to nova. Additional named agents can be added later
+  in the same shape.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap
