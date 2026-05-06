@@ -16,7 +16,8 @@ is running:
 - Three **WitwaveAgent**s (`iris`, `kira`, `nova`) with `Spec.WorkspaceRefs` pointing at `witwave-self` so they share
   the workspace. Iris owns source-tree initialization + release captaincy; kira owns documentation hygiene; nova owns
   code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to iris
-  via `call-peer`. Additional named agents can be added later in the same shape.
+  via `call-peer`. A fourth agent (`evan`) is scaffolded under `.agents/self/evan/` for correctness bug discovery, but
+  the design is in progress — no deploy step yet. Additional named agents can be added later in the same shape.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap
@@ -83,6 +84,12 @@ GITHUB_USER_KIRA=kira-agent-witwave
 
 GITHUB_TOKEN_NOVA=github_pat_replace_me
 GITHUB_USER_NOVA=nova-agent-witwave
+
+# Evan's GitHub credentials — placeholder. The agent itself is a
+# scaffold-only stub right now; leave these set to replace_me until
+# the design is finalised and Step 6 is added below.
+GITHUB_TOKEN_EVAN=github_pat_replace_me
+GITHUB_USER_EVAN=evan-agent-witwave
 
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar
