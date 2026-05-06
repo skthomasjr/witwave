@@ -578,7 +578,7 @@ def _validate_url(url: str) -> str | None:
     except socket.gaierror as _dns_exc:
         return f"host {host!r} failed DNS resolution: {_dns_exc}"
     seen_addrs: set[str] = set()
-    for _family, _type, _proto, _canon, sockaddr in infos:
+    for family, _type, _proto, _canon, sockaddr in infos:
         addr = sockaddr[0] if sockaddr else ""
         if not addr or addr in seen_addrs:
             continue

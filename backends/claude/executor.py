@@ -2305,7 +2305,7 @@ class AgentExecutor(A2AAgentExecutor):
         # without a new parameter.
         self._hook_state_lock: threading.Lock = threading.Lock()
         try:
-            self._hook_state._state_lock = self._hook_state_lock
+            setattr(self._hook_state, "_state_lock", self._hook_state_lock)
         except Exception:
             # Attribute set on a dataclass instance; should never fail,
             # but be defensive so executor import never breaks on

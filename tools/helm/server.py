@@ -1930,12 +1930,10 @@ def repo_add(name: str, url: str) -> str:
                 import idna as _idna
 
                 hostname = _idna.encode(hostname).decode("ascii")
-            except Exception as _idn_exc:
+            except Exception:
                 # idna not installed or invalid name — reject rather than
                 # fall through to the less-strict .lower() compare.
-                raise HelmError(
-                    f"helm repo_add: hostname {parsed.hostname!r} failed IDN normalisation. See #1369."
-                ) from _idn_exc
+                raise HelmError(f"helm repo_add: hostname {parsed.hostname!r} failed IDN " "normalisation. See #1369.")
     if parsed.scheme not in ("http", "https", "oci"):
         raise HelmError(f"helm repo_add: URL scheme must be http/https/oci (got " f"{parsed.scheme!r}). See #1202.")
     if not hostname:

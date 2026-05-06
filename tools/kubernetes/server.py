@@ -1071,9 +1071,7 @@ def apply(
                     {**span_attrs, "k8s.dry_run": dry_run, "k8s.apply_phase": "commit"},
                 ):
                     try:
-                        applied = with_kube_retry(
-                            lambda r=resource, lk=live_kwargs: r.patch(**lk)
-                        )
+                        applied = with_kube_retry(lambda: resource.patch(**live_kwargs))
                     except Exception as _commit_exc:
                         # Attach count of already-committed docs to the
                         # error for operator triage; re-raise to preserve
