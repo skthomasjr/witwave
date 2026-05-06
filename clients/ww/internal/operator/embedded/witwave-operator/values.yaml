@@ -86,9 +86,9 @@ rbac:
 # renewDeadline).
 leaderElection:
   enabled: true
-  leaseDuration: ""   # e.g. "30s" — controller-runtime default is 15s
-  renewDeadline: ""   # e.g. "20s" — controller-runtime default is 10s
-  retryPeriod: ""     # e.g. "4s"  — controller-runtime default is 2s
+  leaseDuration: "" # e.g. "30s" — controller-runtime default is 15s
+  renewDeadline: "" # e.g. "20s" — controller-runtime default is 10s
+  retryPeriod: "" # e.g. "4s"  — controller-runtime default is 2s
 
 # Prometheus metrics endpoint (controller-runtime metrics).
 # When enabled, a ClusterIP Service is created on metrics.port routing to
@@ -406,4 +406,4 @@ webhooks:
     # pointing at a namespaced "Issuer" you MUST set kind explicitly.
     issuerRef:
       name: ""
-      kind: ""   # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
+      kind: "" # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
