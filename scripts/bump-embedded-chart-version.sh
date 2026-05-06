@@ -47,7 +47,7 @@ fi
 
 # sed -i has different portable semantics on BSD vs GNU; write to a
 # backup and remove it to avoid platform-specific -i arg handling.
-sed "s/^version:.*/version: $VERSION/" "$CHART" > "$CHART.tmp" && mv "$CHART.tmp" "$CHART"
-sed "s/^appVersion:.*/appVersion: \"$VERSION\"/" "$CHART" > "$CHART.tmp" && mv "$CHART.tmp" "$CHART"
+sed "s/^version:.*/version: $VERSION/" "$CHART" >"$CHART.tmp" && mv "$CHART.tmp" "$CHART"
+sed "s/^appVersion:.*/appVersion: \"$VERSION\"/" "$CHART" >"$CHART.tmp" && mv "$CHART.tmp" "$CHART"
 
 echo "bumped embedded witwave-operator chart to $VERSION"

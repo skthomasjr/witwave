@@ -45,10 +45,10 @@ trap 'rm -rf "${tmpdir}"' EXIT
 
 rendered="${tmpdir}/rendered.yaml"
 if ! helm template witwave-operator "${chart_dir}" \
-      --namespace witwave-system \
-      --set rbac.scope=cluster \
-      --set rbac.secretsWrite=true \
-      >"${rendered}" 2>"${tmpdir}/helm.err"; then
+  --namespace witwave-system \
+  --set rbac.scope=cluster \
+  --set rbac.secretsWrite=true \
+  >"${rendered}" 2>"${tmpdir}/helm.err"; then
   echo "check-rbac-drift: helm template failed" >&2
   cat "${tmpdir}/helm.err" >&2
   exit 2

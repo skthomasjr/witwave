@@ -98,9 +98,9 @@ helm upgrade --install "$RELEASE_NAME" ./charts/witwave \
   -f "$VALUES_FILE" \
   --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
   --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \
-  --set        gitSync.credentials.acknowledgeInsecureInline=true \
+  --set gitSync.credentials.acknowledgeInsecureInline=true \
   --set-string "backends.credentials.secrets.CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN" \
   --set-string "backends.credentials.secrets.OPENAI_API_KEY=${OPENAI_API_KEY:-placeholder-no-openai-key}" \
   --set-string "backends.credentials.secrets.GEMINI_API_KEY=${GEMINI_API_KEY:-placeholder-no-gemini-key}" \
-  --set        backends.credentials.acknowledgeInsecureInline=true \
+  --set backends.credentials.acknowledgeInsecureInline=true \
   -n "$NAMESPACE" --create-namespace

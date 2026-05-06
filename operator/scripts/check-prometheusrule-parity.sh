@@ -49,11 +49,11 @@ trap 'rm -rf "${TMPDIR}" "${EMITDIR}"' EXIT
 helm template witwave-test ./charts/witwave \
   --set prometheusRule.enabled=true \
   --show-only templates/prometheusrule.yaml \
-  > "${TMPDIR}/chart.yaml"
+  >"${TMPDIR}/chart.yaml"
 
 # 2. Emit the operator's PrometheusRule for an enabled WitwaveAgent via
 # a tiny Go runner that calls buildPrometheusRule.
-cat > "${EMITDIR}/main.go" <<'GO'
+cat >"${EMITDIR}/main.go" <<'GO'
 package main
 
 import (
@@ -94,12 +94,12 @@ GO
 (
   cd operator
   go run "${EMITDIR}/main.go"
-) > "${TMPDIR}/operator.json"
+) >"${TMPDIR}/operator.json"
 
 # 3. Extract sorted (alert, normalised expr) pairs from each.
 extract_chart() {
-  yq -o=json '.spec.groups[].rules[] | {"alert": .alert, "expr": .expr}' "${TMPDIR}/chart.yaml" \
-    | jq -c -s 'sort_by(.alert)'
+  yq -o=json '.spec.groups[].rules[] | {"alert": .alert, "expr": .expr}' "${TMPDIR}/chart.yaml" |
+    jq -c -s 'sort_by(.alert)'
 }
 
 extract_operator() {
@@ -122,7 +122,7 @@ fi
 # breaks vs operator-emitted line breaks don't cause spurious drift.
 fail=0
 while IFS= read -r alert; do
-  c_expr="$(echo "${CHART_JSON}"    | jq -r --arg a "${alert}" '.[] | select(.alert==$a) | .expr' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
+  c_expr="$(echo "${CHART_JSON}" | jq -r --arg a "${alert}" '.[] | select(.alert==$a) | .expr' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
   o_expr="$(echo "${OPERATOR_JSON}" | jq -r --arg a "${alert}" '.[] | select(.alert==$a) | .expr' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
   if [[ "${c_expr}" != "${o_expr}" ]]; then
     echo "[check-prometheusrule-parity] expr drift on ${alert}:" >&2
@@ -130,7 +130,7 @@ while IFS= read -r alert; do
     echo "  operator: ${o_expr}" >&2
     fail=1
   fi
-done <<< "${OPERATOR_ALERTS}"
+done <<<"${OPERATOR_ALERTS}"
 
 if [[ ${fail} -ne 0 ]]; then
   exit 1
