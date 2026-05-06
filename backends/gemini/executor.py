@@ -3187,7 +3187,7 @@ class AgentExecutor(A2AAgentExecutor):
                             still_parked.append(entry)
                             if not getattr(_old_stack, "_watchdog_stale_warned", False):
                                 try:
-                                    setattr(_old_stack, "_watchdog_stale_warned", True)
+                                    _old_stack._watchdog_stale_warned = True
                                 except Exception:
                                     pass
                                 logger.warning(
