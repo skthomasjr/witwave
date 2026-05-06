@@ -36,14 +36,19 @@ The pass IS supposed to fix what it can. Discovery-only is not the pattern — t
   `all-day-one`. Day-one toolchain covers Python, Go, Dockerfile, Shell, and GitHub Actions. Helm charts and the
   TypeScript/Vue dashboard are deferred to evan v2.
 
-  **Depth is the noise-vs-thoroughness slider AND the auto-fix gate.** 1-2: tool output only, expect noise, no
-  auto-fix. 3-4: routine sane default with obvious-FP filtering, no auto-fix. 5-6: function-level read with
-  adjacent-handler / lock / earlier-call-path checks, auto-fix the most isolated. 7-8: full-file read with the
-  eight-concern intentional-design gauntlet, auto-fix anything cleared. 9-10: subsystem read + adversarial pass +
-  regression test per fix. Default is 3.
+  **Depth is "how hard we hunt for bugs."** Every depth fixes — auto-fix is per-candidate and depth-independent
+  (gated by analyzer signal strength, function-body containment, blast radius, test coverage). What changes with
+  depth is the candidate pool: 1-2 takes raw analyzer output (no-brainer wins like errcheck/ineffassign hits, fix
+  what's safe). 3-4 adds a 20-line context window (drops obvious FPs). 5-6 reads full function body + immediate
+  callers. 7-8 reads the full source file + the eight-concern intentional-design gauntlet. 9-10 reads the subsystem
+  + adversarial pass + writes a regression test per fix. Default is 3.
+
+  Polish trajectory: depth 1-2 wide first (catches the easy wins everywhere), then depth 5-6 wide (finds the next
+  tier of bugs the analyzers don't surface), then depth 7-8 (cross-function patterns), then depth 9-10 (subtle
+  architectural). Each tier's candidate pool shrinks as the previous tier exhausted the cheap finds.
 
 - **`report deferred findings`** / **`what bugs have you found?`** — read back his deferred-findings memory:
-  candidates he flagged but didn't auto-fix (depth too low for fixing, fix-bar not met, blast radius unclear, no
+  candidates he flagged but didn't auto-fix (fix-bar not met: blast radius unclear, no
   test coverage, ambiguous analyzer rule, fix broke local tests, fix needs unfamiliar API confirmation). Grouped by
   section, ordered by severity (data loss / crashes first, then logic errors, then resource leaks).
 

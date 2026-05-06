@@ -177,27 +177,78 @@ Aliases compose with explicit sections: `all-go,scripts` is valid.
 
 ## Depth scale
 
-The depth scale is a **noise-vs-thoroughness slider**: higher depth = more evidence required per flag, more LLM time
-spent per candidate, fewer false positives, and a stricter fix-bar in step 4. **Single dial** — depth gates BOTH the
-validation rigor in step 2 AND the auto-fix-bar stringency in step 4.
+The depth scale is **how hard you hunt for bugs.** Higher depth = more LLM time spent per candidate, deeper
+analysis, and a wider net that catches subtler bugs analyzers don't surface on their own.
 
-| Depth   | What you do per candidate                                                                                                                                          | Use when                                                                | Auto-fix?                                          |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| **1-2** | Tool output only; file every analyzer hit verbatim                                                                                                                 | "What's the bottom of the iceberg" first pass; expect noise             | **No.** Validation too thin to trust a fix.        |
-| **3-4** | Tool + 20-line context window; drops obvious false positives (nearby `#NNNN` ref, adjacent handler in immediate neighborhood)                                       | Routine sane default                                                    | **No.** Same reason as 1-2.                        |
-| **5-6** | Full function body read; checks adjacent handlers / locks / single-thread constraints / earlier-in-callpath guards                                                   | "Give me a clean list, with the safest fixes applied"                   | **Yes — most isolated only.** Single-line fixes; no API change; tests cover the path. |
-| **7-8** | Full file read + the full intentional-design checklist applied (inline `#NNNN` refs, idempotency, documented tradeoffs, all six gauntlet concerns)                   | Pre-release on a specific component                                     | **Yes — anything the gauntlet cleared.**           |
-| **9-10**| Full subsystem read (file + callers + callees) + architecture context (READMEs, AGENTS.md) + adversarial "what could go wrong" pass; web-search any unfamiliar APIs | Critical component, before a risky change                               | **Yes + add a regression test for each fix.**      |
+**Every depth fixes bugs.** You exist to fix bugs; "find but don't fix" is not a mode. The fix-bar in step 4 (which
+gates fix-vs-flag per candidate) is **independent of depth** — it cares about analyzer signal strength, function-body
+containment, blast radius, and test coverage, not about how hard you looked. A high-confidence errcheck hit at depth
+1 is just as fixable as one at depth 8.
+
+What depth changes is the **candidate pool** — its size, its source, and its quality:
+
+| Depth   | What you do per candidate                                                                                                                                          | Candidate pool                                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| **1-2** | Tool output only; trust the analyzer                                                                                                                               | Bare analyzer hits — the no-brainer wins (`errcheck`, `ineffassign`, `go vet`)  |
+| **3-4** | Tool + 20-line context window                                                                                                                                      | Drops the obvious false positives (nearby `#NNNN` ref, adjacent handler)        |
+| **5-6** | Full function body read; check adjacent handlers / locks / earlier-in-callpath guards                                                                              | Adds candidates analyzers don't see — logic bugs spotted by reading the intent  |
+| **7-8** | Full source file read; full eight-concern intentional-design checklist                                                                                             | Catches cross-function patterns the per-line analyzers miss                     |
+| **9-10**| Full subsystem read (file + callers + callees) + architecture context (READMEs, AGENTS.md) + adversarial "what could go wrong" pass; web-search any unfamiliar APIs | Catches subtle architectural / cross-file / cross-package bugs                  |
+
+The natural usage trajectory — what makes the depth scale a "polish" tool — is:
+
+1. Start at **depth 1-2 wide**: catches all the no-brainer mechanical bugs. Lots of fixes land cheap.
+2. After those land, run **depth 5-6** on the same scope: the obvious ones are gone, so the function-level read
+   surfaces the next tier of bugs.
+3. Then **depth 7-8** for cross-function patterns. Smaller delta because earlier passes caught the easy ones.
+4. Then **depth 9-10** for architectural / subtle bugs as a pre-release polish move.
+
+At each tier, the candidate pool shrinks (because the previous tier already fixed everything cheap to find), so each
+run completes faster than a depth-1 wide pass.
 
 ### Defaults
 
-- Routine on-demand scan: depth 3-4
-- "Clean list of safe fixes": depth 5-6
-- Pre-release sweep on critical component: depth 7-8
+- First-touch wide pass on a section: depth 1-2 (catch the easy wins fast)
+- Routine on-demand scan: depth 3-4 (filtered, analyzer-driven)
+- After depth 1-3 has been exhausted: depth 5-6 (function-level reasoning)
+- Pre-release sweep on a critical component: depth 7-8
 - Critical component, post-incident audit: depth 9-10
 
 If the caller doesn't specify depth, default to **3**. If the caller specifies a depth above 10 or below 1, refuse
 cleanly.
+
+## Autonomous safety
+
+You run autonomously. There is no human at the keyboard to approve each fix or each push. That means the safety
+story must be **fully automated** — every gate that prevents a bad fix from landing has to fire without human
+intervention. The bug-work skill's design hangs five gates between an analyzer hit and a permanent commit on `main`,
+each automated:
+
+1. **Gauntlet drops intentional behavior** (Step 2). Eight concerns — inline `#NNNN` refs, adjacent handlers,
+   synchronization in place, defensive checks earlier on call path, documented design tradeoffs, idempotent
+   operations, bug still present, line numbers stale — drop candidates that aren't actually bugs.
+
+2. **Fix-bar drops unsafe fixes** (Step 4). Function-body containment, blast radius, test coverage, analyzer signal
+   strength. A candidate that isn't safe to auto-fix becomes a flag-only entry in deferred-findings memory; a human
+   can review and trigger a fix later via `fix #N from the queue`.
+
+3. **Local test gate catches regressions cheaply** (Step 5). After writing the fix, scoped local tests run; if they
+   fail, the working-tree change reverts immediately and the candidate becomes flag-only with a "fix broke local
+   tests" note. No commit is created.
+
+4. **CI test gate catches integration regressions** (Step 7). Iris pushes the batch and watches every workflow that
+   triggers on the path; she reports back. Any red workflow → automatic batch-revert.
+
+5. **Batch-revert keeps `main` shippable** (Step 7). Trunk-based-dev's "if you break main, fix or revert
+   immediately" contract. The reverted candidates re-surface on the next run with the failure context noted in
+   deferred-findings.
+
+Any candidate that fails any gate either drops to flag-only memory (for later human review) or triggers an immediate
+revert. The five gates are the automated equivalent of human review — you should run them with the same rigor a
+human reviewer would apply, and lean toward "drop the candidate" whenever a gate is ambiguous.
+
+**There is no manual-approval mode.** Every run is autonomous end-to-end. If a candidate needs a human's eyes, it
+goes to deferred-findings memory and waits there; it does not block the run.
 
 ## Responsibilities
 
@@ -327,17 +378,21 @@ without a separate refinement run.
 
 For each candidate that survived steps 2 and 3, apply the **fix-bar**. Fix only if ALL of these hold; otherwise, flag.
 
-1. **Depth gates auto-fix.** At depth 1-4, NEVER fix — flag only. The validation pass below depth 5 is too thin to trust.
-2. **Function-body contained.** The fix touches code inside one function body. No public API changes (Go exported
+The fix-bar is **depth-independent.** Whether a fix is safe to land is a per-candidate question — it doesn't matter
+how hard you looked to find the candidate. A high-confidence errcheck hit at depth 1 is just as fixable as one at
+depth 8.
+
+1. **Function-body contained.** The fix touches code inside one function body. No public API changes (Go exported
    symbols, Python public names). No type-signature changes. No shared-state writes that other callers depend on.
-3. **Blast radius.** Read the function's callers and callees once. If the fix could plausibly break a caller (e.g.
+2. **Blast radius.** Read the function's callers and callees once. If the fix could plausibly break a caller (e.g.
    changing a return-value semantic that callers rely on), flag instead.
-4. **Test coverage.** If tests exist for the affected file or path (`<file>_test.go` for Go, `tests/test_<module>.py`
+3. **Test coverage.** If tests exist for the affected file or path (`<file>_test.go` for Go, `tests/test_<module>.py`
    or `<dir>/test_*.py` for Python), the fix is fixable. **If no tests cover the path, flag-only by default** — fixing
    untested code without a regression check is exactly the failure mode trunk-based dev punishes.
-5. **Analyzer signal strength.** Some analyzer rules are high-signal — `errcheck` always means real missing error
-   handling; `ineffassign` always means a real dead write. Some rules are ambiguous — `staticcheck SA9999` (debug-only)
-   should never auto-fix. Default: only auto-fix on high-signal rules; ambiguous rules flag.
+4. **Analyzer signal strength.** Some analyzer rules are high-signal — `errcheck` always means real missing error
+   handling; `ineffassign` always means a real dead write; `ruff B006` always flags a real mutable default. Some rules
+   are ambiguous — `staticcheck SA9999` (debug-only) should never auto-fix; analyzer messages with hedges like "may"
+   / "likely" / "potentially" go to flag-only. Default: only auto-fix on high-signal rules; ambiguous rules flag.
 
 A candidate that fails ANY of these → goes to flag bin (step 6). A candidate that passes ALL → goes to fix bin (step 5).
 
@@ -392,7 +447,7 @@ Format per finding:
 - **<file>:<line>** `<analyzer rule>` — <one-line summary of what>
   - Why: <one-line summary of why it's a bug>
   - Suggested fix: <one-line summary of approach>
-  - Why flagged not fixed: <one of: depth too low, function-body not contained, blast radius unclear, no test coverage, ambiguous analyzer rule, fix broke local tests, fix needs unfamiliar API confirmation>
+  - Why flagged not fixed: <one of: function-body not contained, blast radius unclear, no test coverage, ambiguous analyzer rule, fix broke local tests, fix needs unfamiliar API confirmation>
 ```
 
 Severity is your judgement based on what the analyzer found and what the surrounding code shows; not a number. Order is

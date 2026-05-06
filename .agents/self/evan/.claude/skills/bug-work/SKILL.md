@@ -102,15 +102,21 @@ scan.
 ### 2. Validate per candidate (depth-gated)
 
 For each candidate, walk the **intentional-design gauntlet** at the configured depth's intensity. The gauntlet is
-eight concerns; depth controls how rigorously you walk it:
+eight concerns; depth controls **how hard you hunt** — what you READ per candidate, and how many of the eight
+concerns you check. Higher depth = wider candidate pool (you find more bugs by reading more) AND tighter validation
+(more concerns checked before declaring something a bug):
 
 | Depth | What you read per candidate                              | Concerns checked                                                                                       |
 | ----- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1-2   | Just the cited line                                      | None — file every analyzer hit verbatim, no validation                                                 |
+| 1-2   | Just the cited line                                      | None — trust the analyzer's signal directly. Bugs found at this depth are the no-brainer wins.         |
 | 3-4   | ±20-line context window                                  | #1 (`#NNNN` ref) and #2 (adjacent handler) only                                                        |
 | 5-6   | Full function body + immediate caller                    | #1, #2, #3 (synchronization), #4 (defensive checks earlier on call path)                               |
 | 7-8   | Full source file                                         | All eight: #1 `#NNNN` refs, #2 adjacent handlers, #3 synchronization, #4 earlier defensive checks, #5 documented tradeoffs, #6 idempotent operations, #7 still-present-in-current-code, #8 stale line numbers |
 | 9-10  | Full subsystem (file + callers + callees) + READMEs      | All eight + adversarial "what could go wrong" pass + web-search any unfamiliar APIs                    |
+
+A candidate that survives the gauntlet at the configured depth proceeds to step 3, regardless of which depth the
+caller picked. **Validation rigor scales with depth, but auto-fix doesn't depend on depth — that's the per-candidate
+fix-bar in step 4.**
 
 The eight concerns in detail (full text in CLAUDE.md → "The bug-work process" → "Step 2"):
 
@@ -144,19 +150,24 @@ Before deciding fix-vs-flag per candidate, look at the surviving set:
 
 Apply the **fix-bar**. ALL must hold to fix; otherwise flag.
 
-1. **Depth gate.** Depth 1-4 → flag only, no fixing. Depth 5-6 → fix only the most isolated (single-line analyzer
-   suggestion). Depth 7-8 → fix anything the gauntlet cleared. Depth 9-10 → fix + add a regression test.
-2. **Function-body contained.** No public API change (Go exported symbols, Python public names). No type-signature
+The fix-bar is **depth-independent.** Whether a fix is safe to land is a per-candidate question — analyzer signal,
+function-body containment, blast radius, test coverage. It doesn't matter how hard you looked to find the candidate.
+A high-confidence errcheck hit at depth 1 is just as fixable as one at depth 8.
+
+1. **Function-body contained.** No public API change (Go exported symbols, Python public names). No type-signature
    change. No shared-state writes other callers depend on.
-3. **Blast radius.** Read the function's callers and callees once. If the fix could plausibly break a caller (changing
+2. **Blast radius.** Read the function's callers and callees once. If the fix could plausibly break a caller (changing
    return-value semantics callers rely on), flag.
-4. **Test coverage.** Tests exist for the affected file/path (`<file>_test.go`, `tests/test_<module>.py`,
+3. **Test coverage.** Tests exist for the affected file/path (`<file>_test.go`, `tests/test_<module>.py`,
    `<dir>/test_*.py`). **No tests covering the path → flag-only by default.**
-5. **Analyzer signal strength.** High-signal: `errcheck`, `ineffassign`, `staticcheck SA1xxx-SA5xxx` (most), `ruff B*`
+4. **Analyzer signal strength.** High-signal: `errcheck`, `ineffassign`, `staticcheck SA1xxx-SA5xxx` (most), `ruff B*`
    (most), `actionlint` core rules, `hadolint DL3022/DL3025/DL4006`. Ambiguous: `staticcheck SA9xxx` (debug-only),
    anything where the analyzer message is "may", "likely", "potentially". Default: high-signal only auto-fixes.
 
 Bin to **fix** or **flag**.
+
+At depth 9-10, every committed fix also gets a regression test that fails on the pre-fix code and passes on the
+fixed code (see step 5.7 below). That's a depth-driven *commit shape* requirement — not a fix-bar gate.
 
 ### 5. Fix each fixable candidate
 
@@ -220,7 +231,7 @@ Format:
 - **<file>:<line>** `<analyzer rule>` — <one-line summary of what>
   - Why: <one-line summary of why it's a bug>
   - Suggested fix: <one-line summary of approach>
-  - Why flagged not fixed: <one of: depth too low, function-body not contained, blast radius unclear, no test coverage, ambiguous analyzer rule, fix broke local tests "<test name>", fix needs unfamiliar API confirmation>
+  - Why flagged not fixed: <one of: function-body not contained, blast radius unclear, no test coverage, ambiguous analyzer rule, fix broke local tests "<test name>", fix needs unfamiliar API confirmation>
 ```
 
 If `project_evan_findings.md` doesn't exist yet, create it with a header explaining what it contains. Update the
