@@ -13,9 +13,10 @@ is running:
 - One **WitwaveWorkspace** (`witwave-self`) with one or more shared volumes (`source` for the working repo state,
   `memory` for long-term per-agent memory, more as concerns accrete) that every participating agent mounts at the same
   paths.
-- Two **WitwaveAgent**s (`iris` and `kira`) with `Spec.WorkspaceRefs` pointing at `witwave-self` so they share the
-  workspace. Iris owns source-tree initialization + release captaincy; kira owns documentation hygiene. Additional named
-  agents (e.g. `nova`) can be added later in the same shape.
+- Three **WitwaveAgent**s (`iris`, `kira`, `nova`) with `Spec.WorkspaceRefs` pointing at `witwave-self` so they share
+  the workspace. Iris owns source-tree initialization + release captaincy; kira owns documentation hygiene; nova owns
+  code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to
+  iris via `call-peer`. Additional named agents can be added later in the same shape.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap
@@ -79,6 +80,9 @@ GITHUB_USER_IRIS=iris-agent-witwave
 
 GITHUB_TOKEN_KIRA=github_pat_replace_me
 GITHUB_USER_KIRA=kira-agent-witwave
+
+GITHUB_TOKEN_NOVA=github_pat_replace_me
+GITHUB_USER_NOVA=nova-agent-witwave
 
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar
@@ -242,6 +246,44 @@ ww agent list \
 `ww agent list` should now show two rows (`iris`, `kira`) both in state `Ready`. `ww workspace status witwave-self`
 should report both under the bound-agents section.
 
+## Step 5 — Deploy nova
+
+Nova is the team's code-hygiene agent — keeps the code-internal comprehension substrate clean (formatting via ruff /
+gofmt / goimports / shfmt / prettier; comment authoring on undocumented exports, helm-docs-style annotations on
+`values.yaml`, Dockerfile / shell-script / GitHub Actions comment work). Same shape as iris and kira (one `claude`
+backend, bound to `witwave-self`, identity sourced from `.agents/self/nova/`); like kira, she commits locally and
+delegates pushes to iris via `call-peer`. One command:
+
+```bash
+ww agent create nova \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=2700 \
+  --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_NOVA:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_NOVA:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/nova \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+Same paired-timeout lift as iris and kira (harness + backend both 2700s). Nova's `code-format` runs language-specific
+formatters across the entire source surface and her `code-document` Tier 3 pass reads function bodies + chart
+templates to ground each authored comment — both are within the default 5-minute budget when she's warm but can hit
+the ceiling on cold containers. The headroom matters.
+
+Verify all three agents are now bound to the workspace:
+
+```bash
+ww agent list \
+  --namespace witwave-self
+```
+
+`ww agent list` should now show three rows (`iris`, `kira`, `nova`) all in state `Ready`. `ww workspace status
+witwave-self` should report all three under the bound-agents section.
+
 ## Tear it down
 
 Reverse order: agent → workspace → operator → namespaces. Each command is destructive and cascade-deletes everything it
@@ -249,6 +291,13 @@ owns.
 
 Delete each agent (cascades the pod, Service, per-backend PVC `<name>-claude-data`, and the ww-managed `<name>-claude`
 Secret; `--delete-git-secret` also reaps the per-agent `<name>-gitsync` Secret minted by `--gitsync-secret-from-env`):
+
+```bash
+ww agent delete nova \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
 
 ```bash
 ww agent delete kira \
