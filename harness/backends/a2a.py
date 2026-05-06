@@ -76,7 +76,7 @@ def _resolve_session_context_cache_max() -> int:
             "A2A_SESSION_CONTEXT_CACHE_MAX=%r is not an int — refusing to start",
             _raw,
         )
-        raise ValueError(f"A2A_SESSION_CONTEXT_CACHE_MAX must be a positive int, got {_raw!r}")
+        raise ValueError(f"A2A_SESSION_CONTEXT_CACHE_MAX must be a positive int, got {_raw!r}") from None
     if val < 1:
         _log.critical("A2A_SESSION_CONTEXT_CACHE_MAX=%d < 1 — refusing to start", val)
         raise ValueError(f"A2A_SESSION_CONTEXT_CACHE_MAX must be >= 1, got {val}")
