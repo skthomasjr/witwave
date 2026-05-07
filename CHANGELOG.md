@@ -6,6 +6,27 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-05-07
+
+Manager arc: the team gains a fifth self-agent — **zora** — owning team-level dispatching and release cadence across the
+four domain-specialist peers (iris, kira, nova, evan). She decides what work happens when, not how; domain decisions
+stay with each peer. Initial responsibilities are scaffolded alongside a `team-tidy` skill that keeps the team's shared
+posture (CLAUDE.md tone, skill structure, memory hygiene) consistent over time. A nova-driven `ruff format` pass sweeps
+the Python sources clean as a baseline.
+
+### Agent identity
+
+- **zora**: scaffolded as the team's fifth self-agent and team coordinator — identity (CLAUDE.md + agent-card),
+  team-participation files, and the standard cross-agent skills inherited from the family. Sits above the four domain
+  peers and dispatches work via A2A; all peers' CLAUDE.md updated to describe her as a valid caller into their skills,
+  not a gate — direct user invocation still works.
+- **zora/team-tidy**: skill scaffolded to keep team-shared posture consistent — anchored on the team's overall mission
+  so consistency-and-self-improvement work targets the right shape rather than drifting into local cleanup.
+
+### Changed
+
+- **python-sources**: `ruff format` pass across the Python tree (nova) — formatting-only, no behaviour change.
+
 ## [0.16.0] — 2026-05-07
 
 Risk-work arc: evan gains a sibling skill to `bug-work` — `risk-work` — owning identification of exploitable risk
