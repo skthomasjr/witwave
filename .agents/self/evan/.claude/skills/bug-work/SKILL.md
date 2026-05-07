@@ -36,27 +36,32 @@ Dockerfile, shell, and GitHub Actions. Three more are scaffolded but their toolc
 
 ### Day-one toolchain
 
-| Section            | Files in tree                         | Toolchain                                                                                        |
-| ------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `harness`          | Python + Dockerfile                   | `ruff` (B) + `hadolint` (bug-class)                                                              |
-| `shared`           | Python                                | `ruff` (B)                                                                                       |
-| `backends/claude`  | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `backends/codex`   | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `backends/gemini`  | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `backends/echo`    | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `tools/kubernetes` | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `tools/helm`       | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `tools/prometheus` | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
-| `operator`         | Go + Dockerfile + kubebuilder markers | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint` + `controller-gen` drift |
-| `clients/ww`       | Go (+ Dockerfile if present)          | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint`                          |
-| `helpers/git-sync` | Dockerfile only                       | `hadolint`                                                                                       |
-| `scripts`          | Shell                                 | `shellcheck` (bug-class)                                                                         |
-| `workflows`        | GitHub Actions YAML                   | `actionlint`                                                                                     |
+| Section                  | Files in tree                         | Toolchain                                                                                        |
+| ------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `harness`                | Python + Dockerfile                   | `ruff` (B,F) + `hadolint` (bug-class)                                                            |
+| `shared`                 | Python                                | `ruff` (B,F)                                                                                     |
+| `backends/claude`        | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `backends/codex`         | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `backends/gemini`        | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `backends/echo`          | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `tools/kubernetes`       | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `tools/helm`             | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `tools/prometheus`       | Python + Dockerfile                   | `ruff` (B,F) + `hadolint`                                                                        |
+| `operator`               | Go + Dockerfile + kubebuilder markers | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint` + `controller-gen` drift |
+| `clients/ww`             | Go (+ Dockerfile if present)          | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint`                          |
+| `helpers/git-sync`       | Dockerfile only                       | `hadolint`                                                                                       |
+| `scripts`                | Shell                                 | `shellcheck` (bug-class)                                                                         |
+| `workflows`              | GitHub Actions YAML                   | `actionlint`                                                                                     |
+| `charts/witwave`         | Helm chart (templates + values + Chart.yaml) | `helm lint` + `yamllint`                                                                  |
+| `charts/witwave-operator`| Helm chart (templates + values + Chart.yaml) | `helm lint` + `yamllint`                                                                  |
 
 ### Deferred to v2
 
-`clients/dashboard` (TS/Vue + Dockerfile), `charts/witwave`, `charts/witwave-operator`. If the caller specifies one,
-refuse cleanly with `"section <name> requires toolchain not yet installed in this image"` and log the request.
+`clients/dashboard` (TS/Vue + Dockerfile). If the caller specifies it, refuse cleanly with
+`"section <name> requires toolchain not yet installed in this image"` and log the request. The two `charts/*`
+sections were promoted to day-one on 2026-05-07 once the helm v3.16.3 install (already present in the backend
+images for nova's helm-lint step) was wired into evan's bug-work; the dashboard's TS/Vue toolchain stays deferred
+pending an ESLint + vue-eslint-parser install in the backend images.
 
 ### Aliases
 
@@ -64,7 +69,8 @@ refuse cleanly with `"section <name> requires toolchain not yet installed in thi
 - `all-go` → `operator`, `clients/ww`
 - `all-backends` → all four backends
 - `all-tools` → all three tools
-- `all-day-one` → every section in the day-one table above (14)
+- `all-charts` → `charts/witwave`, `charts/witwave-operator`
+- `all-day-one` → every section in the day-one table above (16)
 
 Aliases compose with explicit sections: `all-go,scripts` is valid.
 
@@ -187,6 +193,8 @@ deferred-findings memory and either:
 | `hadolint`                       | `hadolint --no-fail --ignore=DL3008 --ignore=DL3015 --ignore=DL3018 --ignore=DL3059 --ignore=DL4001 <Dockerfile>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `shellcheck`                     | `shellcheck --severity=warning --include=SC2086,SC2046,SC2155,SC2207,SC1090,SC2236,SC2068,SC2206,SC2128,SC2178 <script.sh>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `actionlint`                     | `actionlint <workflow.yml>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `helm lint` (charts only)        | `helm lint <chart-dir>` — runs Helm's built-in chart validator across `Chart.yaml`, `values.yaml`, and every template in `templates/`. Surfaces parse errors, missing required values, broken template references. Bug-class only — INFO-level findings (e.g. "icon is recommended") are filtered out at parse time. Pinned to v3.16.3 in the backend image.                                                                                                                                                                                                                                                                                                                                                                       |
+| `yamllint` (charts only)         | `yamllint -f parsable <chart-dir>` — covers chart YAML hygiene that helm lint doesn't catch (key-duplicates, truthy-not-quoted, indentation drift). Use the project's `.yamllint.yaml` config when present.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `controller-gen` (operator only) | `cd <checkout>/operator && make manifests && cd <checkout> && git diff --exit-code operator/config/crd/bases/` (capture drift result), then **restore working-tree residue** `git checkout -- operator/go.mod operator/config/` so the probe doesn't leave the tree dirty for subsequent gauntlet / fix-bar steps. The `manifests` target keeps the drift check in lockstep with CI; the restore step is the wrap-in-stash containment iris and zora endorsed in the 2026-05-07 dirty-tree escalation. Same restore should run if any other operator-section probe (e.g. `go vet` triggering `go mod`-side effects) dirties the tree — verify clean via `git status --porcelain operator/` after each tool, restore if non-empty. |
 
 ## Memory format
