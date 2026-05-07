@@ -75,6 +75,36 @@ to ship. Every other agent commits locally and delegates the push to iris via `c
                   ghcr.io · oci · brew
 ```
 
+## Proposed future members
+
+The team is designed to grow. These roles aren't built yet but are queued in the design pipeline — names below are
+tentative and likely to be revisited before scaffolding.
+
+### (next up) gap-fixer — likely **owen** or **finn**
+Sibling to evan, but with a different lens: instead of finding *what's wrong* in code, this agent finds *what's
+missing*. Architectural gaps, unimplemented spec promises, untested code paths, missing error handling that the
+existing analyzers don't flag because they don't know what *should* be there. Skill: `gap-work`. Same single-pass
+shape as `bug-work`/`risk-work` — find, validate, fix-or-flag, commit, delegate push to iris.
+
+### feature builder — likely **liam** or **felix**
+Builds new features end-to-end. Reads requirements (from issues, discussions, design docs), implements the change
+across code + tests + docs, commits in atomic pieces, delegates push to iris. Skill: `feature-work`. Distinct from
+the defect-finding agents (evan, gap-fixer) because feature delivery is *creative authorship* rather than
+*defect remediation* — different shape of work, different safety bar.
+
+### community liaison — likely **sage** or **ezra**
+Talks with humans on GitHub Discussions. Reads new threads, answers questions, negotiates feature scope with
+external requesters, surfaces actionable bugs/features back to the team. Coordinates with zora on prioritisation
+("a discussion thread is asking for X — when can we fit it?"). Adds a *human-facing voice* the team currently
+lacks; today external requests have no team-facing channel.
+
+### agent resources — likely **luna** or **dora**
+Infra-level management of the agents themselves. Scales pods up/down (e.g., scales evan to zero overnight if no
+backlog; spins kira down on weekends if docs are quiet), watches resource budgets (LLM cost, CPU, memory), tunes
+configuration like `TASK_TIMEOUT_SECONDS` per-agent based on observed run times, knows who's available when. Like
+HR but for agents — operational lifecycle rather than substantive work. Coordinates with zora on team capacity but
+operates one layer below (zora dispatches *work* to agents; agent-resources keeps the agents *runnable*).
+
 ## How the loop closes
 
 1. **Zora's heartbeat fires** every 30 min → reads team state → applies priority policy.
