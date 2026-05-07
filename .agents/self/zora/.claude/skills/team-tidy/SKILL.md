@@ -146,10 +146,31 @@ Apply the strict bar to every candidate:
 - Within `.agents/self/**`?
 - Demonstrably consistency or improvement, not preference / reorganisation / behaviour change?
 
-Drop anything that fails. Out of the survivors, pick **one** by leverage (drift-correction across multiple files
+Drop anything that fails. **Then weight the survivors by mission alignment** — see "Team mission" in your
+CLAUDE.md. The mission is "continuously improve and release the witwave platform." Apply this question to each
+remaining candidate:
+
+> *Does this change make the platform better and more shippable, or does it just make our internal docs prettier?*
+
+A change earns mission alignment when it visibly improves a peer's ability to do their job. Examples:
+
+- **High mission alignment.** A schema mismatch that breaks zora's backlog counter so peers' work goes uncounted
+  and unprioritised → fixing it directly improves the dispatch loop's accuracy. Pattern propagation that lets
+  evan / nova / kira each surface their work in a uniform format → improves zora's coordination → faster
+  releases → mission served.
+- **Medium mission alignment.** A stale skill cross-reference (`bug-sweep` → `bug-work`) that would mislead a
+  reader trying to understand evan's flow → fixing it improves comprehension → marginal benefit to future agent
+  correctness.
+- **Low mission alignment.** A typo in a comment that no one will likely re-read soon → improves nothing
+  meaningful → defer.
+- **Zero mission alignment.** Reformatting a markdown table that's already readable → defer / drop.
+
+Pick **one** survivor: highest mission alignment, ties broken by leverage (drift-correction across multiple files
 > pattern-propagation across two peers > single-file improvement > typo).
 
-If zero survivors: log "no team-tidy candidates this pass" to decision log, exit cleanly.
+If zero survivors OR no candidate has medium-or-better alignment: log "no team-tidy candidates this pass" to
+decision log, exit cleanly. **Better to skip than to ship a low-mission-alignment improvement just to fill a
+slot in the daily quota.** Empty team-tidy passes are healthy.
 
 ### 5. Apply the change
 
