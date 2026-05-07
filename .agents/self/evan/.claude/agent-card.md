@@ -5,8 +5,8 @@ a single pass. Two kinds, two skills:
 
 - **Bugs** (`bug-work`, deployed): correctness defects — unchecked errors, null derefs, format-string mismatches,
   dead writes, race-condition smells, idempotency gaps, ineffective assignments.
-- **Risks** (`risk-work`, **v2 stub — toolchain pending**): security defects — CVEs in dependencies, secrets in
-  source, insecure code patterns, RBAC overreach, injection risks.
+- **Risks** (`risk-work`): security defects — CVEs in dependencies, secrets in source, insecure code patterns.
+  Severity-gated: Critical/High auto-fix at depth 1-2; Medium joins at depth ≥5; Low always flags.
 
 Out of scope for evan: complexity, style, dead code, type drift, feature gaps, architectural gaps. Those go to
 nova (hygiene), kira (docs), or future siblings (`gap-work`, `feature-work`).
@@ -30,10 +30,11 @@ The pass IS supposed to fix what it can. Discovery-only is not the pattern — t
   Trigger phrases starting with "work" / "fix" / "find" / "scan" all route to the same skill — it always finds AND
   fixes; you can't ask for find-only.
 
-- **`work risks`** / **`fix risks`** / **`find risks`** / **`do risk work`** — the risk-work entry point.
-  **Currently a stub** — the toolchain (govulncheck, pip-audit, gitleaks, trivy, bandit, gosec, semgrep) isn't
-  installed in evan's image yet. Invoking today refuses cleanly with "toolchain not yet available." Will be wired
-  up in a v2 commit.
+- **`work risks`** / **`fix risks`** / **`find risks`** / **`do risk work`** — the risk-work entry point. Same
+  invocation shape as bug-work (depth, sections). Default scope `all-deps` (the Python sections with
+  requirements.txt) since dep-CVE coverage is the highest-leverage first move. Toolchain: govulncheck (Go
+  reachability), gosec (Go security lints), pip-audit (Python dep CVEs), bandit (Python security lints),
+  gitleaks (secrets), trivy (filesystem CVE + secrets).
 
   Optionally scoped:
 

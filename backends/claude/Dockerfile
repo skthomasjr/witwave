@@ -50,11 +50,13 @@ RUN apt-get update && apt-get install -y shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
 # Go toolchain — needed for gofmt + goimports (nova code-format Go
-# pass) and for evan's bug-class analyzers (staticcheck SA-rules,
-# errcheck, ineffassign, controller-gen drift check). Pin every
-# version so image rebuilds are reproducible. We keep the whole
-# toolchain because gofmt is part of it and `go install` of any
-# pure-Go tool needs the compiler regardless.
+# pass), evan's bug-class analyzers (staticcheck SA-rules, errcheck,
+# ineffassign, controller-gen drift check), and evan's risk-class
+# scanners (govulncheck CVE-vs-import-graph reachability, gosec
+# Go security lints). Pin every version so image rebuilds are
+# reproducible. We keep the whole toolchain because gofmt is part
+# of it and `go install` of any pure-Go tool needs the compiler
+# regardless.
 ARG GO_VERSION=1.23.4
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
@@ -74,11 +76,15 @@ ARG STATICCHECK_VERSION=2024.1.1
 ARG ERRCHECK_VERSION=v1.7.0
 ARG INEFFASSIGN_VERSION=v0.1.0
 ARG CONTROLLER_GEN_VERSION=v0.16.5
+ARG GOVULNCHECK_VERSION=v1.1.4
+ARG GOSEC_VERSION=v2.26.1
 RUN go install "golang.org/x/tools/cmd/goimports@${GOIMPORTS_VERSION}" \
     && go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" \
     && go install "github.com/kisielk/errcheck@${ERRCHECK_VERSION}" \
     && go install "github.com/gordonklaus/ineffassign@${INEFFASSIGN_VERSION}" \
     && go install "sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}" \
+    && go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" \
+    && go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}" \
     && cp "$GOPATH/bin/"* /usr/local/bin/ \
     && rm -rf "$GOPATH"
 
@@ -111,6 +117,32 @@ RUN ARCH=$(dpkg --print-architecture) \
          -o /usr/local/bin/hadolint \
     && chmod +x /usr/local/bin/hadolint
 
+# gitleaks — secret-in-source detection (evan risk-work).
+# Release archive uses x64/arm64 naming.
+ARG GITLEAKS_VERSION=8.30.1
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) GITLEAKS_ARCH=x64 ;; \
+        arm64) GITLEAKS_ARCH=arm64 ;; \
+        *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${GITLEAKS_ARCH}.tar.gz" \
+         | tar -xz -C /usr/local/bin gitleaks \
+    && chmod +x /usr/local/bin/gitleaks
+
+# trivy — filesystem CVE scan + image scan (evan risk-work).
+# Release archive uses 64bit / ARM64 naming with Linux capitalized.
+ARG TRIVY_VERSION=0.70.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) TRIVY_ARCH=64bit ;; \
+        arm64) TRIVY_ARCH=ARM64 ;; \
+        *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${TRIVY_ARCH}.tar.gz" \
+         | tar -xz -C /usr/local/bin trivy \
+    && chmod +x /usr/local/bin/trivy
+
 # Helm — chart linting + diff inspection (nova code-format helm-lint
 # step; also useful for any agent that needs to introspect rendered
 # manifests). Official install script auto-detects arch.
@@ -136,7 +168,7 @@ RUN pip install --no-cache-dir 'ruff==0.6.9' 'yamllint==1.35.1'
 
 # Bug-class verification tooling for evan. pytest + pytest-asyncio run
 # the project's scoped tests locally before evan commits a fix (Step 5
-# of bug-sweep). httpx and the python kubernetes client are the test
+# of bug-work). httpx and the python kubernetes client are the test
 # dependencies CI installs ad-hoc per ci-charts.yml's mcp-tools-pytest
 # job; pinning them in the image so evan's local-test runs match what
 # CI runs. Pinned for reproducibility.
@@ -145,6 +177,15 @@ RUN pip install --no-cache-dir \
     'pytest-asyncio==0.24.0' \
     'httpx==0.27.2' \
     'kubernetes==31.0.0'
+
+# Risk-class scanners for evan's risk-work skill. pip-audit checks
+# requirements.txt for CVEs; bandit runs Python security-class lints
+# (B-prefix is bandit's, distinct from ruff's bugbear B-class).
+# Pinned for reproducibility. semgrep deliberately not included
+# yet — large dep, deferred to a future toolchain expansion.
+RUN pip install --no-cache-dir \
+    'pip-audit==2.10.0' \
+    'bandit==1.9.4'
 
 COPY --chown=agent:agent backends/claude/ /home/agent/claude/
 COPY --chown=agent:agent shared/ /home/agent/shared/
