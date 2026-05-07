@@ -441,7 +441,7 @@ jobs:
           python3 -m http.server --directory /tmp/fake-dist 8765 >/tmp/srv.log 2>&1 &
           echo $! > /tmp/srv.pid
           # Poll up to 3s for the server to bind.
-          for i in $(seq 1 30); do
+          for _i in $(seq 1 30); do
             curl -fs http://localhost:8765/checksums.txt >/dev/null && exit 0
             sleep 0.1
           done
