@@ -6,6 +6,58 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-05-07
+
+Risk-work arc: evan gains a sibling skill to `bug-work` — `risk-work` — owning identification of exploitable risk
+(vulnerabilities, secrets, supply-chain exposure) across the project's source. The supporting backend image work
+installs the day-one risk toolchain (govulncheck, gosec, pip-audit, bandit, gitleaks, trivy) uniformly across all three
+backends so risk scans run identically wherever evan is deployed. Bug-work itself gains a safe-pattern catalogue so
+auto-fixes at depth ≥ 5 land on rails for shapes the team has already vetted.
+
+### Agent identity
+
+- **evan/risk-work**: scaffolded as bug-work's sibling — same 7-step shape (scan, validate, reason as set, decide
+  fix-vs-flag, fix with web-search + scoped local tests, log, push + CI watch through iris), same depth dial, same
+  batch-revert posture on red CI, but the discovery target is exploitable risk rather than correctness defects. Skill
+  scaffold landed first, then the procedural body was fleshed out and the toolchain installed across the backends.
+- **evan/bug-work**: safe-pattern catalogue added to the step-4 fix-bar — a curated list of "we've seen this shape
+  before and the canonical fix is X" patterns (B904 chain-vs-suppress, B010 setattr-with-constant, SC2086
+  quote-GOOS/GOARCH, SC2034 rename-unused-loop-var, etc.) so depth-≥5 auto-fixes land on rails instead of asking the web
+  every time. Companion changes: `bug-sweep` renamed to `bug-work` (leading the verb pair); depth reframed as "how hard
+  we hunt"; Step 0.5 added to recover stuck commits before scanning; CLAUDE.md + SKILL.md refactor for clarity;
+  fix-forward semantics on local-test + CI failures; candidate list persists to memory immediately after scan so a
+  crashed pass doesn't lose its work.
+
+### Added
+
+- **backends**: evan's risk-work toolchain installed uniformly in claude, codex, and gemini images — govulncheck and
+  gosec (Go), pip-audit and bandit (Python), gitleaks (secret scanning), trivy (filesystem + container scans). Sits
+  alongside the existing bug-work toolchain from v0.15.0. Echo image stays minimal by design.
+
+### Fixed
+
+Tonight's evan bug-work pass closed five issues; the morning's pass had landed a larger batch which was reverted on red
+CI (`ci-ww.yml`) and then reworked and re-landed cleanly.
+
+- **harness**: TimeoutError chain suppressed when raising QueueFull (B904). Int-conversion context suppressed when
+  re-raising as ValueError (B904). Unused loop variable renamed in `_resolve_host_to_private_check` (SC2034-equivalent
+  Python).
+- **tools/helm**: bash `pipefail` SHELL set so pipe failures surface in helm-chart make targets (DL4006). idna failure
+  chained when raising HelmError on bad hostname (B904).
+- **tools/kubernetes**: loop variables bound at iteration time in apply-commit lambda (closure-over-loop-var).
+- **backends/claude**: NameError context suppressed when re-raising primary lifespan error (B904); setattr-with-constant
+  replaced with direct attribute assignment (B010, two call sites).
+- **backends/codex**: TimeoutExpired chained when raising ShellTimeoutError (B904).
+- **backends/gemini**: setattr-with-constant replaced with direct attribute assignment (B010).
+- **workflows**: GOOS/GOARCH expansion quoted in `ci-ww.yml` build step (SC2086). Option parsing terminated in the SLSA
+  archive `sha256sum` invocation (SC2035) so subjects with leading dashes are preserved verbatim. SC2016 false positive
+  suppressed on the bcrypt htpasswd single-quoted literal in `release.yaml`. SC2034 silenced on the unused index in the
+  fake-dist server poll loop (rename to `_`).
+
+### Changed
+
+- **ww**: embedded operator chart values resynced to track upstream chart edits.
+
 ## [0.15.0] — 2026-05-06
 
 Bug-discovery arc: evan lands as the team's fourth self-agent — owner of correctness across the project's source code,
