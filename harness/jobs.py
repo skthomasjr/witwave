@@ -179,7 +179,15 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         # #1322: removed inner `_job_start = time.monotonic()` reassign so
         # duration metric covers resolve_prompt_env + bus.send symmetrically
         # on both success and error paths (was: success underreported).
-        message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
+        message = Message(
+            prompt=prompt,
+            session_id=item.session_id,
+            kind=f"job:{item.name}",
+            model=item.model,
+            backend_id=item.backend_id,
+            consensus=item.consensus,
+            max_tokens=item.max_tokens,
+        )
         _fire_ts = time.time()
         item.last_fire = _fire_ts  # #1087 — surface last_fire on /jobs snapshot
         if harness_job_item_last_run_timestamp_seconds is not None:
@@ -282,7 +290,12 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
                 logger.warning(f"Job '{item.name}' checkpoint delete failed: {e}")
 
 
-async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None, backends_ready: asyncio.Event | None = None) -> None:
+async def run_job(
+    item: JobItem,
+    bus: MessageBus,
+    semaphore: asyncio.Semaphore | None = None,
+    backends_ready: asyncio.Event | None = None,
+) -> None:
     if backends_ready is not None:
         await backends_ready.wait()
 
@@ -356,9 +369,7 @@ class JobRunner:
         if not item.enabled:
             self._items[path] = item
             if harness_job_items_registered is not None:
-                harness_job_items_registered.set(
-                    sum(1 for i in self._items.values() if i.enabled)
-                )
+                harness_job_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
             logger.info(f"Job '{item.name}' disabled — listed but not scheduled.")
             return
 
@@ -384,23 +395,25 @@ class JobRunner:
         """Return a serializable snapshot of all job items (enabled + disabled)."""
         result = []
         for item in self._items.values():
-            result.append({
-                "name": item.name,
-                "schedule": item.schedule,
-                "session_id": item.session_id,
-                "backend_id": item.backend_id,
-                "model": item.model,
-                "consensus": [asdict(e) for e in item.consensus],
-                "max_tokens": item.max_tokens,
-                "running": item.running,
-                "enabled": item.enabled,
-                # Fire-schedule bookkeeping (#1087). None when the runner
-                # hasn't yet computed the next cron tick or the job has
-                # never fired, respectively. Epoch seconds.
-                "next_fire": item.next_fire,
-                "last_fire": item.last_fire,
-                "last_success": item.last_success,
-            })
+            result.append(
+                {
+                    "name": item.name,
+                    "schedule": item.schedule,
+                    "session_id": item.session_id,
+                    "backend_id": item.backend_id,
+                    "model": item.model,
+                    "consensus": [asdict(e) for e in item.consensus],
+                    "max_tokens": item.max_tokens,
+                    "running": item.running,
+                    "enabled": item.enabled,
+                    # Fire-schedule bookkeeping (#1087). None when the runner
+                    # hasn't yet computed the next cron tick or the job has
+                    # never fired, respectively. Epoch seconds.
+                    "next_fire": item.next_fire,
+                    "last_fire": item.last_fire,
+                    "last_success": item.last_success,
+                }
+            )
         return result
 
     def _unregister(self, path: str) -> asyncio.Task | None:

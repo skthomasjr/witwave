@@ -74,17 +74,17 @@ def _require_keys(
     unknown = [k for k in payload if k not in allowed]
     if unknown:
         import logging as _logging
+
         _logging.getLogger(__name__).debug(
             "%s: ignoring unknown additive payload fields %r (#1145)",
-            type_, unknown,
+            type_,
+            unknown,
         )
     return None
 
 
 def _validate_job_fired(p: dict) -> str | None:
-    err = _require_keys(
-        p, ("name", "schedule", "duration_ms", "outcome"), ("error",), "job.fired"
-    )
+    err = _require_keys(p, ("name", "schedule", "duration_ms", "outcome"), ("error",), "job.fired")
     if err:
         return err
     if not _is_nonempty_str(p["name"]):
@@ -101,9 +101,7 @@ def _validate_job_fired(p: dict) -> str | None:
 
 
 def _validate_task_fired(p: dict) -> str | None:
-    err = _require_keys(
-        p, ("name", "duration_ms", "outcome"), ("window", "error"), "task.fired"
-    )
+    err = _require_keys(p, ("name", "duration_ms", "outcome"), ("window", "error"), "task.fired")
     if err:
         return err
     if not _is_nonempty_str(p["name"]):
@@ -120,9 +118,7 @@ def _validate_task_fired(p: dict) -> str | None:
 
 
 def _validate_heartbeat_fired(p: dict) -> str | None:
-    err = _require_keys(
-        p, ("duration_ms", "outcome"), ("schedule", "error"), "heartbeat.fired"
-    )
+    err = _require_keys(p, ("duration_ms", "outcome"), ("schedule", "error"), "heartbeat.fired")
     if err:
         return err
     if "schedule" in p and not isinstance(p["schedule"], str):
@@ -151,9 +147,7 @@ def _validate_continuation_fired(p: dict) -> str | None:
     if not _is_nonempty_str(p["name"]):
         return _err("continuation.fired: name must be a non-empty string")
     if p["upstream_kind"] not in _CONTINUATION_KINDS:
-        return _err(
-            f"continuation.fired: upstream_kind must be one of {sorted(_CONTINUATION_KINDS)}"
-        )
+        return _err(f"continuation.fired: upstream_kind must be one of {sorted(_CONTINUATION_KINDS)}")
     if not isinstance(p["upstream_name"], str):
         return _err("continuation.fired: upstream_name must be a string")
     if not _is_nonneg_int(p["duration_ms"]):
@@ -224,9 +218,7 @@ def _validate_webhook_failed(p: dict) -> str | None:
     if not isinstance(p["url_host"], str):
         return _err("webhook.failed: url_host must be a string")
     if p["reason"] not in _WEBHOOK_FAILURE_REASONS:
-        return _err(
-            f"webhook.failed: reason must be one of {sorted(_WEBHOOK_FAILURE_REASONS)}"
-        )
+        return _err(f"webhook.failed: reason must be one of {sorted(_WEBHOOK_FAILURE_REASONS)}")
     if "status_code" in p and not _is_http_status(p["status_code"]):
         return _err("webhook.failed: status_code must be an int 100..599")
     if not _is_nonneg_int(p["duration_ms"]):
@@ -272,9 +264,7 @@ def _validate_a2a_received(p: dict) -> str | None:
     if err:
         return err
     if p["concern"] not in _A2A_CONCERNS:
-        return _err(
-            f"a2a.request.received: concern must be one of {sorted(_A2A_CONCERNS)}"
-        )
+        return _err(f"a2a.request.received: concern must be one of {sorted(_A2A_CONCERNS)}")
     if "model" in p and not isinstance(p["model"], str):
         return _err("a2a.request.received: model must be a string")
     return None
@@ -290,17 +280,11 @@ def _validate_a2a_completed(p: dict) -> str | None:
     if err:
         return err
     if p["concern"] not in _A2A_CONCERNS:
-        return _err(
-            f"a2a.request.completed: concern must be one of {sorted(_A2A_CONCERNS)}"
-        )
+        return _err(f"a2a.request.completed: concern must be one of {sorted(_A2A_CONCERNS)}")
     if p["outcome"] not in _OUTCOMES:
-        return _err(
-            f"a2a.request.completed: outcome must be one of {sorted(_OUTCOMES)}"
-        )
+        return _err(f"a2a.request.completed: outcome must be one of {sorted(_OUTCOMES)}")
     if not _is_nonneg_int(p["duration_ms"]):
-        return _err(
-            "a2a.request.completed: duration_ms must be a non-negative integer"
-        )
+        return _err("a2a.request.completed: duration_ms must be a non-negative integer")
     if "error" in p and not isinstance(p["error"], str):
         return _err("a2a.request.completed: error must be a string")
     return None
@@ -314,13 +298,9 @@ def _validate_agent_lifecycle(p: dict) -> str | None:
     if err:
         return err
     if p["backend"] not in _HOOK_BACKENDS:
-        return _err(
-            f"agent.lifecycle: backend must be one of {sorted(_HOOK_BACKENDS)}"
-        )
+        return _err(f"agent.lifecycle: backend must be one of {sorted(_HOOK_BACKENDS)}")
     if p["event"] not in _LIFECYCLE_EVENTS:
-        return _err(
-            f"agent.lifecycle: event must be one of {sorted(_LIFECYCLE_EVENTS)}"
-        )
+        return _err(f"agent.lifecycle: event must be one of {sorted(_LIFECYCLE_EVENTS)}")
     if "detail" in p and not isinstance(p["detail"], str):
         return _err("agent.lifecycle: detail must be a string")
     return None
@@ -346,9 +326,7 @@ def _validate_conversation_turn(p: dict) -> str | None:
     if not _is_session_hash(p["session_id_hash"]):
         return _err("conversation.turn: session_id_hash must be a 12-char string")
     if p["role"] not in _CONVERSATION_ROLES:
-        return _err(
-            f"conversation.turn: role must be one of {sorted(_CONVERSATION_ROLES)}"
-        )
+        return _err(f"conversation.turn: role must be one of {sorted(_CONVERSATION_ROLES)}")
     if not _is_nonneg_int(p["content_bytes"]):
         return _err("conversation.turn: content_bytes must be a non-negative integer")
     if "model" in p and not isinstance(p["model"], str):
@@ -368,9 +346,7 @@ def _validate_conversation_chunk(p: dict) -> str | None:
     if not _is_session_hash(p["session_id_hash"]):
         return _err("conversation.chunk: session_id_hash must be a 12-char string")
     if p["role"] not in _CONVERSATION_ROLES:
-        return _err(
-            f"conversation.chunk: role must be one of {sorted(_CONVERSATION_ROLES)}"
-        )
+        return _err(f"conversation.chunk: role must be one of {sorted(_CONVERSATION_ROLES)}")
     if not _is_nonneg_int(p["seq"]):
         return _err("conversation.chunk: seq must be a non-negative integer")
     if not isinstance(p["content"], str):
@@ -447,9 +423,7 @@ def _validate_stream_gap(p: dict) -> str | None:
 
 
 def _validate_stream_overrun(p: dict) -> str | None:
-    err = _require_keys(
-        p, ("queue_depth", "queue_max"), ("reason",), "stream.overrun"
-    )
+    err = _require_keys(p, ("queue_depth", "queue_max"), ("reason",), "stream.overrun")
     if err:
         return err
     if not _is_nonneg_int(p["queue_depth"]):

@@ -119,7 +119,8 @@ class RaiseSwallowTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile() as parent:
             bad_path = os.path.join(parent.name, "not-a-dir", "trace.jsonl")
             ctx = _ctx(
-                ta, bad_path,
+                ta,
+                bad_path,
                 write_errors=write_errors,
                 write_errors_by_logger=write_errors_by_logger,
             )

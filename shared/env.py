@@ -68,9 +68,7 @@ def parse_int_env(name: str, default: int) -> int:
     try:
         return int(raw.strip())
     except ValueError as exc:
-        raise ValueError(
-            f"environment variable {name}={raw!r} is not a valid integer"
-        ) from exc
+        raise ValueError(f"environment variable {name}={raw!r} is not a valid integer") from exc
 
 
 def parse_float_env(name: str, default: float) -> float:
@@ -81,6 +79,4 @@ def parse_float_env(name: str, default: float) -> float:
     try:
         return float(raw.strip())
     except ValueError as exc:
-        raise ValueError(
-            f"environment variable {name}={raw!r} is not a valid float"
-        ) from exc
+        raise ValueError(f"environment variable {name}={raw!r} is not a valid float") from exc

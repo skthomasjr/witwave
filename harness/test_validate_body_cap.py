@@ -19,6 +19,7 @@ We instead pin the source shape with regex (so the wiring can't
 silently regress) and rely on the standalone
 ``shared/test_mcp_body_cap.py`` for the streaming-overflow contract.
 """
+
 from __future__ import annotations
 
 import re
@@ -50,9 +51,7 @@ class ValidateBodyCapSourceShapeTests(unittest.TestCase):
         # ``request.json()`` / ``json.loads`` parse step. We anchor on
         # the call shape ``await _read_capped_body(request, _MAX)``
         # which mirrors the backend-side pattern.
-        pattern = re.compile(
-            r"await\s+_read_capped_body\(\s*request\s*,\s*_MAX\s*\)"
-        )
+        pattern = re.compile(r"await\s+_read_capped_body\(\s*request\s*,\s*_MAX\s*\)")
         self.assertRegex(self.source, pattern)
 
     def test_body_too_large_reason_returns_413(self):
@@ -60,9 +59,7 @@ class ValidateBodyCapSourceShapeTests(unittest.TestCase):
         # silently succeed. Anchor on the (status_code=413, "body
         # exceeds") pair.
         pattern = re.compile(
-            r'_reason\s*==\s*"body_too_large"\s*:[^)]*'
-            r'(?:.|\n){0,200}?'
-            r'status_code\s*=\s*413',
+            r'_reason\s*==\s*"body_too_large"\s*:[^)]*' r"(?:.|\n){0,200}?" r"status_code\s*=\s*413",
         )
         self.assertRegex(self.source, pattern)
 
@@ -72,7 +69,7 @@ class ValidateBodyCapSourceShapeTests(unittest.TestCase):
         # ``"missing 'kind'"`` marker that anchors the /validate
         # handler and confirm no ``await request.json()`` lives in its
         # vicinity (within ~80 lines above the marker).
-        m = re.search(r'missing \'kind\'', self.source)
+        m = re.search(r"missing \'kind\'", self.source)
         self.assertIsNotNone(m, "could not anchor on /validate handler")
         # Find the function that contains this line by walking backwards
         # to the nearest ``async def`` declaration.

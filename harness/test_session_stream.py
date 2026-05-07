@@ -86,9 +86,7 @@ class SessionStreamRoundtripTests(unittest.IsolatedAsyncioTestCase):
         stream = ss.SessionStream("sess-r", ring_max=3)
 
         for i in range(5):
-            stream.publish_chunk(
-                role="assistant", seq=i, content=f"c{i}", final=False
-            )
+            stream.publish_chunk(role="assistant", seq=i, content=f"c{i}", final=False)
 
         # Ring holds only the last 3 events.
         self.assertEqual(stream.ring_size, 3)
@@ -107,9 +105,7 @@ class SessionStreamRoundtripTests(unittest.IsolatedAsyncioTestCase):
 
         # Fill the queue beyond the cap without draining.
         for i in range(5):
-            stream.publish_chunk(
-                role="assistant", seq=i, content=f"c{i}", final=False
-            )
+            stream.publish_chunk(role="assistant", seq=i, content=f"c{i}", final=False)
 
         # Drain what's available; the stream must end with an overrun
         # envelope and then close.
@@ -188,9 +184,7 @@ class SessionStreamRoundtripTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(h, ss.session_id_hash("any-raw-id"))
         # And matches what the broadcaster uses in payloads.
         stream = ss.get_session_stream("any-raw-id")
-        env = stream.publish_chunk(
-            role="user", seq=0, content="hi", final=True
-        )
+        env = stream.publish_chunk(role="user", seq=0, content="hi", final=True)
         self.assertIsNotNone(env)
         self.assertEqual(env.payload["session_id_hash"], h)
 

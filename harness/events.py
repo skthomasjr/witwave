@@ -309,9 +309,7 @@ class EventStream:
             # Queue is still jammed — leave it; the iterator will notice
             # `closed` after the next yield.
             pass
-        logger.warning(
-            "event_stream: subscriber evicted — queue full (cap=%d)", self._queue_max
-        )
+        logger.warning("event_stream: subscriber evicted — queue full (cap=%d)", self._queue_max)
         # Remove from the set eagerly so the subscribers gauge reflects
         # reality even if the iterator hasn't yet drained.
         self._remove_subscriber(sub)
@@ -417,6 +415,7 @@ def parse_and_publish_envelope(
     this function is reached (auth happens above the body parse).
     """
     import json as _json
+
     if stream is None:
         stream = get_event_stream()
 

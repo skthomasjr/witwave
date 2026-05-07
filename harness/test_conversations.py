@@ -64,10 +64,13 @@ class TailCacheTests(unittest.TestCase):
             # Replace open() with a sentinel that would fail if called.
             real_open = open
             calls: list = []
+
             def _spy_open(*a, **kw):
                 calls.append(a)
                 return real_open(*a, **kw)
+
             import builtins
+
             builtins.open = _spy_open
             try:
                 out2 = c._read_jsonl(p, None, None)
@@ -153,13 +156,13 @@ class TailCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "log.jsonl")
             with open(p, "w") as f:
-                f.write('{"i": 1}\n')      # complete row
-                f.write('{"i": 2')          # partial — no newline yet
+                f.write('{"i": 1}\n')  # complete row
+                f.write('{"i": 2')  # partial — no newline yet
             out = c._read_jsonl(p, None, None)
             self.assertEqual(len(out), 1)
             # Now finish the second row.
             with open(p, "a") as f:
-                f.write('}\n')
+                f.write("}\n")
             out = c._read_jsonl(p, None, None)
             self.assertEqual(len(out), 2)
             self.assertEqual(out[1]["i"], 2)

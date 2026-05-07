@@ -1,4 +1,5 @@
 """Regression tests for parse_frontmatter size caps + mtime cache (#1038)."""
+
 from __future__ import annotations
 
 import os

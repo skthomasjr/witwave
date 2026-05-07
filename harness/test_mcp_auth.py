@@ -31,6 +31,7 @@ def _reload(monkeypatch, token: str = "", disabled: str = ""):
     monkeypatch.setenv("MCP_TOOL_AUTH_TOKEN", token)
     monkeypatch.setenv("MCP_TOOL_AUTH_DISABLED", disabled)
     import mcp_auth as _m  # type: ignore
+
     importlib.reload(_m)
     # Clear the per-posture one-shot-warn memo so each test sees the
     # initial posture the middleware itself observes.
@@ -70,9 +71,7 @@ class _ResponseSink:
         return 0
 
     def body(self) -> bytes:
-        return b"".join(
-            e.get("body", b"") for e in self.events if e.get("type") == "http.response.body"
-        )
+        return b"".join(e.get("body", b"") for e in self.events if e.get("type") == "http.response.body")
 
 
 async def _empty_receive():
@@ -194,10 +193,12 @@ def test_multiple_authorization_headers_first_empty(monkeypatch):
     m = _reload(monkeypatch, token="secret")
     inner = _FakeInner()
     sink = _ResponseSink()
-    scope = _http_scope(headers=[
-        (b"authorization", b""),
-        (b"authorization", b"Bearer secret"),
-    ])
+    scope = _http_scope(
+        headers=[
+            (b"authorization", b""),
+            (b"authorization", b"Bearer secret"),
+        ]
+    )
     _run(m.require_bearer_token(inner)(scope, _empty_receive, sink))
     assert inner.invoked, "middleware must accept when any header carries the right bearer (#921)"
 
@@ -246,5 +247,5 @@ def test_invalid_utf8_bearer_rejected_with_400(monkeypatch):
     assert sink.status == 400
     body = sink.body()
     assert b'"jsonrpc":"2.0"' in body
-    assert b'-32600' in body
+    assert b"-32600" in body
     assert b"invalid bearer token encoding" in body

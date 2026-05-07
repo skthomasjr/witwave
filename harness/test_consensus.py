@@ -42,6 +42,7 @@ def _stub_a2a_if_needed():
     if "a2a" in sys.modules:
         return
     import types as _t
+
     _a2a = _t.ModuleType("a2a")
     _server = _t.ModuleType("a2a.server")
     _ae = _t.ModuleType("a2a.server.agent_execution")
@@ -50,9 +51,14 @@ def _stub_a2a_if_needed():
     _types = _t.ModuleType("a2a.types")
 
     class _Stub:  # any attribute access returns another _Stub
-        def __init__(self, *a, **kw): pass
-        def __getattr__(self, _): return _Stub
-        def __call__(self, *a, **kw): return _Stub()
+        def __init__(self, *a, **kw):
+            pass
+
+        def __getattr__(self, _):
+            return _Stub
+
+        def __call__(self, *a, **kw):
+            return _Stub()
 
     _ae.AgentExecutor = _Stub
     _ae.RequestContext = _Stub
@@ -79,12 +85,14 @@ def _stub_a2a_if_needed():
 def _get_classify_binary():
     _stub_a2a_if_needed()
     from executor import _classify_binary
+
     return _classify_binary
 
 
 def _get_binary_keyword_sets():
     _stub_a2a_if_needed()
     from executor import _BINARY_NO, _BINARY_YES
+
     return _BINARY_YES, _BINARY_NO
 
 
@@ -131,10 +139,10 @@ def test_classify_binary_case_and_trailing_period_handled(raw):
     "raw",
     [
         "yes, but with caveats",  # not a single keyword
-        "I agree because ...",     # not a bare keyword
+        "I agree because ...",  # not a bare keyword
         "maybe",
         "perhaps yes",
-        "yesterday",               # substring of "yes" but different word
+        "yesterday",  # substring of "yes" but different word
         "",
         "   ",
     ],
@@ -175,9 +183,11 @@ def test_parse_consensus_simple_backend_glob():
 
 
 def test_parse_consensus_backend_with_explicit_model():
-    entries = parse_consensus([
-        {"backend": "claude", "model": "claude-opus-4-6"},
-    ])
+    entries = parse_consensus(
+        [
+            {"backend": "claude", "model": "claude-opus-4-6"},
+        ]
+    )
     assert len(entries) == 1
     assert entries[0].backend == "claude"
     assert entries[0].model == "claude-opus-4-6"
@@ -186,11 +196,13 @@ def test_parse_consensus_backend_with_explicit_model():
 def test_parse_consensus_multiple_entries_preserves_order():
     """Order matters — fan-out happens in list order and the default-
     backend tie-break uses the first matching entry."""
-    entries = parse_consensus([
-        {"backend": "claude"},
-        {"backend": "codex*"},
-        {"backend": "claude", "model": "claude-haiku-4-5"},
-    ])
+    entries = parse_consensus(
+        [
+            {"backend": "claude"},
+            {"backend": "codex*"},
+            {"backend": "claude", "model": "claude-haiku-4-5"},
+        ]
+    )
     assert [e.backend for e in entries] == ["claude", "codex*", "claude"]
     assert [e.model for e in entries] == [None, None, "claude-haiku-4-5"]
 
@@ -198,12 +210,14 @@ def test_parse_consensus_multiple_entries_preserves_order():
 def test_parse_consensus_drops_entries_without_backend():
     """An entry that lacks `backend:` is silently dropped — bare
     `model:`-only entries make no sense in a consensus list."""
-    entries = parse_consensus([
-        {"backend": "claude"},
-        {"model": "no-backend-key"},     # dropped
-        {"backend": ""},                  # dropped (falsy backend)
-        {"backend": "codex"},
-    ])
+    entries = parse_consensus(
+        [
+            {"backend": "claude"},
+            {"model": "no-backend-key"},  # dropped
+            {"backend": ""},  # dropped (falsy backend)
+            {"backend": "codex"},
+        ]
+    )
     assert [e.backend for e in entries] == ["claude", "codex"]
 
 
@@ -221,12 +235,14 @@ def test_parse_consensus_coerces_non_string_backend_to_string():
 def test_parse_consensus_drops_non_dict_entries():
     """Bare strings or numbers in the list are not legal consensus
     entries (the docstring shows objects only); they should be ignored."""
-    entries = parse_consensus([
-        "claude",                  # bare string — not legal
-        {"backend": "claude"},
-        42,                         # bare int — not legal
-        {"backend": "codex"},
-    ])
+    entries = parse_consensus(
+        [
+            "claude",  # bare string — not legal
+            {"backend": "claude"},
+            42,  # bare int — not legal
+            {"backend": "codex"},
+        ]
+    )
     assert [e.backend for e in entries] == ["claude", "codex"]
 
 

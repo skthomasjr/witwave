@@ -26,6 +26,7 @@ class PromptEnvTests(unittest.TestCase):
             os.environ.pop(k, None)
         # Reload module so module-level _warned_vars starts fresh.
         import prompt_env  # type: ignore
+
         importlib.reload(prompt_env)
         self.prompt_env = prompt_env
 
@@ -39,9 +40,7 @@ class PromptEnvTests(unittest.TestCase):
         os.environ["PROMPT_ENV_ALLOWLIST"] = "WITWAVE_"
         os.environ["WITWAVE_ENV"] = "staging"
         os.environ["WITWAVE_DASHBOARD"] = "https://witwave.example.com"
-        out = self.prompt_env.resolve_prompt_env(
-            "env={{env.WITWAVE_ENV}} dash={{env.WITWAVE_DASHBOARD}}"
-        )
+        out = self.prompt_env.resolve_prompt_env("env={{env.WITWAVE_ENV}} dash={{env.WITWAVE_DASHBOARD}}")
         self.assertEqual(out, "env=staging dash=https://witwave.example.com")
 
     def test_non_allowlisted_var_becomes_empty(self):
@@ -63,9 +62,7 @@ class PromptEnvTests(unittest.TestCase):
         os.environ["WITWAVE_ENV"] = "prod"
         os.environ["DEPLOY_TAG"] = "v1.2.3"
         os.environ["SECRET_TOKEN"] = "x"
-        out = self.prompt_env.resolve_prompt_env(
-            "{{env.WITWAVE_ENV}} {{env.DEPLOY_TAG}} {{env.SECRET_TOKEN}}"
-        )
+        out = self.prompt_env.resolve_prompt_env("{{env.WITWAVE_ENV}} {{env.DEPLOY_TAG}} {{env.SECRET_TOKEN}}")
         self.assertEqual(out, "prod v1.2.3 ")
 
     def test_empty_allowlist_enabled_drops_all(self):

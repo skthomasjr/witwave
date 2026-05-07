@@ -86,17 +86,13 @@ class PublishKernelTests(unittest.IsolatedAsyncioTestCase):
     def _call(self, body: bytes):
         from events import parse_and_publish_envelope
 
-        return parse_and_publish_envelope(
-            body, stream=self.stream, rejected_counter=self.rejected
-        )
+        return parse_and_publish_envelope(body, stream=self.stream, rejected_counter=self.rejected)
 
     def test_400_on_malformed_json(self) -> None:
         status, err = self._call(b"{not json")
         self.assertEqual(status, 400)
         self.assertIn("malformed", err or "")
-        self.assertEqual(
-            self.rejected.labelled.get((("reason", "malformed_json"),), 0), 1
-        )
+        self.assertEqual(self.rejected.labelled.get((("reason", "malformed_json"),), 0), 1)
 
     def test_400_on_non_object_body(self) -> None:
         status, _ = self._call(b"[1,2,3]")
@@ -105,9 +101,7 @@ class PublishKernelTests(unittest.IsolatedAsyncioTestCase):
     def test_400_on_missing_type(self) -> None:
         status, _ = self._call(json.dumps({"payload": {}}).encode())
         self.assertEqual(status, 400)
-        self.assertEqual(
-            self.rejected.labelled.get((("reason", "validation"),), 0), 1
-        )
+        self.assertEqual(self.rejected.labelled.get((("reason", "validation"),), 0), 1)
 
     def test_400_on_payload_not_object(self) -> None:
         body = {"type": "tool.use", "payload": []}
@@ -133,9 +127,7 @@ class PublishKernelTests(unittest.IsolatedAsyncioTestCase):
         }
         status, _ = self._call(json.dumps(body).encode())
         self.assertEqual(status, 400)
-        self.assertGreaterEqual(
-            self.rejected.labelled.get((("reason", "validation"),), 0), 1
-        )
+        self.assertGreaterEqual(self.rejected.labelled.get((("reason", "validation"),), 0), 1)
 
     async def test_204_on_valid_tool_use_fans_out(self) -> None:
         sub = self.stream.subscribe()
@@ -229,9 +221,7 @@ class PublishKernelTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ring)
         capped = ring[-1].payload["model"]
         self.assertTrue(capped.endswith("...[truncated]"))
-        self.assertLessEqual(
-            len(capped), MAX_EVENT_PUBLISH_FIELD_BYTES + len("...[truncated]")
-        )
+        self.assertLessEqual(len(capped), MAX_EVENT_PUBLISH_FIELD_BYTES + len("...[truncated]"))
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -22,6 +22,7 @@ emitted here will correlate with trace_ids produced by the bare
 ``harness/tracing.py`` helpers — the two layers share the wire format by
 construction.
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,7 +84,11 @@ def init_otel_if_enabled(
     # zero-config in-cluster Traces view works without requiring operators
     # to wire up a collector first.
     _otlp_on = os.environ.get("OTEL_ENABLED", "false").lower() not in (
-        "0", "false", "no", "off", "",
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
     )
     try:
         _cap = int(os.environ.get("OTEL_IN_MEMORY_SPANS") or _IN_MEMORY_CAP_DEFAULT)
@@ -156,7 +161,10 @@ def init_otel_if_enabled(
     _otel_enabled = True
     logger.info(
         "OTel tracing initialised: service=%s otlp=%s in_memory=%s attrs=%s",
-        _service, _otlp_on, _in_memory_on, attrs,
+        _service,
+        _otlp_on,
+        _in_memory_on,
+        attrs,
     )
     return True
 
@@ -228,10 +236,7 @@ class TraceparentASGIMiddleware:
             await self.app(scope, receive, send)
             return
         try:
-            headers = {
-                k.decode("latin-1").lower(): v.decode("latin-1")
-                for k, v in scope.get("headers") or []
-            }
+            headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
         except Exception:
             headers = {}
         tp = headers.get("traceparent")
@@ -500,6 +505,7 @@ def get_in_memory_traces() -> list[dict]:
         except Exception:
             continue
         by_trace.setdefault(tid, []).append(span)
+
     # Newest first — trace ordering by most-recently-ended root.
     def _max_end(spans: list[Any]) -> int:
         try:

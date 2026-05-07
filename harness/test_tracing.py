@@ -70,7 +70,7 @@ def test_parse_traceparent_missing_or_empty_returns_none(raw):
     "raw",
     [
         "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7",  # missing flags
-        "00-4bf92f3577b34da6a3ce929d0e0e4736",                    # missing parent + flags
+        "00-4bf92f3577b34da6a3ce929d0e0e4736",  # missing parent + flags
         "00-4bf92f3577b34da6a3ce929d0e0e473G-00f067aa0ba902b7-01",  # non-hex 'G'
         "00-4bf92f3577b34da6a3ce929d0e0e47-00f067aa0ba902b7-01",  # short trace_id
         "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902-01",  # short parent_id
@@ -225,6 +225,7 @@ def test_get_log_trace_id_default_is_empty():
     well-formed field)."""
     # Reset to default state by entering a fresh contextvars scope.
     import contextvars
+
     ctx = contextvars.copy_context()
     val = ctx.run(tracing.get_log_trace_id)
     # No bound trace_id in this fresh context.

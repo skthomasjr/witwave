@@ -34,6 +34,7 @@ def _reload(monkeypatch, log_redact: str = "true", high_entropy: str = "false"):
     monkeypatch.setenv("LOG_REDACT", log_redact)
     monkeypatch.setenv("LOG_REDACT_HIGH_ENTROPY", high_entropy)
     import redact as _r  # type: ignore
+
     importlib.reload(_r)
     return _r
 
@@ -43,16 +44,26 @@ def _reload(monkeypatch, log_redact: str = "true", high_entropy: str = "false"):
 
 # #1348: default flipped from OFF to ON (safe-by-default). Empty-string
 # and unset env now return True; explicit falsy values still return False.
-@pytest.mark.parametrize("raw,expected", [
-    ("true", True), ("TRUE", True), ("1", True),
-    ("yes", True), ("on", True), ("True", True),
-    ("false", False), ("0", False), ("no", False),
-    ("  ", False),   # whitespace-only: val != "" so falls to .strip().lower() check
-    ("maybe", False),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("1", True),
+        ("yes", True),
+        ("on", True),
+        ("True", True),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+        ("  ", False),  # whitespace-only: val != "" so falls to .strip().lower() check
+        ("maybe", False),
+    ],
+)
 def test_should_redact_truthy_parsing(monkeypatch, raw, expected):
     monkeypatch.setenv("LOG_REDACT", raw)
     import redact as _r  # type: ignore
+
     importlib.reload(_r)
     assert _r.should_redact() is expected
 
@@ -61,6 +72,7 @@ def test_should_redact_default_is_true(monkeypatch):
     # #1348: default-on when env var is unset.
     monkeypatch.delenv("LOG_REDACT", raising=False)
     import redact as _r  # type: ignore
+
     importlib.reload(_r)
     assert _r.should_redact() is True
 
@@ -69,6 +81,7 @@ def test_should_redact_empty_string_is_true(monkeypatch):
     # #1348: empty-string env treated as "unset" → default-on.
     monkeypatch.setenv("LOG_REDACT", "")
     import redact as _r  # type: ignore
+
     importlib.reload(_r)
     assert _r.should_redact() is True
 
@@ -76,27 +89,30 @@ def test_should_redact_empty_string_is_true(monkeypatch):
 # ----- redact_text pattern matrix --------------------------------
 
 
-@pytest.mark.parametrize("sample,should_change", [
-    # AWS access keys
-    ("AKIAIOSFODNN7EXAMPLE", True),
-    ("ASIAZZZZZZZZZZZZZZZZ", True),
-    # GitHub tokens
-    ("ghp_" + "a" * 40, True),
-    ("github_pat_" + "a" * 30, True),
-    # Slack
-    ("xoxb-1234567890-abcdefghijk", True),
-    # OpenAI + Anthropic
-    ("sk-abcdefghijklmnop", True),
-    ("sk-ant-abcdefghijklmnop", True),
-    # JWT three segments
-    ("aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc", True),
-    # Credit card (16 digits grouped)
-    ("4111 1111 1111 1111", True),
-    # SSN
-    ("123-45-6789", True),
-    # Email
-    ("user@example.com", True),
-])
+@pytest.mark.parametrize(
+    "sample,should_change",
+    [
+        # AWS access keys
+        ("AKIAIOSFODNN7EXAMPLE", True),
+        ("ASIAZZZZZZZZZZZZZZZZ", True),
+        # GitHub tokens
+        ("ghp_" + "a" * 40, True),
+        ("github_pat_" + "a" * 30, True),
+        # Slack
+        ("xoxb-1234567890-abcdefghijk", True),
+        # OpenAI + Anthropic
+        ("sk-abcdefghijklmnop", True),
+        ("sk-ant-abcdefghijklmnop", True),
+        # JWT three segments
+        ("aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc", True),
+        # Credit card (16 digits grouped)
+        ("4111 1111 1111 1111", True),
+        # SSN
+        ("123-45-6789", True),
+        # Email
+        ("user@example.com", True),
+    ],
+)
 def test_redact_text_matches_sensitive_samples(monkeypatch, sample, should_change):
     r = _reload(monkeypatch)
     out = r.redact_text(f"prefix {sample} suffix")
@@ -107,12 +123,15 @@ def test_redact_text_matches_sensitive_samples(monkeypatch, sample, should_chang
         assert out == f"prefix {sample} suffix"
 
 
-@pytest.mark.parametrize("benign", [
-    "hello world",
-    "this is plain text with numbers 42 and 100",
-    "short token abc",  # too short for high-entropy rule
-    "not-an-email-user@example",  # missing TLD
-])
+@pytest.mark.parametrize(
+    "benign",
+    [
+        "hello world",
+        "this is plain text with numbers 42 and 100",
+        "short token abc",  # too short for high-entropy rule
+        "not-an-email-user@example",  # missing TLD
+    ],
+)
 def test_redact_text_passes_benign_strings(monkeypatch, benign):
     r = _reload(monkeypatch)
     assert r.redact_text(benign) == benign
@@ -198,18 +217,21 @@ def test_redact_text_credit_card_requires_separators(monkeypatch):
 # ----- merge-spans idempotency + priority (#1043) ----------------
 
 
-@pytest.mark.parametrize("sample", [
-    "hello world",
-    "AKIAIOSFODNN7EXAMPLE",
-    "prefix ghp_" + "a" * 40 + " suffix",
-    "Authorization: Bearer abcdef12345",
-    "trace=0af7651916cd43dd8448eb211c80319c span=b7ad6b7169203331",
-    "token=aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc trailing=Bearer foo",
-    "4111 1111 1111 1111 and 123-45-6789 and user@example.com",
-    "",
-    "   ",
-    "plain text 42",
-])
+@pytest.mark.parametrize(
+    "sample",
+    [
+        "hello world",
+        "AKIAIOSFODNN7EXAMPLE",
+        "prefix ghp_" + "a" * 40 + " suffix",
+        "Authorization: Bearer abcdef12345",
+        "trace=0af7651916cd43dd8448eb211c80319c span=b7ad6b7169203331",
+        "token=aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc trailing=Bearer foo",
+        "4111 1111 1111 1111 and 123-45-6789 and user@example.com",
+        "",
+        "   ",
+        "plain text 42",
+    ],
+)
 def test_redact_text_is_idempotent(monkeypatch, sample):
     """redact_text(redact_text(x)) == redact_text(x) for any input (#1043).
 
@@ -266,9 +288,7 @@ def test_redact_text_worst_case_wall_clock_bound(monkeypatch):
     # Mixed: repeated near-matches for several patterns to exercise
     # the regex machine without giving any one pattern a clean hit.
     payload = (
-        "a" * 32 + "! " + "sk-" + "x" * 1000 + " @ "
-        + "AKIA" + "Q" * 15 + " then "
-        + "ghp_" + "0" * 100 + " noise "
+        "a" * 32 + "! " + "sk-" + "x" * 1000 + " @ " + "AKIA" + "Q" * 15 + " then " + "ghp_" + "0" * 100 + " noise "
     ) * 64
     assert len(payload) >= 64 * 1024 // 4  # non-trivial input
     start = time.monotonic()

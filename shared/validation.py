@@ -95,9 +95,7 @@ def parse_max_tokens(
         return None
 
     if parsed <= 0:
-        logger.warning(
-            "%s: max_tokens=%s is non-positive; ignoring.", prefix, parsed
-        )
+        logger.warning("%s: max_tokens=%s is non-positive; ignoring.", prefix, parsed)
         return None
 
     return parsed

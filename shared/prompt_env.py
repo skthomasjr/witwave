@@ -44,7 +44,9 @@ _ENV_VAR_RE = re.compile(r"\{\{env\.(\w+)\}\}")
 # re-emit every N occurrences so operators keep seeing the signal.
 _warned_vars: dict[str, int] = {}
 _warned_no_allowlist_count = 0
-_PROMPT_ENV_REARM_EVERY = max(1, int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY", "500")))  # #1573: clamp to ≥1 (used as modulus)
+_PROMPT_ENV_REARM_EVERY = max(
+    1, int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY", "500"))
+)  # #1573: clamp to ≥1 (used as modulus)
 
 # Optional Prometheus counter surface (#1089, #1668). Callers set this
 # to a CounterVec with labels (result,) — the `var` label was removed in
@@ -83,7 +85,8 @@ def _max_bytes() -> int:
     except (TypeError, ValueError):
         logger.warning(
             "PROMPT_ENV_MAX_BYTES=%r is not an integer; falling back to default %d",
-            raw, _DEFAULT_PROMPT_ENV_MAX_BYTES,
+            raw,
+            _DEFAULT_PROMPT_ENV_MAX_BYTES,
         )
         return _DEFAULT_PROMPT_ENV_MAX_BYTES
 
@@ -156,7 +159,8 @@ def resolve_prompt_env(text: str) -> str:
                 logger.warning(
                     "prompt env interpolation: %r is not on PROMPT_ENV_ALLOWLIST; "
                     "substituting empty string (miss count=%d)",
-                    name, count + 1,
+                    name,
+                    count + 1,
                 )
             _warned_vars[name] = count + 1
             _bump("denied")
@@ -183,7 +187,9 @@ def resolve_prompt_env(text: str) -> str:
                 logger.warning(
                     "prompt env interpolation produced %d bytes which exceeds "
                     "PROMPT_ENV_MAX_BYTES=%d; truncating (oversize count=%d)",
-                    len(encoded), cap, _warned_oversize_count + 1,
+                    len(encoded),
+                    cap,
+                    _warned_oversize_count + 1,
                 )
             _warned_oversize_count += 1
             if oversize_total is not None:

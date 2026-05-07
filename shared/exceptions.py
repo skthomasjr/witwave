@@ -20,8 +20,6 @@ class PromptTooLargeError(Exception):
     """
 
     def __init__(self, size_bytes: int, limit_bytes: int) -> None:
-        super().__init__(
-            f"Prompt size {size_bytes} bytes exceeds MAX_PROMPT_BYTES limit of {limit_bytes} bytes."
-        )
+        super().__init__(f"Prompt size {size_bytes} bytes exceeds MAX_PROMPT_BYTES limit of {limit_bytes} bytes.")
         self.size_bytes = size_bytes
         self.limit_bytes = limit_bytes

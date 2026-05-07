@@ -133,9 +133,7 @@ def test_derived_id_is_a_valid_uuid():
 
 def test_candidates_single_element_when_no_prev_secret():
     sb = _fresh_module()
-    got = sb.derive_session_id_candidates(
-        "conv-42", caller_identity="alice", secret="s3cret", prev_secret=""
-    )
+    got = sb.derive_session_id_candidates("conv-42", caller_identity="alice", secret="s3cret", prev_secret="")
     assert len(got) == 1
     assert got[0] == sb.derive_session_id("conv-42", caller_identity="alice", secret="s3cret")
 
@@ -143,7 +141,10 @@ def test_candidates_single_element_when_no_prev_secret():
 def test_candidates_two_elements_when_prev_differs():
     sb = _fresh_module()
     got = sb.derive_session_id_candidates(
-        "conv-42", caller_identity="alice", secret="new", prev_secret="old",
+        "conv-42",
+        caller_identity="alice",
+        secret="new",
+        prev_secret="old",
     )
     assert len(got) == 2
     assert got[0] == sb.derive_session_id("conv-42", caller_identity="alice", secret="new")
@@ -154,7 +155,10 @@ def test_candidates_two_elements_when_prev_differs():
 def test_candidates_dedupes_when_prev_equals_current():
     sb = _fresh_module()
     got = sb.derive_session_id_candidates(
-        "conv-42", caller_identity="alice", secret="same", prev_secret="same",
+        "conv-42",
+        caller_identity="alice",
+        secret="same",
+        prev_secret="same",
     )
     assert len(got) == 1, "prev==current must not produce a duplicate candidate"
 
@@ -198,7 +202,9 @@ def test_note_prev_secret_hit_warns_on_first_and_re_arms(monkeypatch, caplog):
         sb.note_prev_secret_hit("raw")  # hit 1 → WARN
         sb.note_prev_secret_hit("raw")  # hit 2 → silent
         sb.note_prev_secret_hit("raw")  # hit 3 → silent
-        sb.note_prev_secret_hit("raw")  # hit 4 → WARN (4 % 3 == 1, not 0). Wait — re-arm uses `count % every == 0` _before_ increment
+        sb.note_prev_secret_hit(
+            "raw"
+        )  # hit 4 → WARN (4 % 3 == 1, not 0). Wait — re-arm uses `count % every == 0` _before_ increment
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     # The re-arm predicate is (count % every == 0) on the pre-increment
     # counter, which fires at count values 0 and `every` and `2*every`.

@@ -30,6 +30,7 @@ from unittest import mock
 
 try:  # pragma: no cover — environment gate
     import starlette  # noqa: F401
+
     _HAVE_STARLETTE = True
 except Exception:
     _HAVE_STARLETTE = False
@@ -45,14 +46,28 @@ def _install_stub_modules() -> None:
             return m
 
     heavy = [
-        "a2a", "a2a.server", "a2a.server.apps", "a2a.server.agent_execution",
-        "a2a.server.events", "a2a.server.request_handlers",
-        "a2a.server.tasks", "a2a.types", "a2a.utils",
+        "a2a",
+        "a2a.server",
+        "a2a.server.apps",
+        "a2a.server.agent_execution",
+        "a2a.server.events",
+        "a2a.server.request_handlers",
+        "a2a.server.tasks",
+        "a2a.types",
+        "a2a.utils",
         "sqlite_task_store",
-        "continuations", "jobs", "tasks", "triggers", "webhooks",
-        "executor", "heartbeat",
-        "conversations", "conversations_proxy", "metrics_proxy",
-        "prometheus_client", "prometheus_client.exposition",
+        "continuations",
+        "jobs",
+        "tasks",
+        "triggers",
+        "webhooks",
+        "executor",
+        "heartbeat",
+        "conversations",
+        "conversations_proxy",
+        "metrics_proxy",
+        "prometheus_client",
+        "prometheus_client.exposition",
         "uvicorn",
     ]
     for name in heavy:
@@ -82,9 +97,11 @@ class HookDecisionEventHandlerTests(unittest.IsolatedAsyncioTestCase):
         if auth is not None:
             headers.append((b"authorization", auth.encode()))
         scope = {
-            "type": "http", "method": "POST",
+            "type": "http",
+            "method": "POST",
             "path": "/internal/events/hook-decision",
-            "headers": headers, "query_string": b"",
+            "headers": headers,
+            "query_string": b"",
         }
 
         _sent = False
@@ -136,8 +153,15 @@ class HookDecisionEventHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event.traceparent, payload["traceparent"])
 
     async def test_missing_auth_rejected(self) -> None:
-        payload = {"agent": "iris", "session_id": "s", "tool": "Bash",
-                   "decision": "allow", "rule_name": "", "reason": "", "source": ""}
+        payload = {
+            "agent": "iris",
+            "session_id": "s",
+            "tool": "Bash",
+            "decision": "allow",
+            "rule_name": "",
+            "reason": "",
+            "source": "",
+        }
         status, _body, captured = await self._call(
             auth=None,
             body=json.dumps(payload).encode("utf-8"),
@@ -146,8 +170,15 @@ class HookDecisionEventHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured, [])
 
     async def test_wrong_auth_rejected(self) -> None:
-        payload = {"agent": "iris", "session_id": "s", "tool": "Bash",
-                   "decision": "allow", "rule_name": "", "reason": "", "source": ""}
+        payload = {
+            "agent": "iris",
+            "session_id": "s",
+            "tool": "Bash",
+            "decision": "allow",
+            "rule_name": "",
+            "reason": "",
+            "source": "",
+        }
         status, _body, captured = await self._call(
             auth="Bearer wrong-token",
             body=json.dumps(payload).encode("utf-8"),

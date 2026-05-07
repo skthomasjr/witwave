@@ -46,7 +46,10 @@ _FAIL_CLOSED_LOCK = _threading.Lock()
 
 def _auth_disabled_escape_hatch() -> bool:
     return os.environ.get("MCP_TOOL_AUTH_DISABLED", "").strip().lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
 
@@ -130,9 +133,7 @@ def require_bearer_token(
         # into a 401 behind such a proxy. Gather all values instead and
         # accept if ANY non-empty value matches. Reject with a
         # dedicated reason when every Authorization is empty/malformed.
-        auth_values: list[bytes] = [
-            v for (k, v) in (scope.get("headers") or []) if k == b"authorization"
-        ]
+        auth_values: list[bytes] = [v for (k, v) in (scope.get("headers") or []) if k == b"authorization"]
         if not auth_values:
             await _send_401(send, "missing-or-malformed-authorization-header")
             return
@@ -170,11 +171,7 @@ def require_bearer_token(
         # /info is handled after auth so unauthenticated callers can't
         # scrape image SHAs / feature flags. Served from the middleware
         # so tool servers don't need to register a custom Starlette route.
-        if (
-            info_provider is not None
-            and scope.get("path") == "/info"
-            and scope.get("method", "GET") == "GET"
-        ):
+        if info_provider is not None and scope.get("path") == "/info" and scope.get("method", "GET") == "GET":
             await _send_info(send, info_provider)
             return
         await app(scope, receive, send)
@@ -185,15 +182,17 @@ def require_bearer_token(
 async def _send_health(send: Callable[[dict], Awaitable[None]]) -> None:
     """Return 200 OK with a minimal JSON body for kubelet probes (#848)."""
     body = b'{"status":"ok"}'
-    await send({
-        "type": "http.response.start",
-        "status": 200,
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode("ascii")),
-            (b"cache-control", b"no-store"),
-        ],
-    })
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+                (b"cache-control", b"no-store"),
+            ],
+        }
+    )
     await send({"type": "http.response.body", "body": body, "more_body": False})
 
 
@@ -217,15 +216,17 @@ async def _send_info(
         logger.warning("mcp /info provider raised: %r", exc)
         body = b'{"error":"info-provider-failed"}'
         status = 500
-    await send({
-        "type": "http.response.start",
-        "status": status,
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode("ascii")),
-            (b"cache-control", b"no-store"),
-        ],
-    })
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+                (b"cache-control", b"no-store"),
+            ],
+        }
+    )
     await send({"type": "http.response.body", "body": body, "more_body": False})
 
 
@@ -239,31 +240,32 @@ async def _send_400_invalid_bearer_encoding(
     rest of the tool surface speaks, so MCP clients surface a parseable
     error rather than a free-form string.
     """
-    body = (
-        b'{"jsonrpc":"2.0","error":{"code":-32600,'
-        b'"message":"invalid bearer token encoding (must be UTF-8)"}}'
+    body = b'{"jsonrpc":"2.0","error":{"code":-32600,' b'"message":"invalid bearer token encoding (must be UTF-8)"}}'
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 400,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+                (b"cache-control", b"no-store"),
+            ],
+        }
     )
-    await send({
-        "type": "http.response.start",
-        "status": 400,
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode("ascii")),
-            (b"cache-control", b"no-store"),
-        ],
-    })
     await send({"type": "http.response.body", "body": body, "more_body": False})
 
 
 async def _send_401(send: Callable[[dict], Awaitable[None]], reason: str) -> None:
     body = f'{{"error": "{reason}"}}'.encode()
-    await send({
-        "type": "http.response.start",
-        "status": 401,
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode("ascii")),
-            (b"www-authenticate", b'Bearer realm="mcp"'),
-        ],
-    })
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+                (b"www-authenticate", b'Bearer realm="mcp"'),
+            ],
+        }
+    )
     await send({"type": "http.response.body", "body": body, "more_body": False})

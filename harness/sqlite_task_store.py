@@ -97,17 +97,14 @@ def _retry_on_operational(op: str, fn):
             last = e
             if harness_task_store_errors_total is not None:
                 try:
-                    harness_task_store_errors_total.labels(
-                        op=op, retry=str(attempt > 0).lower()
-                    ).inc()
+                    harness_task_store_errors_total.labels(op=op, retry=str(attempt > 0).lower()).inc()
                 except Exception:
                     pass
             if attempt + 1 >= _RETRY_ATTEMPTS:
                 break
-            time.sleep(_RETRY_BASE_SLEEP_S * (2 ** attempt))
+            time.sleep(_RETRY_BASE_SLEEP_S * (2**attempt))
     assert last is not None
-    logger.error("SqliteTaskStore op %s failed after %d attempts: %s",
-                 op, _RETRY_ATTEMPTS, last)
+    logger.error("SqliteTaskStore op %s failed after %d attempts: %s", op, _RETRY_ATTEMPTS, last)
     raise last
 
 
@@ -118,6 +115,7 @@ def _db_save(conn: sqlite3.Connection, task_id: str, data: str) -> None:
             (task_id, data),
         )
         conn.commit()
+
     _retry_on_operational("save", _do)
 
 
@@ -125,6 +123,7 @@ def _db_get(conn: sqlite3.Connection, task_id: str) -> str | None:
     def _do():
         row = conn.execute("SELECT data FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return row[0] if row else None
+
     return _retry_on_operational("get", _do)
 
 
@@ -132,6 +131,7 @@ def _db_delete(conn: sqlite3.Connection, task_id: str) -> None:
     def _do():
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
+
     _retry_on_operational("delete", _do)
 
 
@@ -171,15 +171,12 @@ class SqliteTaskStore(TaskStore):
                     self._opened_once = True
                     logger.info("SqliteTaskStore opened at %s", self._path)
                 else:
-                    logger.debug(
-                        "SqliteTaskStore opened per-thread connection at %s", self._path
-                    )
+                    logger.debug("SqliteTaskStore opened per-thread connection at %s", self._path)
         return conn
 
-    async def save(
-        self, task: Task, context: ServerCallContext | None = None
-    ) -> None:
+    async def save(self, task: Task, context: ServerCallContext | None = None) -> None:
         data = task.model_dump_json()
+
         # Resolve the per-thread connection inside the worker thread
         # (#1040) — threading.local is keyed on the running thread, so
         # the lookup has to happen after to_thread has dispatched.
@@ -189,9 +186,7 @@ class SqliteTaskStore(TaskStore):
         await asyncio.to_thread(_op)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
-    async def get(
-        self, task_id: str, context: ServerCallContext | None = None
-    ) -> Task | None:
+    async def get(self, task_id: str, context: ServerCallContext | None = None) -> Task | None:
         def _op() -> str | None:
             return _db_get(self._get_conn(), task_id)
 
@@ -203,9 +198,7 @@ class SqliteTaskStore(TaskStore):
         logger.debug("Task %s retrieved from SQLite store.", task_id)
         return task
 
-    async def delete(
-        self, task_id: str, context: ServerCallContext | None = None
-    ) -> None:
+    async def delete(self, task_id: str, context: ServerCallContext | None = None) -> None:
         def _op() -> None:
             _db_delete(self._get_conn(), task_id)
 

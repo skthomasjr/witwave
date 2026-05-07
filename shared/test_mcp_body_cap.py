@@ -17,18 +17,12 @@ from mcp_body_cap import read_capped_body
 from starlette.requests import Request
 
 
-def _make_request(
-    chunks: list[bytes], declared_content_length: int | None
-) -> Request:
+def _make_request(chunks: list[bytes], declared_content_length: int | None) -> Request:
     """Build a minimal Starlette ``Request`` whose body arrives in
     arbitrary chunks regardless of declared Content-Length."""
-    headers: list[tuple[bytes, bytes]] = [
-        (b"content-type", b"application/json")
-    ]
+    headers: list[tuple[bytes, bytes]] = [(b"content-type", b"application/json")]
     if declared_content_length is not None:
-        headers.append(
-            (b"content-length", str(declared_content_length).encode())
-        )
+        headers.append((b"content-length", str(declared_content_length).encode()))
 
     scope = {
         "type": "http",
@@ -111,9 +105,7 @@ def test_under_cap_request_succeeds_and_returns_concatenated_body():
         b'"method":"tools/list",',
         b'"id":1}',
     ]
-    req = _make_request(
-        chunks, declared_content_length=sum(len(c) for c in chunks)
-    )
+    req = _make_request(chunks, declared_content_length=sum(len(c) for c in chunks))
 
     body, reason = asyncio.run(read_capped_body(req, cap))
 

@@ -64,7 +64,9 @@ _PREV_ENV_VAR = "SESSION_ID_SECRET_PREV"
 # alert on the rate.
 _missing_caller_count = 0
 _warn_lock = threading.Lock()
-_SESSION_BIND_REARM_EVERY = max(1, int(os.environ.get("SESSION_BIND_WARN_REARM_EVERY", "500")))  # #1572: clamp to ≥1 (used as modulus)
+_SESSION_BIND_REARM_EVERY = max(
+    1, int(os.environ.get("SESSION_BIND_WARN_REARM_EVERY", "500"))
+)  # #1572: clamp to ≥1 (used as modulus)
 missing_caller_total = None  # type: ignore[assignment]
 
 # #1103: labelled fallback counter. Backends register a Prometheus
@@ -181,7 +183,8 @@ def derive_session_id(
                 "the legacy (uuid5) derivation is in use. Ensure the harness "
                 "stamps metadata.caller_id for multi-tenant deployments. "
                 "(miss count=%d; will re-warn every %d misses)",
-                count, _SESSION_BIND_REARM_EVERY,
+                count,
+                _SESSION_BIND_REARM_EVERY,
             )
         if missing_caller_total is not None:
             try:
@@ -199,7 +202,9 @@ def derive_session_id(
 # counter if backends wire one in. The miss count is process-local.
 _prev_hit_count = 0
 _prev_hit_lock = threading.Lock()
-_PREV_HIT_REARM_EVERY = max(1, int(os.environ.get("SESSION_PREV_HIT_WARN_REARM_EVERY", "500")))  # #1572: clamp to ≥1 (used as modulus)
+_PREV_HIT_REARM_EVERY = max(
+    1, int(os.environ.get("SESSION_PREV_HIT_WARN_REARM_EVERY", "500"))
+)  # #1572: clamp to ≥1 (used as modulus)
 prev_secret_hit_total = None  # type: ignore[assignment]
 
 
@@ -228,7 +233,9 @@ def note_prev_secret_hit(raw_sid: str = "") -> None:
             "active (hit count=%d; raw_sid_len=%d; will re-warn every %d "
             "hits). Drop SESSION_ID_SECRET_PREV once this warning stops "
             "firing across your session-retention window.",
-            count, len(raw_sid or ""), _PREV_HIT_REARM_EVERY,
+            count,
+            len(raw_sid or ""),
+            _PREV_HIT_REARM_EVERY,
         )
     if prev_secret_hit_total is not None:
         try:

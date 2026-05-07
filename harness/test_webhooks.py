@@ -46,13 +46,13 @@ import webhooks  # noqa: E402
 @pytest.mark.parametrize(
     "code,expected",
     [
-        (408, True),   # Request Timeout — explicitly retryable
-        (429, True),   # Too Many Requests — explicitly retryable
+        (408, True),  # Request Timeout — explicitly retryable
+        (429, True),  # Too Many Requests — explicitly retryable
         (500, True),
         (502, True),
         (503, True),
         (504, True),
-        (501, True),   # any other 5xx — also retryable per the function
+        (501, True),  # any other 5xx — also retryable per the function
         (507, True),
         (200, False),
         (201, False),
@@ -115,9 +115,7 @@ def test_normalize_events_default_when_missing():
 def test_normalize_events_drops_unknown_kinds():
     """Typos / unknown kinds are dropped with a warning, never silently
     widening the subscription."""
-    result = webhooks._normalize_events_field(
-        ["completion", "totally.invented", "hook.decision"], "x"
-    )
+    result = webhooks._normalize_events_field(["completion", "totally.invented", "hook.decision"], "x")
     assert "completion" in result
     assert "hook.decision" in result
     assert "totally.invented" not in result
@@ -125,9 +123,7 @@ def test_normalize_events_drops_unknown_kinds():
 
 def test_normalize_events_drops_unsupported_qualifier():
     """hook.decision:<bad> is dropped; hook.decision:deny is kept."""
-    result = webhooks._normalize_events_field(
-        ["hook.decision:deny", "hook.decision:bogus"], "x"
-    )
+    result = webhooks._normalize_events_field(["hook.decision:deny", "hook.decision:bogus"], "x")
     assert result == ["hook.decision:deny"]
 
 

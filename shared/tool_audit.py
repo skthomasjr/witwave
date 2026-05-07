@@ -31,6 +31,7 @@ Callers supply a ``ToolAuditContext`` containing:
 ``metrics`` here because the shared module must stay import-time clean of
 backend-specific metric registries.
 """
+
 from __future__ import annotations
 
 import asyncio

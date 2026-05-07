@@ -100,8 +100,7 @@ def _redact_args(args: dict[str, Any]) -> dict[str, Any]:
     ``values`` / ``manifest`` / ``data`` / ``stringData`` / anything
     under a ``_SECRET_LIKE_KEYS`` set is replaced with a placeholder.
     """
-    secret_like = {"values", "manifest", "data", "stringData", "string_data",
-                   "token", "password", "secret"}
+    secret_like = {"values", "manifest", "data", "stringData", "string_data", "token", "password", "secret"}
     out: dict[str, Any] = {}
     for k, v in args.items():
         if k in secret_like:

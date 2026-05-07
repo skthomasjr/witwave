@@ -45,18 +45,10 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-CONVERSATION_STREAM_QUEUE_MAX = int(
-    os.environ.get("CONVERSATION_STREAM_QUEUE_MAX", "500")
-)
-CONVERSATION_STREAM_RING_MAX = int(
-    os.environ.get("CONVERSATION_STREAM_RING_MAX", "200")
-)
-CONVERSATION_STREAM_KEEPALIVE_SEC = float(
-    os.environ.get("CONVERSATION_STREAM_KEEPALIVE_SEC", "15")
-)
-CONVERSATION_STREAM_GRACE_SEC = float(
-    os.environ.get("CONVERSATION_STREAM_GRACE_SEC", "60")
-)
+CONVERSATION_STREAM_QUEUE_MAX = int(os.environ.get("CONVERSATION_STREAM_QUEUE_MAX", "500"))
+CONVERSATION_STREAM_RING_MAX = int(os.environ.get("CONVERSATION_STREAM_RING_MAX", "200"))
+CONVERSATION_STREAM_KEEPALIVE_SEC = float(os.environ.get("CONVERSATION_STREAM_KEEPALIVE_SEC", "15"))
+CONVERSATION_STREAM_GRACE_SEC = float(os.environ.get("CONVERSATION_STREAM_GRACE_SEC", "60"))
 # Periodic sweeper cadence (#1735). Defaults to half the grace window
 # so an idle broadcaster gets evicted within a single grace period.
 CONVERSATION_STREAM_SWEEP_INTERVAL_SEC = float(
@@ -182,9 +174,7 @@ class SessionStream:
         self._idle_since = None
         return self._iterate(sub)
 
-    async def _iterate(
-        self, sub: _Subscriber
-    ) -> AsyncIterator[SessionStreamEnvelope]:
+    async def _iterate(self, sub: _Subscriber) -> AsyncIterator[SessionStreamEnvelope]:
         try:
             while True:
                 item = await sub.queue.get()
@@ -334,9 +324,7 @@ class SessionStream:
 
     # ---------- replay ----------
 
-    def replay_from(
-        self, last_id: str | None
-    ) -> list[SessionStreamEnvelope]:
+    def replay_from(self, last_id: str | None) -> list[SessionStreamEnvelope]:
         if not last_id:
             return list(self._ring)
         try:
@@ -394,9 +382,7 @@ class SessionStream:
 _registry: dict[str, SessionStream] = {}
 
 
-def get_session_stream(
-    session_id: str, *, agent_id: str | None = None, create: bool = True
-) -> SessionStream | None:
+def get_session_stream(session_id: str, *, agent_id: str | None = None, create: bool = True) -> SessionStream | None:
     """Return the broadcaster for *session_id*, creating one if absent.
 
     When ``create=False`` returns ``None`` for unknown sessions — useful
@@ -502,6 +488,7 @@ def sweep_idle_streams(
     # path fails loudly instead of silently racing the registry.
     try:
         import asyncio as _asyncio
+
         _asyncio.get_running_loop()
     except RuntimeError:
         # Called outside a running asyncio loop — OK for tests that
@@ -603,11 +590,7 @@ def _sse_serialise(envelope: SessionStreamEnvelope) -> bytes:
     import json as _json
 
     body = _json.dumps(envelope.to_dict(), separators=(",", ":"))
-    return (
-        f"event: {envelope.type}\n"
-        f"id: {envelope.id}\n"
-        f"data: {body}\n\n"
-    ).encode()
+    return (f"event: {envelope.type}\n" f"id: {envelope.id}\n" f"data: {body}\n\n").encode()
 
 
 def make_session_stream_handler(
@@ -649,9 +632,7 @@ def make_session_stream_handler(
         # Auth — parity with /conversations, /trace, /mcp, /api/traces.
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not _hmac.compare_digest(f"Bearer {auth_token}", header):
@@ -715,9 +696,7 @@ def make_session_stream_handler(
             try:
                 while True:
                     try:
-                        envelope = await asyncio.wait_for(
-                            sub_iter.__anext__(), timeout=keepalive_sec
-                        )
+                        envelope = await asyncio.wait_for(sub_iter.__anext__(), timeout=keepalive_sec)
                     except asyncio.TimeoutError:
                         yield b": keepalive\n\n"
                         continue

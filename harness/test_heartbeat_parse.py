@@ -83,9 +83,7 @@ def test_default_schedule_when_omitted():
 def test_enabled_false_returns_none(disabled_value):
     """A disabled heartbeat returns None — the runner sees this as
     'no heartbeat configured' and skips dispatching."""
-    _write_heartbeat(
-        f"---\nenabled: {disabled_value}\nschedule: '*/5 * * * *'\n---\nbody"
-    )
+    _write_heartbeat(f"---\nenabled: {disabled_value}\nschedule: '*/5 * * * *'\n---\nbody")
     assert heartbeat.load_heartbeat() is None
 
 
@@ -117,9 +115,7 @@ def test_invalid_cron_falls_back_to_default():
 
 
 def test_model_and_agent_passthrough():
-    _write_heartbeat(
-        "---\nschedule: '*/5 * * * *'\nmodel: gpt-4\nagent: codex\n---\nbody"
-    )
+    _write_heartbeat("---\nschedule: '*/5 * * * *'\nmodel: gpt-4\nagent: codex\n---\nbody")
     result = heartbeat.load_heartbeat()
     assert result is not None
     schedule, content, model, backend_id, consensus, max_tokens = result
@@ -131,9 +127,7 @@ def test_model_and_agent_passthrough():
 
 
 def test_max_tokens_valid():
-    _write_heartbeat(
-        "---\nschedule: '*/5 * * * *'\nmax-tokens: 4000\n---\nbody"
-    )
+    _write_heartbeat("---\nschedule: '*/5 * * * *'\nmax-tokens: 4000\n---\nbody")
     result = heartbeat.load_heartbeat()
     assert result is not None
     *_, max_tokens = result
@@ -141,9 +135,7 @@ def test_max_tokens_valid():
 
 
 def test_max_tokens_clamped_to_min_one():
-    _write_heartbeat(
-        "---\nschedule: '*/5 * * * *'\nmax-tokens: 0\n---\nbody"
-    )
+    _write_heartbeat("---\nschedule: '*/5 * * * *'\nmax-tokens: 0\n---\nbody")
     result = heartbeat.load_heartbeat()
     assert result is not None
     *_, max_tokens = result
@@ -151,9 +143,7 @@ def test_max_tokens_clamped_to_min_one():
 
 
 def test_max_tokens_invalid_falls_back_to_none():
-    _write_heartbeat(
-        "---\nschedule: '*/5 * * * *'\nmax-tokens: bogus\n---\nbody"
-    )
+    _write_heartbeat("---\nschedule: '*/5 * * * *'\nmax-tokens: bogus\n---\nbody")
     result = heartbeat.load_heartbeat()
     assert result is not None
     *_, max_tokens = result

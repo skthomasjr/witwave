@@ -92,9 +92,7 @@ LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 # be generous by default — 2× TASK_TIMEOUT_SECONDS + a 60s margin — so legitimate
 # LLM extraction completes while still bounding stuck downstreams. Override via
 # ON_PROMPT_COMPLETED_TIMEOUT (#549).
-ON_PROMPT_COMPLETED_TIMEOUT = float(
-    os.environ.get("ON_PROMPT_COMPLETED_TIMEOUT", str(TASK_TIMEOUT_SECONDS * 2 + 60))
-)
+ON_PROMPT_COMPLETED_TIMEOUT = float(os.environ.get("ON_PROMPT_COMPLETED_TIMEOUT", str(TASK_TIMEOUT_SECONDS * 2 + 60)))
 # Maximum number of background tasks tracked by AgentExecutor at any one time.
 # When the cap is hit new tasks are shed and counted in
 # harness_background_tasks_shed_total rather than growing the set without bound (#549).
@@ -105,9 +103,7 @@ BACKGROUND_TASKS_MAX = int(os.environ.get("BACKGROUND_TASKS_MAX", "1000"))
 # counted and emitted as a summary WARN when the window flushes. Per-source so
 # a noisy critical-class caller can't suppress visibility into a different
 # starving source.
-_BACKGROUND_SHED_LOG_WINDOW_SEC = float(
-    os.environ.get("BACKGROUND_SHED_LOG_WINDOW_SEC", "10")
-)
+_BACKGROUND_SHED_LOG_WINDOW_SEC = float(os.environ.get("BACKGROUND_SHED_LOG_WINDOW_SEC", "10"))
 # Module-level state: source -> {"window_start": float, "suppressed": int}.
 # Plain dict (no lock) — track_background runs on the asyncio thread.
 _background_shed_log_state: dict[str, dict[str, float]] = {}
@@ -205,7 +201,9 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
             # tracked separately; this audit log is the minimum signal.
             logger.info(
                 "session.evicted: session_id=%s last_used_age_s=%.1f lru_cap=%d",
-                _evicted_id, time.monotonic() - last_used_at, MAX_SESSIONS,
+                _evicted_id,
+                time.monotonic() - last_used_at,
+                MAX_SESSIONS,
             )
         sessions[session_id] = time.monotonic()
     if harness_active_sessions is not None:
@@ -230,8 +228,15 @@ async def run(
         harness_concurrent_queries.inc()
     try:
         return await _run_inner(
-            prompt, session_id, sessions, backends, default_backend_id,
-            backend_id, model, max_tokens, trace_context=trace_context,
+            prompt,
+            session_id,
+            sessions,
+            backends,
+            default_backend_id,
+            backend_id,
+            model,
+            max_tokens,
+            trace_context=trace_context,
             caller_id=caller_id,
         )
     finally:
@@ -282,9 +287,15 @@ async def _run_inner(
         harness_session_starts_total.labels(type="new" if is_new else "resumed").inc()
     _track_session(sessions, session_id)
 
-    _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
+    _prompt_preview = (
+        prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "")
+        if LOG_PROMPT_MAX_BYTES > 0
+        else "[redacted]"
+    )
     _trace_tag = f" trace_id={trace_context.trace_id}" if trace_context is not None else ""
-    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id}{_trace_tag} — prompt: {_prompt_preview!r}")
+    logger.info(
+        f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id}{_trace_tag} — prompt: {_prompt_preview!r}"
+    )
     await log_entry("user", prompt, session_id, model=model, backend=resolved_id, trace_context=trace_context)
 
     if harness_prompt_length_bytes is not None:
@@ -297,7 +308,9 @@ async def _run_inner(
         # backends (in-process claude/codex/gemini) ignore caller_id;
         # they derive session binding from their own /mcp bearer.
         _run_kwargs: dict[str, object] = dict(
-            model=model, max_tokens=max_tokens, trace_context=trace_context,
+            model=model,
+            max_tokens=max_tokens,
+            trace_context=trace_context,
         )
         if caller_id is not None:
             _run_kwargs["caller_id"] = caller_id
@@ -321,7 +334,11 @@ async def _run_inner(
             "elapsed_seconds=%.2f prompt_bytes=%d trace_id=%s "
             "likely_double_bill=server-side LLM call may have continued "
             "without client to return to; reconcile against billing",
-            session_id, resolved_id, _elapsed, len(prompt.encode()), _trace_id,
+            session_id,
+            resolved_id,
+            _elapsed,
+            len(prompt.encode()),
+            _trace_id,
         )
         if harness_tasks_total is not None:
             harness_tasks_total.labels(status="timeout").inc()
@@ -397,6 +414,7 @@ async def run_consensus(
     Freeform responses: a synthesis pass is sent to the default backend.
     """
     import fnmatch
+
     # Resolve entries to (call_key, backend_id, model) tuples, expanding glob patterns.
     # The same backend may appear multiple times with different models.
     # call_key = "bid:model" when model is set, else "bid" — used as the response label.
@@ -420,8 +438,14 @@ async def run_consensus(
     async def _call(call_key: str, bid: str, model: str | None) -> tuple[str, str | Exception]:
         try:
             result = await _run_inner(
-                prompt, session_id, sessions, backends, default_backend_id,
-                backend_id=bid, model=model, max_tokens=max_tokens,
+                prompt,
+                session_id,
+                sessions,
+                backends,
+                default_backend_id,
+                backend_id=bid,
+                model=model,
+                max_tokens=max_tokens,
                 trace_context=trace_context,
                 consensus_mode=True,  # #1188
             )
@@ -454,9 +478,7 @@ async def run_consensus(
         if isinstance(outcome, Exception):
             logger.error(f"Consensus backend {call_key!r} failed: {outcome!r}")
             if harness_consensus_backend_errors_total is not None:
-                harness_consensus_backend_errors_total.labels(
-                    reason=_classify_consensus_error(outcome)
-                ).inc()
+                harness_consensus_backend_errors_total.labels(reason=_classify_consensus_error(outcome)).inc()
         else:
             responses[call_key] = outcome
 
@@ -487,7 +509,9 @@ async def run_consensus(
                 logger.warning(
                     "Consensus tie-break: default backend %r not present in "
                     "classifications (keys=%s); falling back deterministically to %r.",
-                    default_backend_id, sorted(classifications.keys()), fallback_key,
+                    default_backend_id,
+                    sorted(classifications.keys()),
+                    fallback_key,
                 )
                 winner = classifications[fallback_key]
         logger.info(f"Consensus (binary): yes={yes_count} no={no_count} → {winner}")
@@ -506,9 +530,14 @@ async def run_consensus(
     )
     try:
         synthesised = await _run_inner(
-            synthesis_prompt, session_id, sessions, backends, default_backend_id,
+            synthesis_prompt,
+            session_id,
+            sessions,
+            backends,
+            default_backend_id,
             backend_id=synthesis_backend_id or default_backend_id,
-            model=synthesis_model, max_tokens=max_tokens,
+            model=synthesis_model,
+            max_tokens=max_tokens,
             trace_context=trace_context,
             consensus_mode=True,  # #1188 — synthesis is still part of the consensus flow
         )
@@ -551,20 +580,20 @@ async def _guarded(
         # never come for a task that heals.
         _recovery_watchdog: asyncio.Task | None = None
         if consecutive_restarts > 0 and on_recovered is not None:
+
             async def _recovery_watch(delay: float, cb) -> None:
                 try:
                     await asyncio.sleep(delay)
                     cb()
                 except asyncio.CancelledError:
                     pass
+
             # #1402: align the watchdog threshold with the streak reset
             # threshold (#1367). Previously fired at 1× restart_delay
             # while reset required 3×, so dashboards reported "recovered"
             # while consecutive_restarts kept climbing — contradictory
             # signals to alert rules.
-            _recovery_watchdog = asyncio.ensure_future(
-                _recovery_watch(restart_delay * 3, on_recovered)
-            )
+            _recovery_watchdog = asyncio.ensure_future(_recovery_watch(restart_delay * 3, on_recovered))
         try:
             try:
                 await coro_fn(*args)
@@ -622,6 +651,7 @@ class AgentExecutor(A2AAgentExecutor):
             # before the watcher reloads a valid config. The #1328 fallback
             # used {} and defeated its own graceful-start guarantee.
             from backends.config import RoutingConfig
+
             self._backends = {}
             self._default_backend_id = None
             self._routing = RoutingConfig()
@@ -698,10 +728,12 @@ class AgentExecutor(A2AAgentExecutor):
             "webhook,webhook_retry,hook_decision,continuation",
         )
         _critical_sources = {s.strip() for s in _critical_env.split(",") if s.strip()}
-        _critical_cap = int(os.environ.get(
-            "BACKGROUND_TASKS_CRITICAL_MAX",
-            str(BACKGROUND_TASKS_MAX * 2),
-        ))
+        _critical_cap = int(
+            os.environ.get(
+                "BACKGROUND_TASKS_CRITICAL_MAX",
+                str(BACKGROUND_TASKS_MAX * 2),
+            )
+        )
         is_critical = source in _critical_sources
         effective_cap = _critical_cap if is_critical else BACKGROUND_TASKS_MAX
         if len(self._background_tasks) >= effective_cap:
@@ -713,7 +745,10 @@ class AgentExecutor(A2AAgentExecutor):
                 _occupants[tname] = _occupants.get(tname, 0) + 1
             logger.warning(
                 "track_background: shedding %r task (in-flight=%d, cap=%d, critical=%s, occupants=%s)",
-                source, len(self._background_tasks), effective_cap, is_critical,
+                source,
+                len(self._background_tasks),
+                effective_cap,
+                is_critical,
                 _occupants,
             )
             # Per-shed WARN with session_id + caller identity so operators can
@@ -732,12 +767,16 @@ class AgentExecutor(A2AAgentExecutor):
                 if _state is not None and _state["suppressed"] > 0:
                     logger.warning(
                         "background task shed: source=%s suppressed=%d in last %.1fs window",
-                        source, int(_state["suppressed"]), _BACKGROUND_SHED_LOG_WINDOW_SEC,
+                        source,
+                        int(_state["suppressed"]),
+                        _BACKGROUND_SHED_LOG_WINDOW_SEC,
                         extra={"shed": True},
                     )
                 logger.warning(
                     "background task shed: source=%s session=%s caller=%s",
-                    source, session_id, caller_identity,
+                    source,
+                    session_id,
+                    caller_identity,
                     extra={"shed": True},
                 )
                 _background_shed_log_state[source] = {
@@ -757,7 +796,8 @@ class AgentExecutor(A2AAgentExecutor):
             except Exception as _close_err:
                 logger.warning(
                     "background-task close after shed failed: source=%s err=%r",
-                    source, _close_err,
+                    source,
+                    _close_err,
                 )
             return None
 
@@ -769,7 +809,8 @@ class AgentExecutor(A2AAgentExecutor):
             except asyncio.TimeoutError:
                 logger.error(
                     "track_background: %r task exceeded timeout=%.1fs and was cancelled",
-                    source, _effective_timeout,
+                    source,
+                    _effective_timeout,
                 )
                 if harness_background_tasks_timeout_total is not None:
                     harness_background_tasks_timeout_total.labels(source=source).inc()
@@ -820,10 +861,17 @@ class AgentExecutor(A2AAgentExecutor):
             entry = self._routing.continuation
         else:
             entry = None
-        logger.debug("routing kind=%r → entry agent=%r model=%r", kind, entry.agent if entry else None, entry.model if entry else None)
+        logger.debug(
+            "routing kind=%r → entry agent=%r model=%r",
+            kind,
+            entry.agent if entry else None,
+            entry.model if entry else None,
+        )
         return entry
 
-    def _resolve_model(self, message_model: str | None, routing_entry: RoutingEntry | None, backend_id: str) -> str | None:
+    def _resolve_model(
+        self, message_model: str | None, routing_entry: RoutingEntry | None, backend_id: str
+    ) -> str | None:
         """Resolve the model to use: per-message → routing entry → per-backend config.
 
         The routing entry model is only applied when the routing entry's agent matches
@@ -934,7 +982,9 @@ class AgentExecutor(A2AAgentExecutor):
                             for watcher in self._mcp_watchers():
                                 task = asyncio.create_task(_guarded(watcher))
                                 task.add_done_callback(
-                                    lambda t, _w=watcher: logger.error(f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}")
+                                    lambda t, _w=watcher: logger.error(
+                                        f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}"
+                                    )
                                     if not t.cancelled() and t.exception() is not None
                                     else None
                                 )
@@ -977,7 +1027,8 @@ class AgentExecutor(A2AAgentExecutor):
             if _prompt_bytes > A2A_MAX_PROMPT_BYTES:
                 logger.warning(
                     "A2A execute() rejected: prompt %d bytes > A2A_MAX_PROMPT_BYTES=%d (#783).",
-                    _prompt_bytes, A2A_MAX_PROMPT_BYTES,
+                    _prompt_bytes,
+                    A2A_MAX_PROMPT_BYTES,
                 )
                 if harness_a2a_prompt_oversize_total is not None:
                     try:
@@ -1005,7 +1056,9 @@ class AgentExecutor(A2AAgentExecutor):
                     )
                 )
                 return
-        _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        _raw_sid = "".join(
+            c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " "
+        )
         session_id = _raw_sid or str(uuid.uuid4())
         # Explicit backend_id in metadata takes priority; otherwise use routing config.
         _a2a_entry = self._routing_entry_for_kind("a2a")
@@ -1025,9 +1078,7 @@ class AgentExecutor(A2AAgentExecutor):
         # doesn't surface raw HTTP headers here, but upstream callers echo the
         # traceparent into message.metadata so we can still continue the trace.
         _tp_header = metadata.get("traceparent")
-        trace_context, _had_inbound = context_from_inbound(
-            _tp_header if isinstance(_tp_header, str) else None
-        )
+        trace_context, _had_inbound = context_from_inbound(_tp_header if isinstance(_tp_header, str) else None)
         # Inbound caller identity (#1084). Forwarded opaquely from upstream
         # relays so the chain {ingress-relay -> harness -> A2A backend}
         # presents a consistent principal to derive_session_id at each hop.
@@ -1046,9 +1097,7 @@ class AgentExecutor(A2AAgentExecutor):
             if model:
                 _rcv_payload["model"] = model
             _agent_name = os.environ.get("AGENT_NAME", "witwave")
-            get_event_stream().publish(
-                "a2a.request.received", _rcv_payload, agent_id=_agent_name
-            )
+            get_event_stream().publish("a2a.request.received", _rcv_payload, agent_id=_agent_name)
         except Exception:  # pragma: no cover
             pass
         # Bridge to OTel (#469). When OTel is enabled the extracted context
@@ -1082,8 +1131,11 @@ class AgentExecutor(A2AAgentExecutor):
             ) as _span:
                 try:
                     _response = await run(
-                        prompt, session_id, self._sessions,
-                        self._backends, self._default_backend_id,
+                        prompt,
+                        session_id,
+                        self._sessions,
+                        self._backends,
+                        self._default_backend_id,
                         backend_id=backend_id,
                         model=model,
                         max_tokens=max_tokens,
@@ -1175,9 +1227,7 @@ class AgentExecutor(A2AAgentExecutor):
                 if not _success and _error:
                     _comp_payload["error"] = _error[:512]
                 _agent_name = os.environ.get("AGENT_NAME", "witwave")
-                get_event_stream().publish(
-                    "a2a.request.completed", _comp_payload, agent_id=_agent_name
-                )
+                get_event_stream().publish("a2a.request.completed", _comp_payload, agent_id=_agent_name)
             except Exception:  # pragma: no cover
                 pass
             if task_id and task_id in self._running_tasks:

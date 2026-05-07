@@ -4,6 +4,7 @@ Provides a single implementation of _read_jsonl, make_conversations_handler,
 and make_trace_handler so that changes to authentication, pagination, or
 response shape are applied once rather than across three separate copies.
 """
+
 import asyncio
 import hmac as hmac_mod
 import json
@@ -252,6 +253,7 @@ def _read_tool_audit_jsonl(
             if isinstance(ts_raw, (int, float)):
                 try:
                     from datetime import timezone as _tz
+
                     ts = datetime.fromtimestamp(float(ts_raw), tz=_tz.utc)
                     ts_ok = ts >= since_dt
                 except (OverflowError, OSError, ValueError):
@@ -293,9 +295,7 @@ def make_conversations_handler(
         # previously short-circuited the gate, silently exposing logs.
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
@@ -330,9 +330,7 @@ def make_trace_handler(
         # is explicitly set (#718).
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
@@ -373,9 +371,7 @@ def make_tool_audit_handler(
         # is explicitly set (#718).
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
@@ -433,9 +429,7 @@ def make_proxy_tool_audit_handler(
         # is explicitly set (#718).
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
@@ -481,9 +475,7 @@ def make_proxy_conversations_handler(
         # is explicitly set (#718).
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
@@ -521,9 +513,7 @@ def make_proxy_trace_handler(
         # is explicitly set (#718).
         if not auth_token:
             if not auth_disabled_escape_hatch():
-                return JSONResponse(
-                    {"error": "auth not configured"}, status_code=503
-                )
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
         else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):

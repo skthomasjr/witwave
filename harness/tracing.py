@@ -26,6 +26,7 @@ the harness keeps its existing dependency footprint until #469 is approved.
 The module is deliberately named ``tracing`` (not ``trace``) to avoid
 shadowing the Python stdlib ``trace`` module on the harness sys.path.
 """
+
 from __future__ import annotations
 
 import contextvars
@@ -155,9 +156,7 @@ def context_from_inbound(header_value: str | None) -> tuple[TraceContext, bool]:
 # gemini via ``shared/log_utils.py``) stays deferred.
 # ---------------------------------------------------------------------------
 
-_current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "witwave_trace_id", default=""
-)
+_current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("witwave_trace_id", default="")
 
 
 def set_log_trace_id(trace_id: str | None) -> contextvars.Token:

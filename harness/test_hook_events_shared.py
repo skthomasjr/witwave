@@ -112,8 +112,7 @@ def test_missing_token_logs_once(monkeypatch, caplog):
             await asyncio.gather(*pending, return_exceptions=True)
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1, (
-            "missing-token warning must fire exactly once per process "
-            "to avoid log flood on sustained misconfig"
+            "missing-token warning must fire exactly once per process " "to avoid log flood on sustained misconfig"
         )
 
     asyncio.run(run())
@@ -122,6 +121,7 @@ def test_missing_token_logs_once(monkeypatch, caplog):
 def test_schedule_event_post_builds_envelope(monkeypatch):
     """schedule_event_post (#1110 phase 3) builds a valid envelope and
     calls into the shared POST path with the publish URL + bearer."""
+
     async def run():
         he = _reload(monkeypatch, url="http://harness", token="s")
         # Replace _post_once_to with a capture stub so we see the
@@ -163,6 +163,7 @@ def test_schedule_event_post_builds_envelope(monkeypatch):
 def test_schedule_event_post_drops_invalid_envelope(monkeypatch):
     """Schema validation at emit time drops malformed events without
     invoking the POST path. Caller never observes an exception."""
+
     async def run():
         he = _reload(monkeypatch, url="http://harness", token="s")
         calls: list[tuple[str, dict]] = []

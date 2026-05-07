@@ -42,9 +42,11 @@ def _get_metrics_url():
     # Force a real import by evicting any cached mock first.
     import importlib
     import sys
+
     sys.modules.pop("metrics_proxy", None)
     importlib.invalidate_caches()
     from metrics_proxy import _metrics_url
+
     return _metrics_url
 
 
@@ -100,6 +102,7 @@ def _ensure_a2a_stubs():
     entries so dotted imports resolve."""
     import sys
     import types as _t
+
     needed = {
         "a2a": [],
         "a2a.server": [],
@@ -121,10 +124,12 @@ def _ensure_a2a_stubs():
 def _get_retry_fn():
     import importlib
     import sys
+
     _ensure_a2a_stubs()
     sys.modules.pop("sqlite_task_store", None)
     importlib.invalidate_caches()
     import sqlite_task_store
+
     return sqlite_task_store, sqlite_task_store._retry_on_operational
 
 

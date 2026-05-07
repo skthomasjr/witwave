@@ -125,6 +125,7 @@ async def _run_loop(
     # NTP step adjustments (#659). Initialised to None; the first
     # iteration anchors at wall-clock.
     last_scheduled: datetime | None = None
+
     # #1584: recreate stop_waiter each iteration so a transient
     # set/clear on stop_event (e.g. reload paths that clear mid-tick)
     # can't leave a stale `done` task that short-circuits every
@@ -135,6 +136,7 @@ async def _run_loop(
             # callers still get a valid Task to pass to asyncio.wait.
             async def _noop() -> None:
                 return None
+
             return asyncio.create_task(_noop())
         return asyncio.create_task(stop_event.wait())
 
@@ -202,11 +204,17 @@ async def _run_loop(
 
             from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
-            prompt = resolve_prompt_env(
-                f"Heartbeat check. Follow these instructions:\n\n{content}"
-            )
+            prompt = resolve_prompt_env(f"Heartbeat check. Follow these instructions:\n\n{content}")
             _hb_start = time.monotonic()
-            message = Message(prompt=prompt, session_id=HEARTBEAT_SESSION, kind="heartbeat", model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
+            message = Message(
+                prompt=prompt,
+                session_id=HEARTBEAT_SESSION,
+                kind="heartbeat",
+                model=model,
+                backend_id=backend_id,
+                consensus=consensus,
+                max_tokens=max_tokens,
+            )
             if not bus.try_send(message):
                 logger.info("Heartbeat skipped — previous heartbeat still pending.")
                 if harness_heartbeat_skips_total is not None:
@@ -261,9 +269,7 @@ async def _run_loop(
                         }
                         if schedule:
                             _hb_payload["schedule"] = schedule
-                        get_event_stream().publish(
-                            "heartbeat.fired", _hb_payload, agent_id=AGENT_NAME
-                        )
+                        get_event_stream().publish("heartbeat.fired", _hb_payload, agent_id=AGENT_NAME)
                     except Exception:  # pragma: no cover
                         pass
                 except Exception as e:
@@ -282,9 +288,7 @@ async def _run_loop(
                         }
                         if schedule:
                             _hb_err["schedule"] = schedule
-                        get_event_stream().publish(
-                            "heartbeat.fired", _hb_err, agent_id=AGENT_NAME
-                        )
+                        get_event_stream().publish("heartbeat.fired", _hb_err, agent_id=AGENT_NAME)
                     except Exception:  # pragma: no cover
                         pass
     finally:
@@ -312,9 +316,7 @@ async def _stop_and_join(loop_task: asyncio.Task, stop_event: asyncio.Event) -> 
     try:
         await asyncio.wait_for(asyncio.shield(loop_task), timeout=HEARTBEAT_STOP_JOIN_TIMEOUT)
     except asyncio.TimeoutError:
-        logger.warning(
-            f"Heartbeat loop did not stop within {HEARTBEAT_STOP_JOIN_TIMEOUT:.1f}s — cancelling."
-        )
+        logger.warning(f"Heartbeat loop did not stop within {HEARTBEAT_STOP_JOIN_TIMEOUT:.1f}s — cancelling.")
         loop_task.cancel()
         try:
             await loop_task
@@ -343,7 +345,19 @@ async def heartbeat_runner(
     loop_task: asyncio.Task | None = None
 
     if loaded:
-        loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens, backends_ready=backends_ready))
+        loop_task = asyncio.create_task(
+            _run_loop(
+                bus,
+                schedule,
+                content,
+                stop_event,
+                model=model,
+                backend_id=backend_id,
+                consensus=consensus,
+                max_tokens=max_tokens,
+                backends_ready=backends_ready,
+            )
+        )
         loop_task.add_done_callback(_loop_task_done_callback)
 
     while True:
@@ -380,7 +394,19 @@ async def heartbeat_runner(
                 else:
                     schedule, content, model, backend_id, consensus, max_tokens = loaded
                     logger.info(f"Heartbeat reloaded. Schedule: {schedule}")
-                    loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens, backends_ready=backends_ready))
+                    loop_task = asyncio.create_task(
+                        _run_loop(
+                            bus,
+                            schedule,
+                            content,
+                            stop_event,
+                            model=model,
+                            backend_id=backend_id,
+                            consensus=consensus,
+                            max_tokens=max_tokens,
+                            backends_ready=backends_ready,
+                        )
+                    )
                     loop_task.add_done_callback(_loop_task_done_callback)
 
         logger.warning("Heartbeat directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
@@ -398,7 +424,19 @@ async def heartbeat_runner(
             loaded = None
         if loaded:
             schedule, content, model, backend_id, consensus, max_tokens = loaded
-            loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens, backends_ready=backends_ready))
+            loop_task = asyncio.create_task(
+                _run_loop(
+                    bus,
+                    schedule,
+                    content,
+                    stop_event,
+                    model=model,
+                    backend_id=backend_id,
+                    consensus=consensus,
+                    max_tokens=max_tokens,
+                    backends_ready=backends_ready,
+                )
+            )
             loop_task.add_done_callback(_loop_task_done_callback)
         else:
             loop_task = None

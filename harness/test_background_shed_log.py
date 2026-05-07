@@ -112,7 +112,8 @@ def test_shed_emits_warn_with_session_and_caller(
     # The new #1644 WARN line carries source / session / caller. Match on the
     # message format produced by logger.warning(...).
     matching = [
-        rec for rec in caplog.records
+        rec
+        for rec in caplog.records
         if "background task shed:" in rec.getMessage()
         and "source=a2a" in rec.getMessage()
         and "session=sess-abc" in rec.getMessage()
@@ -150,13 +151,10 @@ def test_shed_warn_rate_limited_per_source(
         )
 
     per_shed_msgs = [
-        rec.getMessage() for rec in caplog.records
-        if "background task shed: source=a2a session=" in rec.getMessage()
+        rec.getMessage() for rec in caplog.records if "background task shed: source=a2a session=" in rec.getMessage()
     ]
     # Exactly one per-shed line in the window — others suppressed and counted.
-    assert len(per_shed_msgs) == 1, (
-        f"expected 1 per-shed WARN within the window; got {per_shed_msgs!r}"
-    )
+    assert len(per_shed_msgs) == 1, f"expected 1 per-shed WARN within the window; got {per_shed_msgs!r}"
 
 
 def test_shed_coro_close_failure_logs_warn(
@@ -192,7 +190,8 @@ def test_shed_coro_close_failure_logs_warn(
     fake_coro.close.assert_called_once()
 
     matching = [
-        rec for rec in caplog.records
+        rec
+        for rec in caplog.records
         if "background-task close after shed failed" in rec.getMessage()
         and "source=a2a" in rec.getMessage()
         and "boom-on-close" in rec.getMessage()

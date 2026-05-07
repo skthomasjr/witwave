@@ -21,6 +21,7 @@ coroutine each container already uses for ``/metrics``, so we don't
 rewrite the generation / aggregation / auth logic — we just host it on a
 second port.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -122,12 +123,14 @@ def start_metrics_server_in_thread(
     # teardown) will fire this hook and give uvicorn a chance to close
     # listening sockets and drain in-flight scrapes.
     import atexit
+
     def _shutdown_metrics() -> None:
         try:
             server.should_exit = True
             thread.join(timeout=5.0)
         except Exception as _exc:  # pragma: no cover
             logger.warning("metrics-server shutdown error: %r", _exc)
+
     atexit.register(_shutdown_metrics)
     logger.info(
         "Prometheus metrics enabled on dedicated listener :%d%s (thread mode)",
@@ -195,7 +198,5 @@ def start_metrics_server(
     )
     server = uvicorn.Server(config)
     task = asyncio.get_running_loop().create_task(server.serve(), name="metrics-server")
-    logger.info(
-        "Prometheus metrics enabled on dedicated listener :%d%s", bind_port, path
-    )
+    logger.info("Prometheus metrics enabled on dedicated listener :%d%s", bind_port, path)
     return task

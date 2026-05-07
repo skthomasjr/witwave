@@ -147,9 +147,7 @@ class TriggerRunner:
         # ones that actually accept inbound POSTs); disabled are listed
         # but not counted.
         if harness_triggers_items_registered is not None:
-            harness_triggers_items_registered.set(
-                sum(1 for i in self._items.values() if i.enabled)
-            )
+            harness_triggers_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
         if count_reload and harness_triggers_reloads_total is not None:
             harness_triggers_reloads_total.inc()
         if item.enabled:
@@ -163,9 +161,7 @@ class TriggerRunner:
             logger.info(f"Trigger '{existing.name}' unregistered.")
             if harness_triggers_items_registered is not None:
                 # #1230: count enabled only, matching register path.
-                harness_triggers_items_registered.set(
-                    sum(1 for i in self._items.values() if i.enabled)
-                )
+                harness_triggers_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
             if count_reload and harness_triggers_reloads_total is not None:
                 harness_triggers_reloads_total.inc()
 
@@ -184,21 +180,23 @@ class TriggerRunner:
         """Return a serializable snapshot of currently registered trigger items."""
         result = []
         for item in self._items.values():
-            result.append({
-                "name": item.name,
-                "endpoint": item.endpoint,
-                "description": item.description,
-                "session_id": item.session_id,
-                "backend_id": item.backend_id,
-                "model": item.model,
-                "consensus": [asdict(e) for e in item.consensus],
-                "max_tokens": item.max_tokens,
-                "running": item.endpoint in self._running,
-                # Expose enabled and HMAC-signed status so the UI can render
-                # them — previously dropped between model and wire (#461).
-                "enabled": item.enabled,
-                "signed": bool(item.secret_env_var),
-            })
+            result.append(
+                {
+                    "name": item.name,
+                    "endpoint": item.endpoint,
+                    "description": item.description,
+                    "session_id": item.session_id,
+                    "backend_id": item.backend_id,
+                    "model": item.model,
+                    "consensus": [asdict(e) for e in item.consensus],
+                    "max_tokens": item.max_tokens,
+                    "running": item.endpoint in self._running,
+                    # Expose enabled and HMAC-signed status so the UI can render
+                    # them — previously dropped between model and wire (#461).
+                    "enabled": item.enabled,
+                    "signed": bool(item.secret_env_var),
+                }
+            )
         return result
 
     def items_by_endpoint(self) -> dict[str, TriggerItem]:
@@ -206,11 +204,7 @@ class TriggerRunner:
         # `_items` for listing purposes but must not accept inbound
         # POSTs. Returning only enabled here means the dispatcher
         # 404's on any endpoint whose trigger file is disabled.
-        return {
-            item.endpoint: item
-            for item in self._items.values()
-            if item.enabled
-        }
+        return {item.endpoint: item for item in self._items.values() if item.enabled}
 
     async def run(self) -> None:
         logger.info(f"Trigger runner watching {TRIGGERS_DIR}")

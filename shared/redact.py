@@ -70,9 +70,7 @@ def high_entropy_enabled() -> bool:
 
 
 # UUID (any version), canonical 8-4-4-4-12 hex. Left lower/upper mix tolerant.
-_UUID_RE = re.compile(
-    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
-)
+_UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
 # OTel W3C trace-id (32 lower-hex) and span-id (16 lower-hex).
 _OTEL_TRACE_RE = re.compile(r"\b[0-9a-f]{32}\b")
 _OTEL_SPAN_RE = re.compile(r"\b[0-9a-f]{16}\b")

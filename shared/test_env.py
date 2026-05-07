@@ -17,6 +17,7 @@ from env import parse_bool_env, parse_float_env, parse_int_env
 # parse_bool_env — truthy / falsy vocabulary
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "raw",
     ["1", "true", "TRUE", "True", "yes", "YES", "on", "ON", "y", "Y", "t", "T"],
@@ -61,6 +62,7 @@ def test_parse_bool_env_unknown_raises(monkeypatch, raw):
 # parse_int_env / parse_float_env
 # ---------------------------------------------------------------------------
 
+
 def test_parse_int_env_unset_uses_default(monkeypatch):
     monkeypatch.delenv("PORT", raising=False)
     assert parse_int_env("PORT", default=8000) == 8000
@@ -101,6 +103,7 @@ def test_parse_float_env_invalid_raises(monkeypatch):
 # ---------------------------------------------------------------------------
 # Process env isolation guard
 # ---------------------------------------------------------------------------
+
 
 def test_module_import_does_not_read_env():
     """Helpers should only read env when called, not at import time —

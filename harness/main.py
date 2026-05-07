@@ -66,6 +66,7 @@ from webhooks import WebhookRunner
 # place and the _bump() helper no-ops.
 try:
     import prompt_env as _prompt_env_mod  # shared/prompt_env.py
+
     _prompt_env_mod.substitutions_total = harness_prompt_env_substitutions_total
 except Exception:
     pass
@@ -240,13 +241,9 @@ def _check_adhoc_auth(request: Request) -> bool:
                     "was removed in #700. Set ADHOC_RUN_AUTH_TOKEN to re-enable."
                 )
             else:
-                logger.warning(
-                    "Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not configured."
-                )
+                logger.warning("Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not configured.")
         else:
-            logger.warning(
-                "Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not configured."
-            )
+            logger.warning("Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not configured.")
         return False
     header = request.headers.get("Authorization", "")
     return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
@@ -282,8 +279,7 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
                 )
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         logger.warning(
-            "POST /internal/events/hook-decision rejected: no auth token configured "
-            "(set HOOK_EVENTS_AUTH_TOKEN)."
+            "POST /internal/events/hook-decision rejected: no auth token configured " "(set HOOK_EVENTS_AUTH_TOKEN)."
         )
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     header = request.headers.get("Authorization", "")
@@ -311,6 +307,7 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
     body_bytes = b"".join(chunks)
 
     import json as _json
+
     try:
         payload = _json.loads(body_bytes.decode("utf-8") or "{}")
     except (UnicodeDecodeError, _json.JSONDecodeError) as exc:
@@ -395,8 +392,7 @@ async def event_publish_handler(request: Request) -> JSONResponse:
     """
     if not HOOK_EVENTS_AUTH_TOKEN:
         logger.warning(
-            "POST /internal/events/publish rejected: no auth token configured "
-            "(set HOOK_EVENTS_AUTH_TOKEN)."
+            "POST /internal/events/publish rejected: no auth token configured " "(set HOOK_EVENTS_AUTH_TOKEN)."
         )
         _bump_inbound_rejected("auth")
         return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -431,6 +427,7 @@ async def event_publish_handler(request: Request) -> JSONResponse:
     # contract can be exercised from tests that don't need to import
     # the A2A SDK / uvicorn / prometheus_client layer.
     from events import parse_and_publish_envelope as _parse_publish
+
     status, err = _parse_publish(
         body_bytes,
         rejected_counter=harness_event_stream_inbound_rejected_total,
@@ -550,6 +547,7 @@ async def health_ready(request: Request) -> JSONResponse:
             return JSONResponse(body, status_code=status_code)
 
         import httpx
+
         async def _probe(backend, client) -> bool:
             # Probe /health/ready (readiness) not /health (liveness). The
             # cycle-1 #1608 + #1672 split made /health liveness-only — it
@@ -579,6 +577,7 @@ async def health_ready(request: Request) -> JSONResponse:
                 except Exception:
                     return False
             return False
+
         async with httpx.AsyncClient(timeout=3.0) as client:
             results = await asyncio.gather(*[_probe(b, client) for b in backend_configs])
 
@@ -682,6 +681,7 @@ def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False)
     WORKER_MAX_RESTARTS consecutive crashes; on_recovered restores readiness
     once the worker runs long enough without crashing (#363).
     """
+
     def _on_not_ready():
         global _ready
         logger.error(
@@ -769,13 +769,16 @@ async def main():
 
     # Startup manifest validation — surface misconfiguration early.
     import json as _startup_json
+
     _manifest_path_startup = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
     try:
         with open(_manifest_path_startup) as _mf:
             _manifest_startup = _startup_json.load(_mf)
         for _idx, _entry in enumerate(_manifest_startup.get("team", [])):
             if not isinstance(_entry, dict):
-                logger.warning("manifest team[%d]: entry is not a dict (got %r) — check manifest.json", _idx, type(_entry).__name__)
+                logger.warning(
+                    "manifest team[%d]: entry is not a dict (got %r) — check manifest.json", _idx, type(_entry).__name__
+                )
                 continue
             _name = _entry.get("name")
             _url = _entry.get("url")
@@ -793,6 +796,7 @@ async def main():
     # through the configured OTLP pipeline (#469). No-op when OTEL_ENABLED
     # is falsy, which is the default.
     from tracing import init_otel_if_enabled
+
     init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or "harness")
 
     bus = MessageBus()
@@ -884,15 +888,18 @@ async def main():
         backend_configs = [b._config for b in executor._backends.values()]
         # Own card
         own_card = build_agent_card()
-        agents = [{
-            "id": AGENT_NAME,
-            "url": HARNESS_URL,
-            "role": "witwave",
-            "card": own_card.model_dump() if hasattr(own_card, "model_dump") else vars(own_card),
-        }]
+        agents = [
+            {
+                "id": AGENT_NAME,
+                "url": HARNESS_URL,
+                "role": "witwave",
+                "card": own_card.model_dump() if hasattr(own_card, "model_dump") else vars(own_card),
+            }
+        ]
         # Fan out backend card fetches concurrently so that one slow or
         # unreachable backend does not delay all others (#360).
         import httpx
+
         reachable_backends = [b for b in backend_configs if b.url]
 
         async def _fetch_card(backend, client) -> dict:
@@ -913,7 +920,9 @@ async def main():
             for backend, result in zip(reachable_backends, backend_entries):
                 if isinstance(result, Exception):
                     logger.debug(f"Backend {backend.id!r} agent card fetch raised: {result!r}")
-                    agents.append({"id": backend.id, "url": backend.url, "role": "backend", "model": backend.model, "card": None})
+                    agents.append(
+                        {"id": backend.id, "url": backend.url, "role": "backend", "model": backend.model, "card": None}
+                    )
                 else:
                     agents.append(result)
         return JSONResponse(agents)
@@ -1017,25 +1026,29 @@ async def main():
         try:
             for job in job_runner.items():
                 name = (job.get("name") if isinstance(job, dict) else getattr(job, "name", "")) or ""
-                payload.append({
-                    "kind": "job",
-                    "name": name,
-                    "endpoint": f"/jobs/{name}/run",
-                    "methods": ["POST"],
-                    "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
-                })
+                payload.append(
+                    {
+                        "kind": "job",
+                        "name": name,
+                        "endpoint": f"/jobs/{name}/run",
+                        "methods": ["POST"],
+                        "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
+                    }
+                )
         except Exception:
             pass
         try:
             for task in task_runner.items():
                 name = (task.get("name") if isinstance(task, dict) else getattr(task, "name", "")) or ""
-                payload.append({
-                    "kind": "task",
-                    "name": name,
-                    "endpoint": f"/tasks/{name}/run",
-                    "methods": ["POST"],
-                    "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
-                })
+                payload.append(
+                    {
+                        "kind": "task",
+                        "name": name,
+                        "endpoint": f"/tasks/{name}/run",
+                        "methods": ["POST"],
+                        "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
+                    }
+                )
         except Exception:
             pass
         # Read-only introspection surfaces (#1086). Webhooks and
@@ -1045,22 +1058,26 @@ async def main():
         # off a single well-known. Listing them alongside the run
         # entries keeps /.well-known/agent-runs.json as the canonical
         # discovery doc rather than requiring a second well-known.
-        payload.append({
-            "kind": "webhooks",
-            "name": "webhooks",
-            "endpoint": "/webhooks",
-            "methods": ["GET"],
-            "auth": "none",
-            "reactive": True,
-        })
-        payload.append({
-            "kind": "continuations",
-            "name": "continuations",
-            "endpoint": "/continuations",
-            "methods": ["GET"],
-            "auth": "none",
-            "reactive": True,
-        })
+        payload.append(
+            {
+                "kind": "webhooks",
+                "name": "webhooks",
+                "endpoint": "/webhooks",
+                "methods": ["GET"],
+                "auth": "none",
+                "reactive": True,
+            }
+        )
+        payload.append(
+            {
+                "kind": "continuations",
+                "name": "continuations",
+                "endpoint": "/continuations",
+                "methods": ["GET"],
+                "auth": "none",
+                "reactive": True,
+            }
+        )
         return JSONResponse(payload)
 
     async def trigger_handler(request: Request) -> JSONResponse:
@@ -1125,9 +1142,7 @@ async def main():
             if _global_token:
                 _hdr = request.headers.get("Authorization", "")
                 auth_header_present = bool(_hdr)
-                if _hdr and hmac_mod.compare_digest(
-                    f"Bearer {_global_token}", _hdr
-                ):
+                if _hdr and hmac_mod.compare_digest(f"Bearer {_global_token}", _hdr):
                     auth_token_validated = True
             else:
                 # No token configured — _check_trigger_auth will reject anyway.
@@ -1138,9 +1153,7 @@ async def main():
                 harness_triggers_requests_total.labels(method=request.method, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         # Bearer auth: reject BEFORE buffering if token doesn't match.
-        if (not item.secret_env_var
-                and os.environ.get("TRIGGERS_AUTH_TOKEN", "").strip()
-                and not auth_token_validated):
+        if not item.secret_env_var and os.environ.get("TRIGGERS_AUTH_TOKEN", "").strip() and not auth_token_validated:
             trigger_runner._running.discard(endpoint)
             if harness_triggers_requests_total is not None:
                 harness_triggers_requests_total.labels(method=request.method, code="401").inc()
@@ -1210,6 +1223,7 @@ async def main():
         # outside a fenced block.
         def _scrub_header_value(_v: str) -> str:
             return _v.replace("\r", " ").replace("\n", " ")
+
         filtered_headers = "\n".join(
             f"{k}: {_scrub_header_value(v)}"
             for k, v in request.headers.items()
@@ -1292,6 +1306,7 @@ async def main():
                     if not _success and _error:
                         _tg_payload["error"] = _error[:512]
                     from events import get_event_stream as _ges
+
                     _ges().publish("trigger.fired", _tg_payload, agent_id=AGENT_NAME)
                 except Exception:  # pragma: no cover
                     pass
@@ -1313,9 +1328,7 @@ async def main():
             _scheduled = executor.track_background(_fire(), source="trigger-fire")
             if _scheduled is None:
                 trigger_runner._running.discard(endpoint)
-                logger.error(
-                    f"Trigger '{item.name}': shed — background-task cap reached"
-                )
+                logger.error(f"Trigger '{item.name}': shed — background-task cap reached")
                 if harness_triggers_requests_total is not None:
                     harness_triggers_requests_total.labels(method=request.method, code="503").inc()
                 return JSONResponse({"error": "overloaded"}, status_code=503)
@@ -1538,9 +1551,7 @@ async def main():
         from prompt_env import resolve_prompt_env  # noqa: E402
 
         delivery_id = str(uuid.uuid4())
-        prompt = resolve_prompt_env(
-            f"Heartbeat check. Follow these instructions:\n\n{content}"
-        )
+        prompt = resolve_prompt_env(f"Heartbeat check. Follow these instructions:\n\n{content}")
         message = Message(
             prompt=prompt,
             session_id=HEARTBEAT_SESSION,
@@ -1588,22 +1599,35 @@ async def main():
             logger.warning("heartbeat_handler: failed to load HEARTBEAT.md: %s", exc)
             loaded = None
         import heartbeat as _hb_module  # late import — matches load_heartbeat pattern
+
         _fire_snap = _hb_module.snapshot() if hasattr(_hb_module, "snapshot") else {}
         if not loaded:
-            return JSONResponse({
-                "enabled": False, "schedule": None, "model": None,
-                "backend_id": None, "consensus": [], "max_tokens": None,
-                **_fire_snap,
-            })
+            return JSONResponse(
+                {
+                    "enabled": False,
+                    "schedule": None,
+                    "model": None,
+                    "backend_id": None,
+                    "consensus": [],
+                    "max_tokens": None,
+                    **_fire_snap,
+                }
+            )
         schedule, _content, model, backend_id, consensus, max_tokens = loaded
         from dataclasses import asdict
-        return JSONResponse({
-            "enabled": True, "schedule": schedule, "model": model,
-            "backend_id": backend_id, "consensus": [asdict(e) for e in consensus],
-            "max_tokens": max_tokens,
-            # #1087 — fire bookkeeping for dashboard "when next?" column.
-            **_fire_snap,
-        })
+
+        return JSONResponse(
+            {
+                "enabled": True,
+                "schedule": schedule,
+                "model": model,
+                "backend_id": backend_id,
+                "consensus": [asdict(e) for e in consensus],
+                "max_tokens": max_tokens,
+                # #1087 — fire bookkeeping for dashboard "when next?" column.
+                **_fire_snap,
+            }
+        )
 
     async def triggers_handler(request: Request) -> JSONResponse:
         """Return a snapshot of currently registered trigger endpoints."""
@@ -1665,6 +1689,7 @@ async def main():
             return JSONResponse({"ok": False, "errors": ["request body could not be read"]}, status_code=400)
         try:
             import json as _json_for_validate
+
             body = _json_for_validate.loads(_raw.decode("utf-8"))
         except Exception:
             return JSONResponse({"ok": False, "errors": ["request body must be JSON"]}, status_code=400)
@@ -1690,6 +1715,7 @@ async def main():
             )
 
         from utils import FrontmatterTooLarge, parse_frontmatter, parse_frontmatter_raw
+
         errors: list[str] = []
         parsed: dict[str, object] = {}
         try:
@@ -1729,10 +1755,7 @@ async def main():
             if not raw_fields.get("schedule"):
                 errors.append("heartbeat: missing 'schedule'")
         else:
-            errors.append(
-                f"unknown kind={kind!r}; expected one of "
-                "job/task/trigger/continuation/webhook/heartbeat"
-            )
+            errors.append(f"unknown kind={kind!r}; expected one of " "job/task/trigger/continuation/webhook/heartbeat")
 
         return JSONResponse({"ok": not errors, "errors": errors, "parsed": parsed})
 
@@ -1746,14 +1769,10 @@ async def main():
         """
         if _conversations_auth_token:
             header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(
-                f"Bearer {_conversations_auth_token}", header
-            ):
+            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         _routing = getattr(_executor, "_routing", None) if _executor else None
-        _default_id = (
-            getattr(_executor, "_default_backend_id", None) if _executor else None
-        )
+        _default_id = getattr(_executor, "_default_backend_id", None) if _executor else None
 
         def _entry_json(entry):
             if entry is None:
@@ -1762,11 +1781,13 @@ async def main():
 
         _kinds = ("a2a", "heartbeat", "job", "task", "trigger", "continuation")
         _routing_json = {k: _entry_json(getattr(_routing, k, None) if _routing else None) for k in _kinds}
-        return JSONResponse({
-            "default": _default_id,
-            "default_routing": _entry_json(_routing.default if _routing else None),
-            "routing": _routing_json,
-        })
+        return JSONResponse(
+            {
+                "default": _default_id,
+                "default_routing": _entry_json(_routing.default if _routing else None),
+                "routing": _routing_json,
+            }
+        )
 
     # OTel Traces — in-cluster span store (#otel-in-cluster). Serves
     # the Jaeger v1 query shape the dashboard's Traces view already
@@ -1777,6 +1798,7 @@ async def main():
     # is localhost-only and fast.
     async def _fetch_remote_traces(url: str) -> list[dict]:
         import httpx
+
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
                 r = await client.get(f"{url.rstrip('/')}/api/traces", params={"limit": 500})
@@ -1794,6 +1816,7 @@ async def main():
         /api/traces/{id} so we ask for the specific trace instead.
         """
         import httpx
+
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
                 r = await client.get(f"{url.rstrip('/')}/api/traces/{trace_id}")
@@ -1856,9 +1879,7 @@ async def main():
         # backend /api/traces endpoints (CONVERSATIONS_AUTH_TOKEN).
         if _conversations_auth_token:
             header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(
-                f"Bearer {_conversations_auth_token}", header
-            ):
+            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         nonlocal _otel_traces_list_cache
         try:
@@ -1877,6 +1898,7 @@ async def main():
         # filter/pre-sort so the hot path for limit/service variants
         # still works without a fresh fan-out.
         import asyncio as _asyncio
+
         now = time.monotonic()
         traces: list[dict] | None = None
         if _otel_traces_list_cache is not None:
@@ -1894,6 +1916,7 @@ async def main():
                 if traces is None:
                     try:
                         from otel import get_in_memory_traces  # type: ignore
+
                         local = get_in_memory_traces()
                     except Exception as exc:  # pragma: no cover - defensive
                         logger.warning("otel_traces_list_handler failed: %r", exc)
@@ -1901,10 +1924,12 @@ async def main():
                     backend_urls = _configured_backend_urls()
                     remote_lists: list[list[dict]] = []
                     if backend_urls:
-                        remote_lists = list(await _asyncio.gather(
-                            *[_fetch_remote_traces(u) for u in backend_urls],
-                            return_exceptions=False,
-                        ))
+                        remote_lists = list(
+                            await _asyncio.gather(
+                                *[_fetch_remote_traces(u) for u in backend_urls],
+                                return_exceptions=False,
+                            )
+                        )
                     traces = _merge_trace_lists([local, *remote_lists])
                     _otel_traces_list_cache = (
                         time.monotonic() + OTEL_TRACES_LIST_CACHE_TTL,
@@ -1912,15 +1937,15 @@ async def main():
                     )
         if service:
             traces = [
-                t for t in traces
-                if any(
-                    (s.get("process") or {}).get("serviceName") == service
-                    for s in t.get("spans") or []
-                )
+                t
+                for t in traces
+                if any((s.get("process") or {}).get("serviceName") == service for s in t.get("spans") or [])
             ]
+
         # Newest-first by the earliest span start time in each trace.
         def _start(t: dict) -> int:
             return min((s.get("startTime") or 0) for s in (t.get("spans") or [{"startTime": 0}]))
+
         traces.sort(key=_start, reverse=True)
         return JSONResponse({"data": traces[:limit], "total": len(traces)})
 
@@ -1928,21 +1953,19 @@ async def main():
         # #1267: bearer-gate parity.
         if _conversations_auth_token:
             header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(
-                f"Bearer {_conversations_auth_token}", header
-            ):
+            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         trace_id = request.path_params.get("trace_id") or ""
         # #1268: refuse anything that isn't a 32-hex W3C trace_id to close
         # the path-smuggling surface that otherwise lets callers inject
         # query/fragment/path segments into the backend URL template.
         import re as _re
+
         if not _re.fullmatch(r"[0-9a-fA-F]{32}", trace_id):
-            return JSONResponse(
-                {"error": "trace_id must be 32 hex chars"}, status_code=400
-            )
+            return JSONResponse({"error": "trace_id must be 32 hex chars"}, status_code=400)
         try:
             from otel import get_in_memory_traces  # type: ignore
+
             local_all = get_in_memory_traces()
         except Exception:
             local_all = []
@@ -1950,14 +1973,17 @@ async def main():
         # merge the entire local ring just to find one id (#708).
         local = [t for t in local_all if t.get("traceID") == trace_id]
         import asyncio as _asyncio
+
         backend_urls = _configured_backend_urls()
         remote_lists: list[list[dict]] = []
         if backend_urls:
             # Per-id fetch instead of 500-trace fan-out (#708).
-            remote_lists = list(await _asyncio.gather(
-                *[_fetch_remote_trace_by_id(u, trace_id) for u in backend_urls],
-                return_exceptions=False,
-            ))
+            remote_lists = list(
+                await _asyncio.gather(
+                    *[_fetch_remote_trace_by_id(u, trace_id) for u in backend_urls],
+                    return_exceptions=False,
+                )
+            )
         merged = _merge_trace_lists([local, *remote_lists])
         match = next((t for t in merged if t.get("traceID") == trace_id), None)
         if match is None:
@@ -1979,6 +2005,7 @@ async def main():
         harness_event_stream_subscribers,
         harness_event_stream_validation_errors_total,
     )
+
     _get_event_stream().attach_metrics(
         subscribers=harness_event_stream_subscribers,
         published_total=harness_event_stream_events_published_total,
@@ -2015,6 +2042,7 @@ async def main():
 
         async def _gen():
             import json as _json
+
             # #1229: Subscribe FIRST so no event published during replay is
             # lost. Snapshot the stream's current _next_id right before
             # subscribing; replay covers ids <= snapshot, live covers ids
@@ -2042,9 +2070,7 @@ async def main():
 
             # Live subscription with a keepalive ticker running alongside.
             sub_task: asyncio.Task = asyncio.ensure_future(sub_iter.__anext__())
-            ka_task: asyncio.Task = asyncio.ensure_future(
-                asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC)
-            )
+            ka_task: asyncio.Task = asyncio.ensure_future(asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC))
             try:
                 while True:
                     done, _pending = await asyncio.wait(
@@ -2071,9 +2097,7 @@ async def main():
                         sub_task = asyncio.ensure_future(sub_iter.__anext__())
                     if ka_task in done:
                         yield b": keepalive\n\n"
-                        ka_task = asyncio.ensure_future(
-                            asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC)
-                        )
+                        ka_task = asyncio.ensure_future(asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC))
             except asyncio.CancelledError:
                 raise
             finally:
@@ -2323,6 +2347,7 @@ async def main():
         backends (e.g. large image pulls on first run) are not prematurely released.
         """
         import httpx
+
         logger.info("Waiting for all backends to become healthy before firing run-once jobs/tasks.")
         warn_deadline = time.monotonic() + _backends_ready_warn_after
         _warned = False
@@ -2347,10 +2372,7 @@ async def main():
                     *[client.get(b.url.rstrip("/") + "/health") for b in backend_configs],
                     return_exceptions=True,
                 )
-                all_ok = all(
-                    not isinstance(r, Exception) and r.status_code == 200
-                    for r in results
-                )
+                all_ok = all(not isinstance(r, Exception) and r.status_code == 200 for r in results)
                 if all_ok:
                     logger.info("All backends healthy — releasing run-once jobs/tasks.")
                     backends_ready.set()
@@ -2358,7 +2380,8 @@ async def main():
                 if not _warned and time.monotonic() >= warn_deadline:
                     _warned = True
                     unhealthy = [
-                        b.id for b, r in zip(backend_configs, results)
+                        b.id
+                        for b, r in zip(backend_configs, results)
                         if isinstance(r, Exception) or r.status_code != 200
                     ]
                     logger.warning(
@@ -2366,7 +2389,7 @@ async def main():
                         _backends_ready_warn_after,
                         unhealthy,
                     )
-                delay = min(_BACKOFF_BASE * (2 ** _attempt), _BACKOFF_MAX)
+                delay = min(_BACKOFF_BASE * (2**_attempt), _BACKOFF_MAX)
                 delay += random.uniform(0, delay * 0.1)
                 _attempt += 1
                 await asyncio.sleep(delay)
@@ -2461,13 +2484,9 @@ async def main():
             logger.warning("webhook_runner.close() failed during shutdown: %r", exc)
         # #1275: drain in-flight continuation fires before bus-worker exit.
         try:
-            await continuation_runner.close(
-                timeout=float(os.environ.get("CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT", "5"))
-            )
+            await continuation_runner.close(timeout=float(os.environ.get("CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT", "5")))
         except Exception as exc:  # noqa: BLE001 — shutdown must continue
-            logger.warning(
-                "continuation_runner.close() failed during shutdown: %r", exc
-            )
+            logger.warning("continuation_runner.close() failed during shutdown: %r", exc)
         # Phase 5: backend httpx clients (#861). Close only AFTER the
         # bus worker has drained — otherwise in-flight process_bus calls
         # see a closed client and surface as "client has been closed".

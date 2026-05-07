@@ -310,9 +310,7 @@ def start_hook_decision_dispatcher(loop: "asyncio.AbstractEventLoop") -> "asynci
                         try:
                             listener(event)
                         except Exception as exc:  # pragma: no cover — best-effort side channel
-                            logger.warning(
-                                "hook.decision listener %r raised: %r", listener, exc
-                            )
+                            logger.warning("hook.decision listener %r raised: %r", listener, exc)
                             _bump_listener_error(listener, exc)
             except asyncio.CancelledError:
                 raise
@@ -351,8 +349,11 @@ def publish_hook_decision(event: HookDecisionEvent) -> None:
             logger.warning(
                 "hook.decision queue full (cap=%d, dropped=%d total) — "
                 "dropping event agent=%r session=%r tool=%r (#928).",
-                _HOOK_DECISION_QUEUE_MAX, _hook_decision_dropped,
-                event.agent, event.session_id, event.tool,
+                _HOOK_DECISION_QUEUE_MAX,
+                _hook_decision_dropped,
+                event.agent,
+                event.session_id,
+                event.tool,
             )
             # Export to Prometheus (#1085). Previously the drop was
             # tracked only in _hook_decision_dropped without a scrape
@@ -397,19 +398,17 @@ def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
         # backend's own OTel span event still captures the decision.
         if event.agent not in ("claude", "codex", "gemini"):
             logger.warning(
-                "hook.decision SSE drop: unknown agent %r (expected one of "
-                "claude/codex/gemini) (#1149)", event.agent,
+                "hook.decision SSE drop: unknown agent %r (expected one of " "claude/codex/gemini) (#1149)",
+                event.agent,
             )
             return
         if event.decision not in ("allow", "deny", "warn"):
             logger.warning(
-                "hook.decision SSE drop: unknown decision %r (expected one "
-                "of allow/deny/warn) (#1149)", event.decision,
+                "hook.decision SSE drop: unknown decision %r (expected one " "of allow/deny/warn) (#1149)",
+                event.decision,
             )
             return
-        sid_hash = hashlib.sha256(
-            (event.session_id or "").encode("utf-8")
-        ).hexdigest()[:12]
+        sid_hash = hashlib.sha256((event.session_id or "").encode("utf-8")).hexdigest()[:12]
         payload: dict = {
             "backend": event.agent,
             "session_id_hash": sid_hash or "0" * 12,
@@ -421,9 +420,7 @@ def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
         if event.reason:
             payload["reason"] = event.reason
         agent_name = os.environ.get("AGENT_NAME", "witwave")
-        get_event_stream().publish(
-            "hook.decision", payload, agent_id=agent_name
-        )
+        get_event_stream().publish("hook.decision", payload, agent_id=agent_name)
     except Exception:  # pragma: no cover — fan-out is best-effort
         logger.debug("hook.decision SSE publish failed", exc_info=True)
 

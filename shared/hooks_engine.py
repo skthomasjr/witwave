@@ -26,6 +26,7 @@ Design notes
 See ``backends/claude/hooks.py`` for the original motivating documentation and the
 ``hooks.yaml`` schema.
 """
+
 from __future__ import annotations
 
 import json
@@ -170,8 +171,7 @@ def _predicate_rm_rf_root(tool_input: dict[str, Any]) -> bool:
             for t in rest
         )
         has_force = any(
-            t in ("-f", "--force", "--no-preserve-root")
-            or (t.startswith("-") and not t.startswith("--") and "f" in t)
+            t in ("-f", "--force", "--no-preserve-root") or (t.startswith("-") and not t.startswith("--") and "f" in t)
             for t in rest
         )
         if not (has_recursive and has_force):
@@ -205,11 +205,19 @@ def _predicate_git_force_push_main(tool_input: dict[str, Any]) -> bool:
             if j < len(rest) and rest[j] == "push":
                 push_args = rest[j + 1 :]
                 has_force = any(
-                    a == "-f" or a == "--force" or a == "--force-with-lease" or a.startswith("--force=") or a.startswith("--force-with-lease=")
+                    a == "-f"
+                    or a == "--force"
+                    or a == "--force-with-lease"
+                    or a.startswith("--force=")
+                    or a.startswith("--force-with-lease=")
                     for a in push_args
                 )
                 targets_main = any(
-                    a in ("main", "master") or a.endswith(":main") or a.endswith(":master") or a.endswith("/main") or a.endswith("/master")
+                    a in ("main", "master")
+                    or a.endswith(":main")
+                    or a.endswith(":master")
+                    or a.endswith("/main")
+                    or a.endswith("/master")
                     for a in push_args
                 )
                 if has_force and targets_main:
@@ -404,9 +412,7 @@ def _parse_extension_rule(raw: dict[str, Any]) -> Rule | None:
     deny_pat = raw.get("deny_if_match")
     warn_pat = raw.get("warn_if_match")
     if deny_pat and warn_pat:
-        logger.warning(
-            "hooks.yaml: rule %r has both deny_if_match and warn_if_match — preferring deny.", name
-        )
+        logger.warning("hooks.yaml: rule %r has both deny_if_match and warn_if_match — preferring deny.", name)
         _bump_config_error("both_patterns")
         warn_pat = None
     if not deny_pat and not warn_pat:

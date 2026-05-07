@@ -4,6 +4,7 @@ Provides a single implementation of _append_log with fcntl-based locking
 and rotation so that bug fixes and enhancements are applied once rather
 than across four separate copies.
 """
+
 import fcntl
 import logging
 import os
@@ -43,6 +44,7 @@ def _get_dir_lock(log_dir: str) -> threading.Lock:
             _dir_locks[log_dir] = lock
         return lock
 
+
 # Optional Prometheus counter surface. Callers set this to a Counter
 # with .inc(); we bump on every re-warn.
 writability_failed_total = None  # type: ignore[assignment]
@@ -71,7 +73,9 @@ def _check_writability(log_dir: str) -> None:
                     "log_utils: directory %r is not writable (%s); log appends will "
                     "silently fail until the mount is fixed. Re-warning every %d "
                     "subsequent appends.",
-                    log_dir, exc, _WRITABILITY_REARM_EVERY,
+                    log_dir,
+                    exc,
+                    _WRITABILITY_REARM_EVERY,
                 )
                 if writability_failed_total is not None:
                     try:
@@ -99,7 +103,9 @@ def _check_writability(log_dir: str) -> None:
                 logger.error(
                     "log_utils: directory %r is STILL not writable (%s); "
                     "%d silent append attempt(s) since the last warning.",
-                    log_dir, exc, state,
+                    log_dir,
+                    exc,
+                    state,
                 )
                 if writability_failed_total is not None:
                     try:

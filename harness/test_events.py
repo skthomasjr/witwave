@@ -60,6 +60,7 @@ class _MockGauge:
 def _fresh_stream(queue_max: int = 1000, ring_max: int = 1000):
     # Import lazily so sys.path is set up.
     from events import EventStream
+
     return EventStream(queue_max=queue_max, ring_max=ring_max)
 
 
@@ -195,12 +196,8 @@ class EventStreamTests(unittest.IsolatedAsyncioTestCase):
             agent_id="iris",
         )
         self.assertIsNone(out)
-        self.assertEqual(
-            err_counter.labelled.get((("type", "job.fired"),), 0), 1
-        )
-        self.assertEqual(
-            drop_counter.labelled.get((("reason", "validation"),), 0), 1
-        )
+        self.assertEqual(err_counter.labelled.get((("type", "job.fired"),), 0), 1)
+        self.assertEqual(drop_counter.labelled.get((("reason", "validation"),), 0), 1)
 
         # A well-formed publish right after must still deliver and must be
         # the first thing the subscriber sees.
@@ -250,230 +247,280 @@ class EventSchemaTests(unittest.TestCase):
 
     def test_job_fired_missing_field(self) -> None:
         from event_schema import validate_envelope
+
         err = validate_envelope(self._env("job.fired", {"name": "j"}))
         self.assertIsNotNone(err)
 
     def test_webhook_delivered_host_only(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "webhook.delivered",
-            {
-                "name": "sub1",
-                "url_host": "example.com",
-                "status_code": 200,
-                "duration_ms": 17,
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "webhook.delivered",
+                {
+                    "name": "sub1",
+                    "url_host": "example.com",
+                    "status_code": 200,
+                    "duration_ms": 17,
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     def test_hook_decision_backend_enum(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "hook.decision",
-            {
-                "backend": "anthropic",
-                "session_id_hash": "abc123",
-                "tool": "Bash",
-                "decision": "allow",
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "hook.decision",
+                {
+                    "backend": "anthropic",
+                    "session_id_hash": "abc123",
+                    "tool": "Bash",
+                    "decision": "allow",
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_unknown_type_rejected(self) -> None:
         from event_schema import validate_envelope
+
         err = validate_envelope(self._env("made.up", {}))
         self.assertIsNotNone(err)
 
     def test_continuation_fired_upstream_kind(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "continuation.fired",
-            {
-                "name": "followup",
-                "upstream_kind": "job",
-                "upstream_name": "daily-report",
-                "duration_ms": 3,
-                "outcome": "success",
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "continuation.fired",
+                {
+                    "name": "followup",
+                    "upstream_kind": "job",
+                    "upstream_name": "daily-report",
+                    "duration_ms": 3,
+                    "outcome": "success",
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     # ---- Phase-3 backend-emitted types (#1110) ---------------------
 
     def test_conversation_turn_ok(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "conversation.turn",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "assistant",
-                "content_bytes": 42,
-                "model": "claude-opus-4-6",
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "conversation.turn",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "assistant",
+                    "content_bytes": 42,
+                    "model": "claude-opus-4-6",
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     def test_conversation_turn_bad_role(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "conversation.turn",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "system",  # not in enum
-                "content_bytes": 42,
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "conversation.turn",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "system",  # not in enum
+                    "content_bytes": 42,
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_conversation_turn_hash_length(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "conversation.turn",
-            {
-                "session_id_hash": "tooshort",
-                "role": "user",
-                "content_bytes": 1,
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "conversation.turn",
+                {
+                    "session_id_hash": "tooshort",
+                    "role": "user",
+                    "content_bytes": 1,
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_tool_use_ok(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "tool.use",
-            {
-                "session_id_hash": "abcdef012345",
-                "tool": "Bash",
-                "duration_ms": 17,
-                "outcome": "ok",
-                "result_size_bytes": 128,
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "tool.use",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "tool": "Bash",
+                    "duration_ms": 17,
+                    "outcome": "ok",
+                    "result_size_bytes": 128,
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     def test_tool_use_bad_outcome(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "tool.use",
-            {
-                "session_id_hash": "abcdef012345",
-                "tool": "Bash",
-                "duration_ms": 17,
-                "outcome": "success",  # not in enum (ok|error|denied)
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "tool.use",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "tool": "Bash",
+                    "duration_ms": 17,
+                    "outcome": "success",  # not in enum (ok|error|denied)
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_trace_span_ok_with_session_hash(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "trace.span",
-            {
-                "session_id_hash": "abcdef012345",
-                "span_name": "llm.request",
-                "duration_ms": 120,
-                "status": "ok",
-                "service": "claude-backend",
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "trace.span",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "span_name": "llm.request",
+                    "duration_ms": 120,
+                    "status": "ok",
+                    "service": "claude-backend",
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     def test_trace_span_ok_without_session_hash(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "trace.span",
-            {
-                "span_name": "mcp.handler",
-                "duration_ms": 3,
-                "status": "error",
-                "service": "codex-backend",
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "trace.span",
+                {
+                    "span_name": "mcp.handler",
+                    "duration_ms": 3,
+                    "status": "error",
+                    "service": "codex-backend",
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     # ---- Phase-4 conversation.chunk (#1110) -----------------------
 
     def test_conversation_chunk_ok(self) -> None:
         from event_schema import validate_envelope
-        ok = validate_envelope(self._env(
-            "conversation.chunk",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "assistant",
-                "seq": 3,
-                "content": "hello world",
-                "final": False,
-            },
-        ))
+
+        ok = validate_envelope(
+            self._env(
+                "conversation.chunk",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "assistant",
+                    "seq": 3,
+                    "content": "hello world",
+                    "final": False,
+                },
+            )
+        )
         self.assertIsNone(ok)
 
     def test_conversation_chunk_final_flag_required(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "conversation.chunk",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "assistant",
-                "seq": 3,
-                "content": "hi",
-                # missing final
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "conversation.chunk",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "assistant",
+                    "seq": 3,
+                    "content": "hi",
+                    # missing final
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_conversation_chunk_role_enum(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "conversation.chunk",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "system",  # not in enum
-                "seq": 0,
-                "content": "",
-                "final": True,
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "conversation.chunk",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "system",  # not in enum
+                    "seq": 0,
+                    "content": "",
+                    "final": True,
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_conversation_chunk_final_must_be_bool(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "conversation.chunk",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "user",
-                "seq": 0,
-                "content": "hi",
-                "final": "true",  # string, not bool
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "conversation.chunk",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "user",
+                    "seq": 0,
+                    "content": "hi",
+                    "final": "true",  # string, not bool
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_conversation_chunk_seq_nonneg(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "conversation.chunk",
-            {
-                "session_id_hash": "abcdef012345",
-                "role": "assistant",
-                "seq": -1,
-                "content": "x",
-                "final": False,
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "conversation.chunk",
+                {
+                    "session_id_hash": "abcdef012345",
+                    "role": "assistant",
+                    "seq": -1,
+                    "content": "x",
+                    "final": False,
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
     def test_trace_span_bad_status(self) -> None:
         from event_schema import validate_envelope
-        err = validate_envelope(self._env(
-            "trace.span",
-            {
-                "span_name": "shell",
-                "duration_ms": 3,
-                "status": "timeout",  # not in enum (ok|error)
-                "service": "gemini-backend",
-            },
-        ))
+
+        err = validate_envelope(
+            self._env(
+                "trace.span",
+                {
+                    "span_name": "shell",
+                    "duration_ms": 3,
+                    "status": "timeout",  # not in enum (ok|error)
+                    "service": "gemini-backend",
+                },
+            )
+        )
         self.assertIsNotNone(err)
 
 

@@ -14,6 +14,7 @@ def test_backend_id_regex_blocks_underscore(tmp_path, monkeypatch):
     """If the id regex ever permits '_', two distinct ids would map to the
     same env-var name. This test fails loudly if that guard weakens."""
     import sys
+
     sys.path.insert(0, str((tmp_path.parent.parent / "harness").resolve()))
     try:
         from backends.a2a import A2ABackend

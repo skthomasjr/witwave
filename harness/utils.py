@@ -31,12 +31,14 @@ def parse_duration(value: str) -> float:
     seconds = int(m.group(3) or 0)
     return hours * 3600 + minutes * 60 + seconds
 
+
 from dataclasses import dataclass
 
 
 @dataclass
 class ConsensusEntry:
     """One participant in a consensus fan-out."""
+
     backend: str
     model: str | None = None
 
@@ -58,10 +60,12 @@ def parse_consensus(value) -> list[ConsensusEntry]:
     entries = []
     for item in value:
         if isinstance(item, dict) and item.get("backend"):
-            entries.append(ConsensusEntry(
-                backend=str(item["backend"]),
-                model=str(item["model"]) if item.get("model") else None,
-            ))
+            entries.append(
+                ConsensusEntry(
+                    backend=str(item["backend"]),
+                    model=str(item["model"]) if item.get("model") else None,
+                )
+            )
     return entries
 
 
@@ -73,17 +77,13 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)
 # either a bug in the authoring tool or a YAML-bomb attempt; we reject
 # before calling safe_load so a malicious pin cannot pin RAM on
 # repeated watcher ticks.
-PARSE_FRONTMATTER_MAX_YAML_BYTES = int(
-    os.environ.get("PARSE_FRONTMATTER_MAX_YAML_BYTES", str(64 * 1024))
-)
+PARSE_FRONTMATTER_MAX_YAML_BYTES = int(os.environ.get("PARSE_FRONTMATTER_MAX_YAML_BYTES", str(64 * 1024)))
 # Cap on the whole .md file passed through read_md_bounded() (#1038).
 # Runners scan dirs on every watcher tick so a 50 MB .md tab-completed
 # by accident would pin significant RAM across all 6 runners. 128 KiB
 # matches the largest real HEARTBEAT/jobs corpus by 3 orders of
 # magnitude and still leaves headroom.
-PARSE_FRONTMATTER_MAX_FILE_BYTES = int(
-    os.environ.get("PARSE_FRONTMATTER_MAX_FILE_BYTES", str(128 * 1024))
-)
+PARSE_FRONTMATTER_MAX_FILE_BYTES = int(os.environ.get("PARSE_FRONTMATTER_MAX_FILE_BYTES", str(128 * 1024)))
 
 
 class FrontmatterTooLarge(ValueError):
@@ -182,11 +182,14 @@ def read_md_bounded(path: str) -> str | None:
 
     if st.st_size > PARSE_FRONTMATTER_MAX_FILE_BYTES:
         import logging as _logging
+
         _logging.getLogger(__name__).warning(
             "read_md_bounded: %r is %d bytes (>%d cap); skipping. "
             "Raise PARSE_FRONTMATTER_MAX_FILE_BYTES if the file is "
             "legitimate or trim it upstream.",
-            path, st.st_size, PARSE_FRONTMATTER_MAX_FILE_BYTES,
+            path,
+            st.st_size,
+            PARSE_FRONTMATTER_MAX_FILE_BYTES,
         )
         _MD_CACHE.pop(path, None)
         return None
@@ -222,6 +225,7 @@ def read_md_bounded(path: str) -> str | None:
             _MD_CACHE_EVICTIONS += 1
             try:
                 from metrics import harness_md_cache_evictions_total as _hmce  # type: ignore
+
                 if _hmce is not None:
                     _hmce.inc()
             except Exception:
@@ -333,7 +337,9 @@ async def run_awatch_loop(
         # will log its own lifecycle signal for each entry.
         if was_missing is True:
             logger_.info(
-                "%s directory %r now present — starting watcher", watcher_name, directory,
+                "%s directory %r now present — starting watcher",
+                watcher_name,
+                directory,
             )
         was_missing = False
 

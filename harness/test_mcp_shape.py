@@ -33,17 +33,13 @@ def test_non_dict_input_returns_empty_pair():
 
 
 def test_stdio_entry_accepted():
-    valid, rejected = validate_mcp_servers_shape(
-        {"kube": {"command": "/usr/local/bin/mcp-kubernetes"}}
-    )
+    valid, rejected = validate_mcp_servers_shape({"kube": {"command": "/usr/local/bin/mcp-kubernetes"}})
     assert "kube" in valid
     assert rejected == []
 
 
 def test_http_entry_accepted():
-    valid, rejected = validate_mcp_servers_shape(
-        {"helm": {"url": "http://mcp-helm.svc:8000"}}
-    )
+    valid, rejected = validate_mcp_servers_shape({"helm": {"url": "http://mcp-helm.svc:8000"}})
     assert "helm" in valid
     assert rejected == []
 
@@ -57,9 +53,7 @@ def test_entry_value_not_dict_rejected():
 
 
 def test_entry_with_both_command_and_url_rejected():
-    valid, rejected = validate_mcp_servers_shape(
-        {"split-brain": {"command": "foo", "url": "http://bar"}}
-    )
+    valid, rejected = validate_mcp_servers_shape({"split-brain": {"command": "foo", "url": "http://bar"}})
     assert valid == {}
     assert len(rejected) == 1
     assert "both" in rejected[0][1]

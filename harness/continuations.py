@@ -49,8 +49,7 @@ CONTINUATION_MAX_CONCURRENT_FIRES = int(os.environ.get("CONTINUATION_MAX_CONCURR
 # event loop. Set to 0 to disable (not recommended). Default is 5×the
 # per-continuation cap, matching the webhook pattern.
 CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL = int(
-    os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL",
-                   str(CONTINUATION_MAX_CONCURRENT_FIRES * 5))
+    os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL", str(CONTINUATION_MAX_CONCURRENT_FIRES * 5))
 )
 
 # TTL (seconds) for partial fan-in state entries in `_fanin_state`.  Prevents
@@ -64,12 +63,12 @@ class ContinuationItem:
     path: str
     name: str
     continues_after: list[str]  # one or more upstream kind patterns (fnmatch); all must complete (fan-in)
-    content: str              # prompt body
-    on_success: bool = True   # fire on successful upstream completion
-    on_error: bool = False    # fire on upstream error
-    trigger_when: str | None = None   # only fire if upstream response contains this string
-    delay: float | None = None        # seconds to wait before firing
-    session_id: str | None = None     # if None, inherit upstream session_id at fire time
+    content: str  # prompt body
+    on_success: bool = True  # fire on successful upstream completion
+    on_error: bool = False  # fire on upstream error
+    trigger_when: str | None = None  # only fire if upstream response contains this string
+    delay: float | None = None  # seconds to wait before firing
+    session_id: str | None = None  # if None, inherit upstream session_id at fire time
     model: str | None = None
     backend_id: str | None = None
     description: str | None = None
@@ -267,16 +266,18 @@ async def _fire(
         # job/task/trigger/a2a/continuation rather than surfacing as a new
         # root. Without this, every continuation in a chain shows up as
         # an orphan trace in Tempo/Jaeger.
-        response = await bus.send(Message(
-            prompt=prompt,
-            session_id=resolved_session,
-            kind=f"continuation:{item.name}",
-            model=item.model,
-            backend_id=item.backend_id,
-            consensus=item.consensus,
-            max_tokens=item.max_tokens,
-            trace_context=trace_context,
-        ))
+        response = await bus.send(
+            Message(
+                prompt=prompt,
+                session_id=resolved_session,
+                kind=f"continuation:{item.name}",
+                model=item.model,
+                backend_id=item.backend_id,
+                consensus=item.consensus,
+                max_tokens=item.max_tokens,
+                trace_context=trace_context,
+            )
+        )
         if harness_continuation_runs_total is not None:
             harness_continuation_runs_total.labels(name=item.name, status="success").inc()
         item.last_success = time.time()  # #1087
@@ -334,7 +335,8 @@ class ContinuationRunner:
         except asyncio.TimeoutError:
             logger.warning(
                 "continuations: drain timed out after %.1fs; %d fire(s) abandoned.",
-                timeout, len(self._active_fires),
+                timeout,
+                len(self._active_fires),
             )
             for _t in list(self._active_fires):
                 if not _t.done():
@@ -374,9 +376,7 @@ class ContinuationRunner:
         # registered-count metric tracks only enabled continuations; the
         # dispatcher filters on enabled so disabled entries never fire.
         if harness_continuation_items_registered is not None:
-            harness_continuation_items_registered.set(
-                sum(1 for i in self._items.values() if i.enabled)
-            )
+            harness_continuation_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
         if item.enabled:
             logger.info(f"Continuation '{item.name}' registered (continues-after: {item.continues_after}).")
         else:
@@ -449,27 +449,29 @@ class ContinuationRunner:
                 ca = item.continues_after
             else:
                 ca = item.continues_after[0]
-            result.append({
-                "name": item.name,
-                "continues_after": ca,
-                "on_success": item.on_success,
-                "on_error": item.on_error,
-                "trigger_when": item.trigger_when,
-                "delay": item.delay,
-                "description": item.description,
-                "backend_id": item.backend_id,
-                "model": item.model,
-                "consensus": [asdict(e) for e in item.consensus],
-                "max_tokens": item.max_tokens,
-                "max_concurrent_fires": item.max_concurrent_fires,
-                "active_fires": len(self._fires_by_name.get(item.name, set())),
-                "enabled": item.enabled,
-                # #1087 — reactive runner has no next_fire, but the
-                # observed fire timestamps still answer "did it fire?".
-                "next_fire": None,
-                "last_fire": item.last_fire,
-                "last_success": item.last_success,
-            })
+            result.append(
+                {
+                    "name": item.name,
+                    "continues_after": ca,
+                    "on_success": item.on_success,
+                    "on_error": item.on_error,
+                    "trigger_when": item.trigger_when,
+                    "delay": item.delay,
+                    "description": item.description,
+                    "backend_id": item.backend_id,
+                    "model": item.model,
+                    "consensus": [asdict(e) for e in item.consensus],
+                    "max_tokens": item.max_tokens,
+                    "max_concurrent_fires": item.max_concurrent_fires,
+                    "active_fires": len(self._fires_by_name.get(item.name, set())),
+                    "enabled": item.enabled,
+                    # #1087 — reactive runner has no next_fire, but the
+                    # observed fire timestamps still answer "did it fire?".
+                    "next_fire": None,
+                    "last_fire": item.last_fire,
+                    "last_success": item.last_success,
+                }
+            )
         return result
 
     def notify(
@@ -500,10 +502,7 @@ class ContinuationRunner:
             content_matches = item.trigger_when is None or item.trigger_when in response
 
             # Find which pattern(s) in continues_after this upstream kind satisfies.
-            matched_patterns = [
-                p for p in item.continues_after
-                if p == "*" or fnmatch(kind, p)
-            ]
+            matched_patterns = [p for p in item.continues_after if p == "*" or fnmatch(kind, p)]
             if not matched_patterns or not outcome_matches or not content_matches:
                 continue
 
@@ -542,10 +541,7 @@ class ContinuationRunner:
                     self._fanin_state[key] = (_prior_ts, seen)
                 # Every configured pattern must be satisfied by at least one
                 # observed upstream kind.
-                ready = all(
-                    any(p == "*" or fnmatch(kind_seen, p) for kind_seen in seen)
-                    for p in item.continues_after
-                )
+                ready = all(any(p == "*" or fnmatch(kind_seen, p) for kind_seen in seen) for p in item.continues_after)
                 if ready:
                     # Defer state clear until after the throttle check passes
                     # (#656). Clearing before the throttle dropped accumulated
@@ -606,6 +602,7 @@ class ContinuationRunner:
                 self._fanin_state.pop(fanin_key, None)
             self._active_fires.add(_t)
             fires.add(_t)
+
             def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:
                 self._active_fires.discard(t)
                 # Pop-when-empty: drop the per-name set once it's drained so
@@ -616,6 +613,7 @@ class ContinuationRunner:
                     _fires.discard(t)
                     if not _fires:
                         self._fires_by_name.pop(_name, None)
+
             _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:

@@ -92,17 +92,17 @@ def test_leading_trailing_whitespace_stripped():
 @pytest.mark.parametrize(
     "raw",
     [
-        "",                    # empty
-        "  ",                  # whitespace only
-        "30",                  # no unit
-        "30x",                 # unknown unit
-        "x30s",                # unit before number
-        "abc",                 # non-numeric
-        "1.5h",                # decimals not supported
-        "1d",                  # days not supported
-        "-30s",                # negative not supported
-        "30 s",                # internal whitespace
-        "1h 30m",              # internal whitespace between groups
+        "",  # empty
+        "  ",  # whitespace only
+        "30",  # no unit
+        "30x",  # unknown unit
+        "x30s",  # unit before number
+        "abc",  # non-numeric
+        "1.5h",  # decimals not supported
+        "1d",  # days not supported
+        "-30s",  # negative not supported
+        "30 s",  # internal whitespace
+        "1h 30m",  # internal whitespace between groups
     ],
 )
 def test_invalid_raises_value_error(raw):

@@ -59,9 +59,7 @@ HARNESS_EVENTS_URL = os.environ.get("HARNESS_EVENTS_URL", "") or ""
 # a value that already includes the hook-decision suffix we strip it
 # before appending /publish (defensive — both paths live on the same
 # host:port).
-HARNESS_EVENTS_PUBLISH_URL = (
-    os.environ.get("HARNESS_EVENTS_PUBLISH_URL", "") or ""
-)
+HARNESS_EVENTS_PUBLISH_URL = os.environ.get("HARNESS_EVENTS_PUBLISH_URL", "") or ""
 # Canonical: HOOK_EVENTS_AUTH_TOKEN (matches the harness endpoint #859).
 # Back-compat aliases preserve existing deployments during the rename:
 #   HARNESS_EVENTS_AUTH_TOKEN — historical name used by this module
@@ -163,10 +161,7 @@ _NO_LOOP_WARNED: bool = False
 def _build_iso_ts() -> str:
     """RFC3339 ts with millisecond precision from a single clock sample (#1232)."""
     _s = time.time()
-    return (
-        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(_s))
-        + f".{int((_s % 1) * 1000):03d}Z"
-    )
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(_s)) + f".{int((_s % 1) * 1000):03d}Z"
 
 
 def bind_event_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -179,6 +174,7 @@ def bind_event_loop(loop: asyncio.AbstractEventLoop) -> None:
     """
     global _bound_loop
     _bound_loop = loop
+
 
 # Module-level httpx client. Created lazily on first post to avoid
 # instantiating one before the backend's event loop is running.
@@ -233,8 +229,7 @@ def _cb_record(failed: bool) -> None:
                 _cb_open_until = time.monotonic() + HOOK_POST_CB_COOLDOWN_SECONDS
                 _cb_recent.clear()
                 logger.warning(
-                    "hook.decision circuit breaker OPEN: %.2f failure ratio "
-                    "over %d posts; shedding for %.1fs",
+                    "hook.decision circuit breaker OPEN: %.2f failure ratio " "over %d posts; shedding for %.1fs",
                     ratio,
                     HOOK_POST_CB_WINDOW,
                     HOOK_POST_CB_COOLDOWN_SECONDS,
@@ -277,10 +272,7 @@ async def _post_once_to(url: str, body: dict[str, Any]) -> None:
         global _auth_warned, _auth_dropped_since_warn
         with _auth_warn_lock:
             _auth_dropped_since_warn += 1
-            _should_warn = (
-                not _auth_warned
-                or _auth_dropped_since_warn >= _AUTH_REARM_EVERY
-            )
+            _should_warn = not _auth_warned or _auth_dropped_since_warn >= _AUTH_REARM_EVERY
             if _should_warn:
                 _auth_warned = True
                 _count = _auth_dropped_since_warn
@@ -290,7 +282,8 @@ async def _post_once_to(url: str, body: dict[str, Any]) -> None:
                     "but HOOK_EVENTS_AUTH_TOKEN (and its HARNESS_EVENTS_AUTH_TOKEN/"
                     "TRIGGERS_AUTH_TOKEN aliases) are all empty. %d event(s) dropped "
                     "since the last warning; will re-warn every %d dropped events.",
-                    _count, _AUTH_REARM_EVERY,
+                    _count,
+                    _AUTH_REARM_EVERY,
                 )
         return
     if _cb_is_open():
@@ -320,10 +313,7 @@ async def _post_once_to(url: str, body: dict[str, Any]) -> None:
             global _status_warned, _status_dropped_since_warn
             with _status_warn_lock:
                 _status_dropped_since_warn += 1
-                _should_warn = (
-                    not _status_warned
-                    or _status_dropped_since_warn >= _STATUS_REARM_EVERY
-                )
+                _should_warn = not _status_warned or _status_dropped_since_warn >= _STATUS_REARM_EVERY
                 if _should_warn:
                     _status_warned = True
                     _count = _status_dropped_since_warn
@@ -398,8 +388,7 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
             if not _shed_warned:
                 _shed_warned = True
                 logger.warning(
-                    "hook.decision POST shed: %d in-flight at cap=%d "
-                    "(further shed suppressed until drain)",
+                    "hook.decision POST shed: %d in-flight at cap=%d " "(further shed suppressed until drain)",
                     len(_INFLIGHT),
                     HOOK_POST_MAX_INFLIGHT,
                 )
@@ -507,13 +496,15 @@ def schedule_event_post(
             if _err_msg is not None:
                 logger.warning(
                     "schedule_event_post: dropping invalid %r envelope: %s",
-                    event_type, _err_msg,
+                    event_type,
+                    _err_msg,
                 )
                 return False
         except Exception as exc:  # validator itself blew up — best-effort
             logger.warning(
                 "schedule_event_post: validator raised on %r: %r — dropping",
-                event_type, exc,
+                event_type,
+                exc,
             )
             return False
 
@@ -539,9 +530,7 @@ def schedule_event_post(
                     # concurrent.futures.Future via a thin wrapper that
                     # mimics a done-callback into _INFLIGHT.
                     try:
-                        cf = asyncio.run_coroutine_threadsafe(
-                            _post_once_to(url, envelope), _bound_loop
-                        )
+                        cf = asyncio.run_coroutine_threadsafe(_post_once_to(url, envelope), _bound_loop)
                     except Exception:  # pragma: no cover
                         return False
                     # Use a module-level set of in-flight CF futures
@@ -586,8 +575,7 @@ def schedule_event_post(
             if not _shed_warned:
                 _shed_warned = True
                 logger.warning(
-                    "harness-events POST shed: %d in-flight at cap=%d "
-                    "(further shed suppressed until drain)",
+                    "harness-events POST shed: %d in-flight at cap=%d " "(further shed suppressed until drain)",
                     len(_INFLIGHT),
                     HOOK_POST_MAX_INFLIGHT,
                 )

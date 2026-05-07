@@ -49,15 +49,22 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 _TASKS_MAX_CONCURRENT = int(os.environ.get("TASKS_MAX_CONCURRENT", "0"))
 
 _DAY_ABBREVS = {
-    "sun": "0", "mon": "1", "tue": "2", "wed": "3",
-    "thu": "4", "fri": "5", "sat": "6",
+    "sun": "0",
+    "mon": "1",
+    "tue": "2",
+    "wed": "3",
+    "thu": "4",
+    "fri": "5",
+    "sat": "6",
 }
 
 
 def _translate_day_abbrevs(expr: str) -> str:
     """Replace three-letter day abbreviations with cron numeric equivalents."""
+
     def _replace(m):
         return _DAY_ABBREVS.get(m.group(0).lower(), m.group(0))
+
     return re.sub(r"\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\b", _replace, expr, flags=re.IGNORECASE)
 
 
@@ -67,10 +74,10 @@ class TaskItem:
     name: str
     days_expr: str
     tz: ZoneInfo
-    window_start: dtime | None        # None = run-once mode (fire immediately, no schedule)
-    window_end: dtime | None          # close time derived from window_start + window_duration
+    window_start: dtime | None  # None = run-once mode (fire immediately, no schedule)
+    window_end: dtime | None  # close time derived from window_start + window_duration
     loop: bool
-    loop_gap: float | None            # seconds
+    loop_gap: float | None  # seconds
     done_when: str | None
     content: str
     start: date | None = None
@@ -376,7 +383,12 @@ def _inside_window(item: TaskItem) -> bool:
     return True
 
 
-async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None, backends_ready: asyncio.Event | None = None) -> None:
+async def run_task(
+    item: TaskItem,
+    bus: MessageBus,
+    semaphore: asyncio.Semaphore | None = None,
+    backends_ready: asyncio.Event | None = None,
+) -> None:
     if backends_ready is not None:
         await backends_ready.wait()
 
@@ -434,7 +446,15 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             item.last_fire = _fire_ts  # #1087
             if harness_sched_task_item_last_run_timestamp_seconds is not None:
                 harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(_fire_ts)
-            message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
+            message = Message(
+                prompt=prompt,
+                session_id=session_id,
+                kind=f"task:{item.name}",
+                model=item.model,
+                backend_id=item.backend_id,
+                consensus=item.consensus,
+                max_tokens=item.max_tokens,
+            )
             _send_task = asyncio.ensure_future(bus.send(message))
 
             def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
@@ -533,7 +553,9 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             # Fall through to fire immediately below by setting a flag
             _fire_now = True
         else:
-            logger.warning(f"Task '{item.name}': stale checkpoint found but outside window — removing and skipping to next window.")
+            logger.warning(
+                f"Task '{item.name}': stale checkpoint found but outside window — removing and skipping to next window."
+            )
             if harness_sched_task_checkpoint_stale_total is not None:
                 harness_sched_task_checkpoint_stale_total.inc()
             try:
@@ -644,7 +666,9 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     response = await asyncio.shield(_send_task)
 
                     if harness_sched_task_duration_seconds is not None:
-                        harness_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+                        harness_sched_task_duration_seconds.labels(name=item.name).observe(
+                            time.monotonic() - _task_start
+                        )
                     if harness_sched_task_runs_total is not None:
                         harness_sched_task_runs_total.labels(name=item.name, status="success").inc()
                     _success_ts = time.time()
@@ -653,9 +677,9 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
                     try:
                         _window_str = (
-                            f"{item.window_start.strftime('%H:%M')}-"
-                            f"{item.window_end.strftime('%H:%M')}"
-                            if item.window_start and item.window_end else ""
+                            f"{item.window_start.strftime('%H:%M')}-" f"{item.window_end.strftime('%H:%M')}"
+                            if item.window_start and item.window_end
+                            else ""
                         )
                         _p: dict = {
                             "name": item.name,
@@ -664,21 +688,16 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         }
                         if _window_str:
                             _p["window"] = _window_str
-                        get_event_stream().publish(
-                            "task.fired", _p, agent_id=AGENT_NAME
-                        )
+                        get_event_stream().publish("task.fired", _p, agent_id=AGENT_NAME)
                     except Exception:  # pragma: no cover
                         pass
 
                 except asyncio.CancelledError:
                     if _send_task is not None and not _send_task.done():
                         # #1274: bounded drain, prevents SIGTERM hang.
-                        _drain_timeout = float(
-                            os.environ.get("TASKS_SHUTDOWN_DRAIN_TIMEOUT", "5")
-                        )
+                        _drain_timeout = float(os.environ.get("TASKS_SHUTDOWN_DRAIN_TIMEOUT", "5"))
                         logger.info(
-                            f"Task '{item.name}' cancelled — awaiting in-flight bus.send "
-                            f"(up to {_drain_timeout}s)."
+                            f"Task '{item.name}' cancelled — awaiting in-flight bus.send " f"(up to {_drain_timeout}s)."
                         )
                         try:
                             await asyncio.wait_for(
@@ -698,14 +717,16 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     if harness_sched_task_runs_total is not None:
                         harness_sched_task_runs_total.labels(name=item.name, status="error").inc()
                     if harness_sched_task_error_duration_seconds is not None:
-                        harness_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+                        harness_sched_task_error_duration_seconds.labels(name=item.name).observe(
+                            time.monotonic() - _task_start
+                        )
                     if harness_sched_task_item_last_error_timestamp_seconds is not None:
                         harness_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
                     try:
                         _window_str = (
-                            f"{item.window_start.strftime('%H:%M')}-"
-                            f"{item.window_end.strftime('%H:%M')}"
-                            if item.window_start and item.window_end else ""
+                            f"{item.window_start.strftime('%H:%M')}-" f"{item.window_end.strftime('%H:%M')}"
+                            if item.window_start and item.window_end
+                            else ""
                         )
                         _p2: dict = {
                             "name": item.name,
@@ -715,9 +736,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         }
                         if _window_str:
                             _p2["window"] = _window_str
-                        get_event_stream().publish(
-                            "task.fired", _p2, agent_id=AGENT_NAME
-                        )
+                        get_event_stream().publish("task.fired", _p2, agent_id=AGENT_NAME)
                     except Exception:  # pragma: no cover
                         pass
                     break  # stop looping on error; go back to waiting for next window
@@ -795,9 +814,7 @@ class TaskRunner:
         if not item.enabled:
             self._items[path] = item
             if harness_sched_task_items_registered is not None:
-                harness_sched_task_items_registered.set(
-                    sum(1 for i in self._items.values() if i.enabled)
-                )
+                harness_sched_task_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
             return
 
         task = asyncio.create_task(run_task(item, self._bus, self._semaphore, self._backends_ready))
@@ -822,28 +839,30 @@ class TaskRunner:
         """Return a serializable snapshot of currently registered task items."""
         result = []
         for item in self._items.values():
-            result.append({
-                "name": item.name,
-                "days_expr": item.days_expr,
-                "timezone": str(item.tz),
-                "window_start": item.window_start.strftime("%H:%M") if item.window_start else None,
-                "window_end": item.window_end.strftime("%H:%M") if item.window_end else None,
-                "loop": item.loop,
-                "session_id": None,  # per-day session IDs are generated at runtime
-                "backend_id": item.backend_id,
-                "model": item.model,
-                "consensus": [asdict(e) for e in item.consensus],
-                "max_tokens": item.max_tokens,
-                "start": item.start.isoformat() if item.start else None,
-                "end": item.end.isoformat() if item.end else None,
-                "running": item.running,
-                "enabled": item.enabled,
-                # #1087 — fire bookkeeping (epoch seconds, None when
-                # never computed / fired).
-                "next_fire": item.next_fire,
-                "last_fire": item.last_fire,
-                "last_success": item.last_success,
-            })
+            result.append(
+                {
+                    "name": item.name,
+                    "days_expr": item.days_expr,
+                    "timezone": str(item.tz),
+                    "window_start": item.window_start.strftime("%H:%M") if item.window_start else None,
+                    "window_end": item.window_end.strftime("%H:%M") if item.window_end else None,
+                    "loop": item.loop,
+                    "session_id": None,  # per-day session IDs are generated at runtime
+                    "backend_id": item.backend_id,
+                    "model": item.model,
+                    "consensus": [asdict(e) for e in item.consensus],
+                    "max_tokens": item.max_tokens,
+                    "start": item.start.isoformat() if item.start else None,
+                    "end": item.end.isoformat() if item.end else None,
+                    "running": item.running,
+                    "enabled": item.enabled,
+                    # #1087 — fire bookkeeping (epoch seconds, None when
+                    # never computed / fired).
+                    "next_fire": item.next_fire,
+                    "last_fire": item.last_fire,
+                    "last_success": item.last_success,
+                }
+            )
         return result
 
     def _unregister(self, path: str) -> asyncio.Task | None:

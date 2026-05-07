@@ -38,7 +38,19 @@ except Exception:  # pragma: no cover - defensive fallback
 # slow Helm install/upgrade operations (>10s) with enough resolution in
 # the sub-second range to compute useful p95/p99 numbers.
 _LATENCY_BUCKETS = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
 )
 
 if _PROM_AVAILABLE:
@@ -143,9 +155,9 @@ def observe_outbound_mcp_call(
         pass
     try:
         if duration_histogram is not None:
-            duration_histogram.labels(
-                **labels, server=server, tool=tool, outcome=outcome
-            ).observe(max(0.0, float(duration_seconds)))
+            duration_histogram.labels(**labels, server=server, tool=tool, outcome=outcome).observe(
+                max(0.0, float(duration_seconds))
+            )
     except Exception:
         pass
 
@@ -239,14 +251,11 @@ def _consume_budget(server: str, tool: str) -> None:
         if len(hits) >= cap:
             if _PROM_AVAILABLE and MCP_TOOL_BUDGET_EXHAUSTED_TOTAL is not None:
                 try:
-                    MCP_TOOL_BUDGET_EXHAUSTED_TOTAL.labels(
-                        server=server, tool=tool
-                    ).inc()
+                    MCP_TOOL_BUDGET_EXHAUSTED_TOTAL.labels(server=server, tool=tool).inc()
                 except Exception:
                     pass
             raise CallBudgetExhausted(
-                f"mcp {server}.{tool}: call budget exhausted "
-                f"({cap} calls / {window:.0f}s window)."
+                f"mcp {server}.{tool}: call budget exhausted " f"({cap} calls / {window:.0f}s window)."
             )
         hits.append(now)
 
@@ -275,9 +284,11 @@ def _cap_for(server: str, tool: str) -> threading.BoundedSemaphore | None:
         cached = _CAP_SEMAPHORES.get(key)
         if cached is not None:
             return None if cached == "nocap" else cached  # type: ignore[return-value]
+
         # Normalise env-var names: '.' '-' go to '_', upper-case.
         def _norm(s: str) -> str:
             return s.replace(".", "_").replace("-", "_").upper()
+
         candidates = (
             f"MCP_CONCURRENCY_{_norm(server)}_{_norm(tool)}",
             f"MCP_CONCURRENCY_{_norm(server)}",
@@ -292,7 +303,9 @@ def _cap_for(server: str, tool: str) -> threading.BoundedSemaphore | None:
                 cap_value = int(raw)
             except ValueError:
                 _logger.warning(
-                    "mcp_metrics: ignoring non-integer %s=%r", name, raw,
+                    "mcp_metrics: ignoring non-integer %s=%r",
+                    name,
+                    raw,
                 )
                 cap_value = 0
             break
@@ -349,23 +362,18 @@ def record_tool_call(server: str, tool: str) -> Iterator[None]:
         if not acquired:
             if _PROM_AVAILABLE:
                 try:
-                    MCP_TOOL_RATE_LIMITED_TOTAL.labels(
-                        server=server, tool=tool, reason="concurrency_cap"
-                    ).inc()
+                    MCP_TOOL_RATE_LIMITED_TOTAL.labels(server=server, tool=tool, reason="concurrency_cap").inc()
                     # Also bump mcp_tool_calls_total so dashboards showing
                     # "attempted calls" reflect rate-limited attempts (#919).
                     # Previously the raise happened before `start =
                     # time.monotonic()` and the finally-block inc, so these
                     # calls were invisible on the counter — exactly the
                     # moment operators need the signal.
-                    MCP_TOOL_CALLS_TOTAL.labels(
-                        server=server, tool=tool, outcome="rate_limited"
-                    ).inc()
+                    MCP_TOOL_CALLS_TOTAL.labels(server=server, tool=tool, outcome="rate_limited").inc()
                 except Exception:
                     pass
             raise ConcurrencyCapExceeded(
-                f"mcp {server}.{tool}: per-tool concurrency cap exceeded "
-                f"(set MCP_CONCURRENCY_* env vars to tune)"
+                f"mcp {server}.{tool}: per-tool concurrency cap exceeded " f"(set MCP_CONCURRENCY_* env vars to tune)"
             )
     start = time.monotonic()
     outcome = "ok"
@@ -379,9 +387,7 @@ def record_tool_call(server: str, tool: str) -> Iterator[None]:
             elapsed = time.monotonic() - start
             try:
                 MCP_TOOL_CALLS_TOTAL.labels(server=server, tool=tool, outcome=outcome).inc()
-                MCP_TOOL_DURATION_SECONDS.labels(
-                    server=server, tool=tool, outcome=outcome
-                ).observe(elapsed)
+                MCP_TOOL_DURATION_SECONDS.labels(server=server, tool=tool, outcome=outcome).observe(elapsed)
             except Exception:
                 # Never let a metrics failure mask the original outcome.
                 pass

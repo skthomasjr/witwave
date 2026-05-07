@@ -85,7 +85,8 @@ class ParseMaxTokensTests(unittest.TestCase):
         # via int(raw). A fractional float is therefore NOT rejected.
         log, cap = _logger_with_capture()
         self.assertEqual(
-            validation.parse_max_tokens(1.5, logger=log, source="src"), 1,
+            validation.parse_max_tokens(1.5, logger=log, source="src"),
+            1,
         )
 
     def test_session_id_included_in_log_prefix(self):
@@ -120,8 +121,7 @@ class SanitizeModelLabelTests(unittest.TestCase):
     def test_unsafe_characters_collapse_to_unknown(self):
         # Slashes, spaces, colons, etc. all collapse.
         for v in ("foo/bar", "model name", "ns:model", "<script>"):
-            self.assertEqual(validation.sanitize_model_label(v), "unknown",
-                             f"expected {v!r} -> 'unknown'")
+            self.assertEqual(validation.sanitize_model_label(v), "unknown", f"expected {v!r} -> 'unknown'")
 
     def test_oversize_collapses_to_unknown(self):
         long = "a" * 65

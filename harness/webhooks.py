@@ -133,6 +133,7 @@ def _publish_webhook_event(
     except Exception:  # pragma: no cover — fan-out is best-effort
         pass
 
+
 # Global cap on total in-flight webhook delivery tasks across all subscriptions.
 # When the cap is reached, new deliveries are shed (logged and counted).
 # Override via WEBHOOK_MAX_CONCURRENT_DELIVERIES env var.
@@ -186,6 +187,7 @@ WEBHOOK_RETRY_BYTES_BUDGET = int(os.environ.get("WEBHOOK_RETRY_BYTES_BUDGET", st
 _webhook_retry_bytes_inflight: int = 0
 _webhook_retry_bytes_lock = asyncio.Lock()
 
+
 # #1385: per-subscription budget so one pathological sub can't starve
 # others. Default is 25% of the global budget; override via
 # WEBHOOK_RETRY_BYTES_PER_SUB. Counters live here + access is guarded
@@ -216,12 +218,8 @@ _webhook_retry_bytes_per_sub: dict[str, int] = {}
 # at startup only.
 if harness_webhooks_retry_bytes_budget_bytes is not None:
     try:
-        harness_webhooks_retry_bytes_budget_bytes.labels(scope="global").set(
-            float(WEBHOOK_RETRY_BYTES_BUDGET)
-        )
-        harness_webhooks_retry_bytes_budget_bytes.labels(scope="per_sub").set(
-            float(WEBHOOK_RETRY_BYTES_PER_SUB)
-        )
+        harness_webhooks_retry_bytes_budget_bytes.labels(scope="global").set(float(WEBHOOK_RETRY_BYTES_BUDGET))
+        harness_webhooks_retry_bytes_budget_bytes.labels(scope="per_sub").set(float(WEBHOOK_RETRY_BYTES_PER_SUB))
     except Exception:  # pragma: no cover — observability must never break logic
         pass
 
@@ -266,6 +264,7 @@ def _build_shared_client() -> httpx.AsyncClient:
         ),
     )
 
+
 _VALID_NOTIFY_WHEN = ("always", "on_success", "on_error")
 
 _DISABLED = object()
@@ -277,19 +276,21 @@ _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
 # template (see README "Outbound Webhooks"). Extraction-defined variables and
 # {{env.VAR}} references are intentionally NOT permitted in URLs, to prevent
 # env-var exfiltration and LLM-steered SSRF via webhook .md files (#524).
-_URL_TEMPLATE_ALLOWED_VARS = frozenset({
-    "agent",
-    "kind",
-    "session_id",
-    "source",
-    "model",
-    "success",
-    "error",
-    "response_preview",
-    "duration_seconds",
-    "timestamp",
-    "delivery_id",
-})
+_URL_TEMPLATE_ALLOWED_VARS = frozenset(
+    {
+        "agent",
+        "kind",
+        "session_id",
+        "source",
+        "model",
+        "success",
+        "error",
+        "response_preview",
+        "duration_seconds",
+        "timestamp",
+        "delivery_id",
+    }
+)
 
 # Scheme / host allow-list for outbound webhook URLs (#524). Only http(s) is
 # permitted; file://, gopher://, ftp://, data:, etc. are rejected. Hosts that
@@ -301,17 +302,13 @@ _URL_TEMPLATE_ALLOWED_VARS = frozenset({
 # legitimate (e.g. in-cluster sinks for smoke tests).
 _URL_ALLOWED_SCHEMES = ("http", "https")
 _URL_ALLOWED_HOSTS = tuple(
-    h.strip().lower()
-    for h in os.environ.get("WEBHOOK_URL_ALLOWED_HOSTS", "").split(",")
-    if h.strip()
+    h.strip().lower() for h in os.environ.get("WEBHOOK_URL_ALLOWED_HOSTS", "").split(",") if h.strip()
 )
 # #1234: by default the allow-list NO LONGER bypasses the resolved-IP
 # private-range check. An operator who relied on the old behaviour (e.g.
 # to reach loopback from an in-cluster smoke target via a DNS alias) must
 # opt in explicitly with WEBHOOK_ALLOW_LOOPBACK_HOSTS=true.
-_ALLOW_LOOPBACK_HOSTS = os.environ.get(
-    "WEBHOOK_ALLOW_LOOPBACK_HOSTS", ""
-).strip().lower() in ("1", "true", "yes")
+_ALLOW_LOOPBACK_HOSTS = os.environ.get("WEBHOOK_ALLOW_LOOPBACK_HOSTS", "").strip().lower() in ("1", "true", "yes")
 if _ALLOW_LOOPBACK_HOSTS:
     logger.warning(
         "webhooks: WEBHOOK_ALLOW_LOOPBACK_HOSTS=true — allow-listed hosts "
@@ -339,7 +336,7 @@ _HOOK_DECISION_SUB_KINDS: frozenset[str] = frozenset({"allow", "warn", "deny"})
 class WebhookSubscription:
     path: str
     name: str
-    url_template: str                          # may contain {{env.VAR}}
+    url_template: str  # may contain {{env.VAR}}
     enabled: bool = True
     signing_secret: str | None = None
     notify_when: str = "on_success"
@@ -351,8 +348,8 @@ class WebhookSubscription:
     timeout_seconds: float = 10.0
     retries: int = 0
     extract: dict[str, str] = field(default_factory=dict)  # var_name -> prompt
-    body_template: str | None = None          # frontmatter body: | block
-    context_template: str | None = None       # markdown body — context for LLM extractions
+    body_template: str | None = None  # frontmatter body: | block
+    context_template: str | None = None  # markdown body — context for LLM extractions
     backend_id: str | None = None
     model: str | None = None
     max_concurrent_deliveries: int = WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB
@@ -421,8 +418,10 @@ def _events_match(sub_events: list[str], event_kind: str, qualifier: str | None)
 
 def _resolve_env_vars(text: str) -> str:
     """Replace {{env.VAR}} references with their environment variable values."""
+
     def _sub(m: re.Match) -> str:
         return os.environ.get(m.group(1), "")
+
     return _ENV_VAR_RE.sub(_sub, text)
 
 
@@ -453,11 +452,13 @@ def _substitute_url(template: str, context: dict) -> str:
     # Strip any {{env.VAR}} references first so they cannot survive in
     # the final URL even if parse-time validation was bypassed.
     result = _ENV_VAR_RE.sub("", template)
+
     def _replacer(m: re.Match) -> str:
         key = m.group(1).strip()
         if key not in _URL_TEMPLATE_ALLOWED_VARS:
             return ""
         return str(context.get(key, ""))
+
     return _VAR_RE.sub(_replacer, result)
 
 
@@ -484,14 +485,7 @@ def _host_is_private(host: str) -> bool:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
-    return (
-        ip.is_loopback
-        or ip.is_link_local
-        or ip.is_private
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
+    return ip.is_loopback or ip.is_link_local or ip.is_private or ip.is_reserved or ip.is_multicast or ip.is_unspecified
 
 
 #
@@ -547,9 +541,7 @@ def _validate_url(url: str) -> str | None:
     # loopback-alias deny and private-range literal deny, but the DNS
     # resolution still runs and rejects loopback/private answers unless
     # WEBHOOK_ALLOW_LOOPBACK_HOSTS=true.
-    _allowlisted = bool(_URL_ALLOWED_HOSTS and (
-        host in _URL_ALLOWED_HOSTS or host_port in _URL_ALLOWED_HOSTS
-    ))
+    _allowlisted = bool(_URL_ALLOWED_HOSTS and (host in _URL_ALLOWED_HOSTS or host_port in _URL_ALLOWED_HOSTS))
     if _allowlisted and _ALLOW_LOOPBACK_HOSTS:
         return None
     # Reject known loopback aliases up front so a misconfigured resolver
@@ -559,15 +551,9 @@ def _validate_url(url: str) -> str | None:
     # so an allow-listed service name like "smoke.internal" isn't mistaken
     # for a raw loopback alias.
     if not _allowlisted and host in _LOOPBACK_HOST_ALIASES:
-        return (
-            f"host {host!r} is a loopback alias and is not in "
-            "WEBHOOK_URL_ALLOWED_HOSTS"
-        )
+        return f"host {host!r} is a loopback alias and is not in " "WEBHOOK_URL_ALLOWED_HOSTS"
     if not _allowlisted and _host_is_private(host):
-        return (
-            f"host {host!r} is a loopback/link-local/private/reserved IP "
-            "and is not in WEBHOOK_URL_ALLOWED_HOSTS"
-        )
+        return f"host {host!r} is a loopback/link-local/private/reserved IP " "and is not in WEBHOOK_URL_ALLOWED_HOSTS"
     # Resolve the hostname and apply _host_is_private to each resolved
     # address. Closes the SSRF gap where a DNS name (e.g. "localhost",
     # "metadata.google.internal") mapped to a loopback/link-local/private
@@ -751,7 +737,9 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
             try:
                 max_concurrent_deliveries = max(1, int(raw_max_del))
             except (ValueError, TypeError):
-                logger.warning(f"Webhook file {path}: invalid 'max-concurrent-deliveries' {raw_max_del!r} — using default {WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB}.")
+                logger.warning(
+                    f"Webhook file {path}: invalid 'max-concurrent-deliveries' {raw_max_del!r} — using default {WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB}."
+                )
 
         filename = Path(path).stem
         name = fields.get("name") or filename
@@ -803,6 +791,7 @@ def _parse_list_field(value) -> list[str]:
     if stripped.startswith("["):
         try:
             import ast
+
             parsed = ast.literal_eval(stripped)
             if isinstance(parsed, list):
                 return [str(x).strip() for x in parsed if str(x).strip()]
@@ -846,10 +835,12 @@ def _substitute(template: str, context: dict) -> str:
     """Substitute {{var}} and {{env.VAR}} references in a template string."""
     # First resolve env vars
     result = _resolve_env_vars(template)
+
     # Then substitute context variables
     def _replacer(m: re.Match) -> str:
         key = m.group(1).strip()
         return str(context.get(key, ""))
+
     return _VAR_RE.sub(_replacer, result)
 
 
@@ -916,9 +907,7 @@ def _sanitize_header_value(name: str, value: str, sub_name: str) -> str:
     cleaned = "".join(ch for ch in value if ch == "\t" or ord(ch) >= 0x20)
     if cleaned != value:
         if had_crlf:
-            logger.warning(
-                f"Webhook '{sub_name}': header {name!r} contained CR/LF after substitution — stripped."
-            )
+            logger.warning(f"Webhook '{sub_name}': header {name!r} contained CR/LF after substitution — stripped.")
         else:
             logger.warning(
                 f"Webhook '{sub_name}': header {name!r} contained C0 control chars after substitution — stripped."
@@ -966,6 +955,7 @@ async def _retry_deliver(
     passed at `client.post(...)` time so behavior matches the pre-shared-
     client semantics.
     """
+
     # Per-attempt metric emission (#865). Previously only the final chain
     # result was recorded, so attempts 2..N were invisible when the outer
     # total-chain wait_for cancelled mid-flight. Emit one
@@ -974,9 +964,7 @@ async def _retry_deliver(
     # than 1.
     def _record(_result: str) -> None:
         if harness_webhooks_delivery_total is not None:
-            harness_webhooks_delivery_total.labels(
-                result=_result, subscription=sub.name
-            ).inc()
+            harness_webhooks_delivery_total.labels(result=_result, subscription=sub.name).inc()
 
     result = "unknown"
     while attempt < max_attempts:
@@ -1114,9 +1102,7 @@ async def deliver(
         # #1310: emit a metric for URL-validation failures.
         if harness_webhooks_delivery_total is not None:
             try:
-                harness_webhooks_delivery_total.labels(
-                    result="url_validation_failed", subscription=sub.name
-                ).inc()
+                harness_webhooks_delivery_total.labels(result="url_validation_failed", subscription=sub.name).inc()
             except Exception:
                 pass
         return
@@ -1168,9 +1154,9 @@ async def deliver(
         _prev = getattr(sub, "_truncation_warned", False)
         if not _prev:
             logger.warning(
-                "Webhook '%s': body truncated from %d to 262144 bytes — "
-                "receiver may see malformed JSON. (#1389)",
-                sub.name, len(body_bytes),
+                "Webhook '%s': body truncated from %d to 262144 bytes — " "receiver may see malformed JSON. (#1389)",
+                sub.name,
+                len(body_bytes),
             )
             try:
                 sub._truncation_warned = True  # type: ignore[attr-defined]
@@ -1178,9 +1164,7 @@ async def deliver(
                 pass
         if harness_webhooks_body_truncated_total is not None:
             try:
-                harness_webhooks_body_truncated_total.labels(
-                    subscription=sub.name
-                ).inc()
+                harness_webhooks_body_truncated_total.labels(subscription=sub.name).inc()
             except Exception:
                 pass
         body_bytes = body_bytes[: 256 * 1024].decode("utf-8", errors="ignore").encode("utf-8")
@@ -1199,9 +1183,7 @@ async def deliver(
     # span inject the traceparent so receiver-side tracing links to the
     # correct ancestor. Only fall back to the bare trace_context.child()
     # carrier when OTel is disabled (inject_traceparent is a no-op then).
-    _bare_traceparent = (
-        trace_context.child().to_header() if trace_context is not None else ""
-    )
+    _bare_traceparent = trace_context.child().to_header() if trace_context is not None else ""
 
     # First delivery attempt — make one HTTP POST without holding a retry slot.
     # If it fails and retries are configured, schedule the next attempt as a
@@ -1306,8 +1288,7 @@ async def deliver(
                 # #1385: per-sub ceiling checked FIRST so one pathological
                 # sub can't consume the global budget and starve peers.
                 _sub_inflight = _webhook_retry_bytes_per_sub.get(sub.name, 0)
-                if (WEBHOOK_RETRY_BYTES_PER_SUB > 0
-                        and _sub_inflight + _retry_bytes > WEBHOOK_RETRY_BYTES_PER_SUB):
+                if WEBHOOK_RETRY_BYTES_PER_SUB > 0 and _sub_inflight + _retry_bytes > WEBHOOK_RETRY_BYTES_PER_SUB:
                     logger.warning(
                         f"Webhook '{sub.name}': retry dropped — per-sub retry "
                         f"bytes in-flight ({_sub_inflight}) + this body "
@@ -1326,9 +1307,7 @@ async def deliver(
                         f"would exceed WEBHOOK_RETRY_BYTES_BUDGET={WEBHOOK_RETRY_BYTES_BUDGET}"
                     )
                     if harness_webhooks_delivery_total is not None:
-                        harness_webhooks_delivery_total.labels(
-                            result="shed_retry_bytes", subscription=sub.name
-                        ).inc()
+                        harness_webhooks_delivery_total.labels(result="shed_retry_bytes", subscription=sub.name).inc()
                     return
                 _webhook_retry_bytes_inflight += _retry_bytes
                 _webhook_retry_bytes_per_sub[sub.name] = _sub_inflight + _retry_bytes
@@ -1337,16 +1316,14 @@ async def deliver(
                 # event fires.
                 if harness_webhooks_retry_bytes_in_flight is not None:
                     try:
-                        harness_webhooks_retry_bytes_in_flight.labels(
-                            subscription=sub.name
-                        ).set(float(_webhook_retry_bytes_per_sub[sub.name]))
+                        harness_webhooks_retry_bytes_in_flight.labels(subscription=sub.name).set(
+                            float(_webhook_retry_bytes_per_sub[sub.name])
+                        )
                     except Exception:
                         pass
                 if harness_webhooks_retry_bytes_in_flight_total is not None:
                     try:
-                        harness_webhooks_retry_bytes_in_flight_total.set(
-                            float(_webhook_retry_bytes_inflight)
-                        )
+                        harness_webhooks_retry_bytes_in_flight_total.set(float(_webhook_retry_bytes_inflight))
                     except Exception:
                         pass
 
@@ -1388,9 +1365,7 @@ async def deliver(
                             f"abandoning remaining attempts for url={url}"
                         )
                         if harness_webhooks_delivery_total is not None:
-                            harness_webhooks_delivery_total.labels(
-                                result="timeout_total", subscription=sub.name
-                            ).inc()
+                            harness_webhooks_delivery_total.labels(result="timeout_total", subscription=sub.name).inc()
                 else:
                     await _retry_coro
             finally:
@@ -1400,9 +1375,7 @@ async def deliver(
                 if WEBHOOK_RETRY_BYTES_BUDGET > 0:
                     global _webhook_retry_bytes_inflight
                     async with _webhook_retry_bytes_lock:
-                        _webhook_retry_bytes_inflight = max(
-                            0, _webhook_retry_bytes_inflight - _retry_bytes
-                        )
+                        _webhook_retry_bytes_inflight = max(0, _webhook_retry_bytes_inflight - _retry_bytes)
                         # #1385: release the per-sub slot too.
                         _cur = _webhook_retry_bytes_per_sub.get(sub.name, 0)
                         _new = max(0, _cur - _retry_bytes)
@@ -1414,16 +1387,12 @@ async def deliver(
                         # the signal decays as chains finish.
                         if harness_webhooks_retry_bytes_in_flight is not None:
                             try:
-                                harness_webhooks_retry_bytes_in_flight.labels(
-                                    subscription=sub.name
-                                ).set(float(_new))
+                                harness_webhooks_retry_bytes_in_flight.labels(subscription=sub.name).set(float(_new))
                             except Exception:
                                 pass
                         if harness_webhooks_retry_bytes_in_flight_total is not None:
                             try:
-                                harness_webhooks_retry_bytes_in_flight_total.set(
-                                    float(_webhook_retry_bytes_inflight)
-                                )
+                                harness_webhooks_retry_bytes_in_flight_total.set(float(_webhook_retry_bytes_inflight))
                             except Exception:
                                 pass
 
@@ -1480,9 +1449,7 @@ async def _deliver_hook_decision(
         # #1310: emit a metric for URL-validation failures.
         if harness_webhooks_delivery_total is not None:
             try:
-                harness_webhooks_delivery_total.labels(
-                    result="url_validation_failed", subscription=sub.name
-                ).inc()
+                harness_webhooks_delivery_total.labels(result="url_validation_failed", subscription=sub.name).inc()
             except Exception:
                 pass
         return
@@ -1537,7 +1504,10 @@ async def _deliver_hook_decision(
                 )
                 return
             resp = await client.post(
-                url, content=body_bytes, headers=headers, timeout=sub.timeout_seconds,
+                url,
+                content=body_bytes,
+                headers=headers,
+                timeout=sub.timeout_seconds,
             )
             if resp.status_code < 400:
                 result = "success"
@@ -1585,21 +1555,23 @@ class WebhookRunner:
         """Return a serializable snapshot of currently registered webhook subscriptions."""
         result = []
         for sub in self._items.values():
-            result.append({
-                "name": sub.name,
-                "url": sub.url_template,
-                "notify_when": sub.notify_when,
-                "notify_on_kind": sub.notify_on_kind,
-                "notify_on_response": sub.notify_on_response,
-                "description": sub.description,
-                "enabled": sub.enabled,
-                "retries": sub.retries,
-                "backend_id": sub.backend_id,
-                "model": sub.model,
-                "active_deliveries": len(self._deliveries_by_name.get(sub.name, set())),
-                "max_concurrent_deliveries": sub.max_concurrent_deliveries,
-                "events": list(sub.events),
-            })
+            result.append(
+                {
+                    "name": sub.name,
+                    "url": sub.url_template,
+                    "notify_when": sub.notify_when,
+                    "notify_on_kind": sub.notify_on_kind,
+                    "notify_on_response": sub.notify_on_response,
+                    "description": sub.description,
+                    "enabled": sub.enabled,
+                    "retries": sub.retries,
+                    "backend_id": sub.backend_id,
+                    "model": sub.model,
+                    "active_deliveries": len(self._deliveries_by_name.get(sub.name, set())),
+                    "max_concurrent_deliveries": sub.max_concurrent_deliveries,
+                    "events": list(sub.events),
+                }
+            )
         return result
 
     def _register(self, path: str, *, count_reload: bool = False) -> None:
@@ -1614,9 +1586,7 @@ class WebhookRunner:
         # targets. Future delivery paths that iterate _items must filter
         # on sub.enabled.
         if harness_webhooks_items_registered is not None:
-            harness_webhooks_items_registered.set(
-                sum(1 for s in self._items.values() if s.enabled)
-            )
+            harness_webhooks_items_registered.set(sum(1 for s in self._items.values() if s.enabled))
         if count_reload and harness_webhooks_reloads_total is not None:
             harness_webhooks_reloads_total.inc()
         if sub.enabled:
@@ -1630,9 +1600,7 @@ class WebhookRunner:
             logger.info(f"Webhook subscription '{existing.name}' unregistered.")
             if harness_webhooks_items_registered is not None:
                 # #1230: count enabled only, matching register path.
-                harness_webhooks_items_registered.set(
-                    sum(1 for i in self._items.values() if i.enabled)
-                )
+                harness_webhooks_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
             if count_reload and harness_webhooks_reloads_total is not None:
                 harness_webhooks_reloads_total.inc()
 
@@ -1686,13 +1654,16 @@ class WebhookRunner:
                     if harness_webhooks_delivery_shed_total is not None:
                         harness_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                     continue
+
                 def _make_on_retry_task(
                     _sub_name: str = sub.name,
                 ) -> "callable":
                     """Return a callback that registers a retry task in the tracking sets."""
+
                     def _on_retry_task(retry_t: asyncio.Task) -> None:
                         self._active_deliveries.add(retry_t)
                         self._deliveries_by_name.setdefault(_sub_name, set()).add(retry_t)
+
                         def _retry_cleanup(t: asyncio.Task, _n: str = _sub_name) -> None:
                             self._active_deliveries.discard(t)
                             # Pop-when-empty: keep the retry path consistent
@@ -1702,28 +1673,33 @@ class WebhookRunner:
                                 _dels.discard(t)
                                 if not _dels:
                                     self._deliveries_by_name.pop(_n, None)
+
                         retry_t.add_done_callback(_retry_cleanup)
+
                     return _on_retry_task
 
-                _t = asyncio.create_task(deliver(
-                    sub=sub,
-                    source=source,
-                    kind=kind,
-                    session_id=session_id,
-                    success=success,
-                    response=response,
-                    duration_seconds=duration_seconds,
-                    error=error,
-                    model=model,
-                    client=self._get_client(),
-                    backends=self._backends,
-                    default_backend_id=self._default_backend_id,
-                    on_retry_task=_make_on_retry_task(),
-                    trace_context=trace_context,
-                ))
+                _t = asyncio.create_task(
+                    deliver(
+                        sub=sub,
+                        source=source,
+                        kind=kind,
+                        session_id=session_id,
+                        success=success,
+                        response=response,
+                        duration_seconds=duration_seconds,
+                        error=error,
+                        model=model,
+                        client=self._get_client(),
+                        backends=self._backends,
+                        default_backend_id=self._default_backend_id,
+                        on_retry_task=_make_on_retry_task(),
+                        trace_context=trace_context,
+                    )
+                )
                 self._active_deliveries.add(_t)
                 deliveries = self._deliveries_by_name.setdefault(sub.name, set())
                 deliveries.add(_t)
+
                 def _cleanup(t: asyncio.Task, _name: str = sub.name) -> None:
                     self._active_deliveries.discard(t)
                     # Pop-when-empty: drop the per-name set once it's drained
@@ -1734,6 +1710,7 @@ class WebhookRunner:
                         _dels.discard(t)
                         if not _dels:
                             self._deliveries_by_name.pop(_name, None)
+
                 _t.add_done_callback(_cleanup)
 
     def fire_hook_decision(
@@ -1807,9 +1784,7 @@ class WebhookRunner:
                     harness_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                 continue
 
-            _t = asyncio.create_task(
-                _deliver_hook_decision(sub, context, self._get_client())
-            )
+            _t = asyncio.create_task(_deliver_hook_decision(sub, context, self._get_client()))
             self._active_deliveries.add(_t)
             deliveries = self._deliveries_by_name.setdefault(sub.name, set())
             deliveries.add(_t)

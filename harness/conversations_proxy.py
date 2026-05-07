@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 # conversations for the same session would each buffer a full copy; a cap
 # here keeps harness memory pressure bounded on any single proxy call.
 # Set via HARNESS_PROXY_MAX_RESPONSE_BYTES; values <= 0 disable the cap.
-_PROXY_MAX_RESPONSE_BYTES = int(
-    os.environ.get("HARNESS_PROXY_MAX_RESPONSE_BYTES", str(64 * 1024 * 1024))
-)
+_PROXY_MAX_RESPONSE_BYTES = int(os.environ.get("HARNESS_PROXY_MAX_RESPONSE_BYTES", str(64 * 1024 * 1024)))
 
 
 async def _capped_get_json(
@@ -56,9 +54,9 @@ async def _capped_get_json(
             total += len(chunk)
             if total > _PROXY_MAX_RESPONSE_BYTES:
                 logger.warning(
-                    "harness proxy response from %s exceeds "
-                    "HARNESS_PROXY_MAX_RESPONSE_BYTES=%d; truncating",
-                    url, _PROXY_MAX_RESPONSE_BYTES,
+                    "harness proxy response from %s exceeds " "HARNESS_PROXY_MAX_RESPONSE_BYTES=%d; truncating",
+                    url,
+                    _PROXY_MAX_RESPONSE_BYTES,
                 )
                 return 200, None
             chunks.append(chunk)
@@ -67,6 +65,7 @@ async def _capped_get_json(
             return 200, json.loads(body)
         except (ValueError, json.JSONDecodeError):
             return 200, None
+
 
 # Log-flood guard: throttle warning-level emissions per (backend_id, endpoint)
 # to at most once per _LOG_THROTTLE_SECONDS. Further failures within the window
@@ -90,9 +89,7 @@ def _log_fetch_error(backend_id: str, endpoint: str, message: str) -> None:
 def _count_fetch_error(backend_id: str, endpoint: str) -> None:
     """Increment the proxy fetch-error counter when metrics are enabled."""
     if harness_backend_proxy_fetch_errors_total is not None:
-        harness_backend_proxy_fetch_errors_total.labels(
-            backend=backend_id, endpoint=endpoint
-        ).inc()
+        harness_backend_proxy_fetch_errors_total.labels(backend=backend_id, endpoint=endpoint).inc()
 
 
 def _ts_sort_key(entry: dict) -> str:
@@ -180,7 +177,13 @@ async def fetch_backend_conversations(
             )
             continue
         for entry in result:
-            key = (entry.get("ts"), entry.get("session_id"), entry.get("role"), entry.get("agent"), (entry.get("text") or "")[:64])
+            key = (
+                entry.get("ts"),
+                entry.get("session_id"),
+                entry.get("role"),
+                entry.get("agent"),
+                (entry.get("text") or "")[:64],
+            )
             if key not in seen:
                 seen.add(key)
                 all_entries.append(entry)
@@ -223,9 +226,7 @@ async def fetch_backend_tool_audit(
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
 
-    async def _fetch_one_tool_audit(
-        client: httpx.AsyncClient, backend: BackendConfig
-    ) -> list[dict]:
+    async def _fetch_one_tool_audit(client: httpx.AsyncClient, backend: BackendConfig) -> list[dict]:
         if not backend.url:
             return []
         url = backend.url.rstrip("/") + "/tool-audit"
@@ -351,7 +352,12 @@ async def fetch_backend_trace(
             )
             continue
         for entry in result:
-            key = (entry.get("ts"), entry.get("session_id"), entry.get("event_type"), entry.get("id") or entry.get("tool_use_id"))
+            key = (
+                entry.get("ts"),
+                entry.get("session_id"),
+                entry.get("event_type"),
+                entry.get("id") or entry.get("tool_use_id"),
+            )
             if key not in seen:
                 seen.add(key)
                 all_entries.append(entry)

@@ -28,13 +28,16 @@ def ok(cmd: str):
 # -------- accept cases --------
 
 
-@pytest.mark.parametrize("cmd", [
-    "mcp-kubernetes",            # bare basename in allow-list
-    "python3",                   # bare basename in allow-list
-    "/home/agent/mcp-bin/foo",   # under allowed prefix
-    "/usr/local/bin/anything",   # under allowed prefix
-    "./mcp-kubernetes",          # basename extraction path
-])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "mcp-kubernetes",  # bare basename in allow-list
+        "python3",  # bare basename in allow-list
+        "/home/agent/mcp-bin/foo",  # under allowed prefix
+        "/usr/local/bin/anything",  # under allowed prefix
+        "./mcp-kubernetes",  # basename extraction path
+    ],
+)
 def test_accepted(cmd):
     allowed, reason = ok(cmd)
     assert allowed, f"{cmd!r} should be accepted, got reason={reason!r}"
@@ -43,20 +46,23 @@ def test_accepted(cmd):
 # -------- reject cases --------
 
 
-@pytest.mark.parametrize("cmd,want_reason", [
-    ("/bin/sh", "absolute_not_on_prefix"),           # classic RCE vector
-    ("/bin/bash", "absolute_not_on_prefix"),
-    ("/usr/bin/curl", "absolute_not_on_prefix"),     # prefix is /usr/local/bin/, not /usr/bin/
-    # #862 regression guard: an absolute path outside any allowed prefix
-    # must be rejected even if the basename matches the bare-name
-    # allow-list — otherwise /tmp/attacker/mcp-kubernetes would be
-    # accepted as "basename_allowed".
-    ("/opt/custom/mcp-helm", "absolute_not_on_prefix"),
-    ("/tmp/attacker/mcp-kubernetes", "absolute_not_on_prefix"),
-    ("sh", "basename_not_allowed"),
-    ("", "empty"),
-    ("   ", "empty"),
-])
+@pytest.mark.parametrize(
+    "cmd,want_reason",
+    [
+        ("/bin/sh", "absolute_not_on_prefix"),  # classic RCE vector
+        ("/bin/bash", "absolute_not_on_prefix"),
+        ("/usr/bin/curl", "absolute_not_on_prefix"),  # prefix is /usr/local/bin/, not /usr/bin/
+        # #862 regression guard: an absolute path outside any allowed prefix
+        # must be rejected even if the basename matches the bare-name
+        # allow-list — otherwise /tmp/attacker/mcp-kubernetes would be
+        # accepted as "basename_allowed".
+        ("/opt/custom/mcp-helm", "absolute_not_on_prefix"),
+        ("/tmp/attacker/mcp-kubernetes", "absolute_not_on_prefix"),
+        ("sh", "basename_not_allowed"),
+        ("", "empty"),
+        ("   ", "empty"),
+    ],
+)
 def test_rejected_with_reason(cmd, want_reason):
     allowed, reason = ok(cmd)
     assert not allowed, f"{cmd!r} should be rejected"
@@ -102,7 +108,9 @@ def test_prefix_is_literal_not_dir():
     # With trailing slash in prefix, attacker-input must also start with
     # the slash-terminated path to match.
     _allowed, _reason = mcp_command_allowed(
-        "/home/agent/mcp-bin-evil/sh", allowed=BASELINE, prefixes=PREFIXES,
+        "/home/agent/mcp-bin-evil/sh",
+        allowed=BASELINE,
+        prefixes=PREFIXES,
     )
     # /home/agent/mcp-bin-evil/sh does NOT begin with "/home/agent/mcp-bin/"
     # (trailing slash is missing in the attacker path before evil), so
@@ -114,37 +122,43 @@ def test_prefix_is_literal_not_dir():
 # -------- mcp_command_args_safe (#1734) --------
 
 
-@pytest.mark.parametrize("cmd,args", [
-    ("mcp-kubernetes", None),                # not interpreter
-    ("mcp-helm", ["upgrade", "--install"]),  # not interpreter
-    ("python3", []),                         # interpreter but empty args
-    ("python", ["foo"]),                     # interpreter, no script-suffix
-    ("/usr/local/bin/uv", ["--help"]),       # interpreter, only flag
-    ("uvx", ["--version"]),                  # interpreter, only flag
-])
+@pytest.mark.parametrize(
+    "cmd,args",
+    [
+        ("mcp-kubernetes", None),  # not interpreter
+        ("mcp-helm", ["upgrade", "--install"]),  # not interpreter
+        ("python3", []),  # interpreter but empty args
+        ("python", ["foo"]),  # interpreter, no script-suffix
+        ("/usr/local/bin/uv", ["--help"]),  # interpreter, only flag
+        ("uvx", ["--version"]),  # interpreter, only flag
+    ],
+)
 def test_args_safe_accepted(cmd, args):
     ok, reason = mcp_command_args_safe(cmd, args)
     assert ok, f"{cmd!r} {args!r} should be accepted, got reason={reason!r}"
 
 
-@pytest.mark.parametrize("cmd,args,want_reason", [
-    # Inline-code flags on a Python-style interpreter.
-    ("python", ["-c", "import os; os.system('id')"], "interpreter_inline_code_flag"),
-    ("python3", ["--command", "print(1)"], "interpreter_inline_code_flag"),
-    ("node", ["-e", "require('child_process')"], "interpreter_inline_code_flag"),
-    ("ruby", ["--eval", "exec('id')"], "interpreter_inline_code_flag"),
-    # Node-specific inline / stdin paths.
-    ("node", ["--input-type=module"], "interpreter_inline_code_flag"),
-    ("node", ["--input-type", "module"], "interpreter_inline_code_flag"),
-    # Stdin "-" sentinel.
-    ("python", ["-"], "interpreter_stdin_script"),
-    ("bash", ["-s"], "interpreter_inline_code_flag"),
-    # uv / uvx package shapes.
-    ("uv", ["run", "/tmp/x.py"], "uv_run_rejected"),
-    ("uvx", ["pkg-name"], "uvx_package_rejected"),
-    # Positional script with no cwd allow-list configured.
-    ("python", ["/tmp/x.py"], "positional_script_no_cwd_allowlist"),
-])
+@pytest.mark.parametrize(
+    "cmd,args,want_reason",
+    [
+        # Inline-code flags on a Python-style interpreter.
+        ("python", ["-c", "import os; os.system('id')"], "interpreter_inline_code_flag"),
+        ("python3", ["--command", "print(1)"], "interpreter_inline_code_flag"),
+        ("node", ["-e", "require('child_process')"], "interpreter_inline_code_flag"),
+        ("ruby", ["--eval", "exec('id')"], "interpreter_inline_code_flag"),
+        # Node-specific inline / stdin paths.
+        ("node", ["--input-type=module"], "interpreter_inline_code_flag"),
+        ("node", ["--input-type", "module"], "interpreter_inline_code_flag"),
+        # Stdin "-" sentinel.
+        ("python", ["-"], "interpreter_stdin_script"),
+        ("bash", ["-s"], "interpreter_inline_code_flag"),
+        # uv / uvx package shapes.
+        ("uv", ["run", "/tmp/x.py"], "uv_run_rejected"),
+        ("uvx", ["pkg-name"], "uvx_package_rejected"),
+        # Positional script with no cwd allow-list configured.
+        ("python", ["/tmp/x.py"], "positional_script_no_cwd_allowlist"),
+    ],
+)
 def test_args_safe_rejected(monkeypatch, cmd, args, want_reason):
     # Force MCP_ALLOWED_CWD_PREFIXES empty so positional-script cases
     # take the "no_cwd_allowlist" path predictably.

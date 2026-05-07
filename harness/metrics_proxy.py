@@ -33,18 +33,18 @@ def _metrics_url(backend_url: str) -> str:
     / A2A continue to work), so we swap the port here at fetch time.
     Preserves scheme, host, and path — only the port changes.
     """
-    parsed = urlparse(backend_url.rstrip('/'))
-    hostname = parsed.hostname or parsed.netloc.split(':', 1)[0]
+    parsed = urlparse(backend_url.rstrip("/"))
+    hostname = parsed.hostname or parsed.netloc.split(":", 1)[0]
     app_port = parsed.port or 80
     metrics_port = app_port + _METRICS_PORT_OFFSET
     if parsed.username is not None or parsed.password is not None:
-        userinfo = parsed.username or ''
+        userinfo = parsed.username or ""
         if parsed.password is not None:
             userinfo += f":{parsed.password}"
         new_netloc = f"{userinfo}@{hostname}:{metrics_port}"
     else:
         new_netloc = f"{hostname}:{metrics_port}"
-    return urlunparse((parsed.scheme, new_netloc, '/metrics', '', '', ''))
+    return urlunparse((parsed.scheme, new_netloc, "/metrics", "", "", ""))
 
 
 async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
@@ -66,18 +66,14 @@ async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
             if resp.status_code == 200:
                 return resp.text
             else:
-                logger.warning(
-                    f"Backend {backend.id!r} /metrics returned {resp.status_code} — skipping"
-                )
+                logger.warning(f"Backend {backend.id!r} /metrics returned {resp.status_code} — skipping")
                 if harness_metrics_backend_fetch_errors_total is not None:
                     harness_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
         except Exception as exc:
-            logger.warning(
-                f"Backend {backend.id!r} /metrics unreachable: {exc!r} — skipping"
-            )
+            logger.warning(f"Backend {backend.id!r} /metrics unreachable: {exc!r} — skipping")
             if harness_metrics_backend_fetch_errors_total is not None:
                 harness_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
-        return ''
+        return ""
 
     async with httpx.AsyncClient(timeout=5.0) as client:
         results = await asyncio.gather(
@@ -88,12 +84,10 @@ async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
     parts = []
     for backend, result in zip(reachable, results):
         if isinstance(result, BaseException):
-            logger.warning(
-                f"Backend {backend.id!r} /metrics gather error: {result!r} — skipping"
-            )
+            logger.warning(f"Backend {backend.id!r} /metrics gather error: {result!r} — skipping")
             if harness_metrics_backend_fetch_errors_total is not None:
                 harness_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
         elif result:
             parts.append(result)
 
-    return ''.join(parts)
+    return "".join(parts)

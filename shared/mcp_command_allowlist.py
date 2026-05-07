@@ -50,28 +50,47 @@ DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
 # Commands that, when allow-listed, must have their args sanitised so
 # inline-code / arbitrary-package invocations are rejected even after
 # the command itself passed the allow-list check (#930).
-INTERPRETER_COMMANDS: frozenset[str] = frozenset({
-    "python", "python3",
-    "node", "nodejs",
-    "npx", "npm",
-    "uv", "uvx",
-    "ruby", "perl", "php",
-    "bash", "sh", "zsh", "ksh",
-    "deno", "bun",
-})
+INTERPRETER_COMMANDS: frozenset[str] = frozenset(
+    {
+        "python",
+        "python3",
+        "node",
+        "nodejs",
+        "npx",
+        "npm",
+        "uv",
+        "uvx",
+        "ruby",
+        "perl",
+        "php",
+        "bash",
+        "sh",
+        "zsh",
+        "ksh",
+        "deno",
+        "bun",
+    }
+)
 
 # Flags that deliver arbitrary code to an interpreter inline and must
 # therefore be rejected when they appear in the args array of an
 # interpreter command.
-_INTERPRETER_INLINE_CODE_FLAGS: frozenset[str] = frozenset({
-    "-c", "--command",
-    "-e", "--execute", "--eval",
-    "--inline",
-    # Node-specific inline/stdin paths (#1046).
-    "--input-type", "--input-type=module", "--input-type=commonjs",
-    # bash/sh read-script-from-stdin.
-    "-s",
-})
+_INTERPRETER_INLINE_CODE_FLAGS: frozenset[str] = frozenset(
+    {
+        "-c",
+        "--command",
+        "-e",
+        "--execute",
+        "--eval",
+        "--inline",
+        # Node-specific inline/stdin paths (#1046).
+        "--input-type",
+        "--input-type=module",
+        "--input-type=commonjs",
+        # bash/sh read-script-from-stdin.
+        "-s",
+    }
+)
 
 # Positional-script extensions (#1046). When an interpreter command sees
 # a positional argument (not starting with ``-``) whose basename ends in
@@ -79,16 +98,23 @@ _INTERPRETER_INLINE_CODE_FLAGS: frozenset[str] = frozenset({
 # when the absolute path resolves under an explicit
 # ``MCP_ALLOWED_CWD_PREFIXES`` entry (operator-vetted tree).
 _SCRIPT_EXTENSIONS: tuple[str, ...] = (
-    ".py", ".js", ".mjs", ".cjs", ".sh", ".bash", ".rb", ".pl", ".php", ".ts",
+    ".py",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".sh",
+    ".bash",
+    ".rb",
+    ".pl",
+    ".php",
+    ".ts",
 )
 
 DEFAULT_MCP_ALLOWED_CWD_PREFIXES = ""
 
 
 def _load_env_frozenset(var: str, default: str) -> frozenset[str]:
-    return frozenset(
-        t.strip() for t in os.environ.get(var, default).split(",") if t.strip()
-    )
+    return frozenset(t.strip() for t in os.environ.get(var, default).split(",") if t.strip())
 
 
 def _load_env_tuple(var: str, default: str) -> tuple[str, ...]:
@@ -109,9 +135,7 @@ def mcp_command_allowed(
     if allowed is None:
         allowed = _load_env_frozenset("MCP_ALLOWED_COMMANDS", DEFAULT_MCP_ALLOWED_COMMANDS)
     if prefixes is None:
-        prefixes = _load_env_tuple(
-            "MCP_ALLOWED_COMMAND_PREFIXES", DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES
-        )
+        prefixes = _load_env_tuple("MCP_ALLOWED_COMMAND_PREFIXES", DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES)
 
     if not isinstance(command, str):
         return False, "non_string"
@@ -139,9 +163,7 @@ def mcp_command_allowed(
     return False, "basename_not_allowed"
 
 
-def mcp_command_args_safe(
-    command: object, args: object
-) -> tuple[bool, str]:
+def mcp_command_args_safe(command: object, args: object) -> tuple[bool, str]:
     """Validate args for an already-allow-listed MCP command (#930).
 
     Returns (ok, reason). When the command basename is in
@@ -160,9 +182,7 @@ def mcp_command_args_safe(
     base = os.path.basename(command.strip())
     if base not in INTERPRETER_COMMANDS:
         return True, "not_interpreter"
-    cwd_prefixes = _load_env_tuple(
-        "MCP_ALLOWED_CWD_PREFIXES", DEFAULT_MCP_ALLOWED_CWD_PREFIXES
-    )
+    cwd_prefixes = _load_env_tuple("MCP_ALLOWED_CWD_PREFIXES", DEFAULT_MCP_ALLOWED_CWD_PREFIXES)
     for arg in args:
         if not isinstance(arg, str):
             continue
