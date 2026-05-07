@@ -133,7 +133,9 @@ Used in step 4 (decide fix vs. flag). All four must hold to fix; otherwise the c
 2. **Blast radius.** Read callers and callees once. If the fix could plausibly break a caller (changing return-value
    semantics callers rely on), flag.
 3. **Test coverage.** Tests exist for the affected file/path (`<file>_test.go`, `tests/test_<module>.py`,
-   `<dir>/test_*.py`). **No tests covering the path → flag.**
+   `<dir>/test_*.py`). **No tests covering the path → flag.** Exception: candidates matching the **safe-pattern
+   catalogue** below — those bypass the test-coverage gate because the fix is canonical enough that lack of tests
+   doesn't make it unsafe.
 4. **Analyzer signal strength.** High-signal: `errcheck`, `ineffassign`, `staticcheck SA1xxx-SA5xxx`, `ruff B*`,
    `actionlint` core, `hadolint DL3022/DL3025/DL4006`. Ambiguous: `staticcheck SA9xxx`, anything with hedge words
    ("may", "likely", "potentially"). Default: high-signal only auto-fixes; ambiguous flags.
@@ -141,6 +143,37 @@ Used in step 4 (decide fix vs. flag). All four must hold to fix; otherwise the c
 The fix-bar is depth-independent — a high-confidence errcheck hit at depth 1 is just as fixable as one at depth 8.
 At depth 9-10, every committed fix also gets a regression test (see step 5.7); that's a commit-shape requirement,
 not a fix-bar gate.
+
+## Safe-pattern catalogue (waives the test-coverage gate)
+
+A curated set of (analyzer rule + fix template) pairs where the canonical fix literally cannot change runtime
+behavior — only traceback presentation, build hardening posture, or cosmetic noise. Candidates matching ALL of:
+analyzer rule, surrounding-context shape, AND fix template — bypass the test-coverage gate in fix-bar rule 3.
+Untested-path findings that match the catalogue are auto-fixable; non-matching findings still flag.
+
+The catalogue is **deliberately narrow.** New entries require a clear safety justification: the fix must
+demonstrably not change observable behavior of the code, only its diagnostics / hardening / presentation.
+Pattern invention beyond these entries is still out of scope (see "Out of scope" → "Pattern invention").
+
+| ID | Analyzer rule + context shape | Fix template | Why it bypasses test-coverage |
+|----|------------------------------|--------------|-------------------------------|
+| **SP-1** | `ruff B904` raise-without-from in `except X: raise Y(...)`. Y is an established exception type already raised elsewhere in the codebase; the except branch's intent is "translate exception type" not "augment with context." | `except X as exc:` + `raise Y(...) from None` (suppresses chain noise). Use `from exc` instead if a comment in the surrounding code says context is wanted. | Behavior-preserving from caller perspective — only changes traceback presentation. Callers see the same Y exception either way; can't break tests. |
+| **SP-2** | `hadolint DL4006` missing pipefail on `RUN ... \| ...`. The Dockerfile has no existing `SHELL` directive. | Insert `SHELL ["/bin/bash", "-o", "pipefail", "-c"]` once at top of file, after the FROM/ENV blocks and before the first RUN. Single insertion covers every DL4006 in the file. | Hardening — surfaces silent pipe failures that were previously swallowed. The "global blast radius" is the point; if any subsequent RUN was depending on pipe-failure silence, that's also a bug. Image still builds; test-coverage gap doesn't apply because the change can only make existing-silent-bugs loud. |
+| **SP-3** | `actionlint SC2035` `<cmd> *.glob` in a workflow `run:` block where the cwd contains files with controlled prefixes (e.g. `goreleaser` output dir, version-named archives). | Insert `--` separator: `<cmd> -- *.glob`. **Never** use `./` prefix (would change output bytes). | `--` ends option parsing; `sha256sum` and similar commands produce byte-identical output. Critical for SLSA-subject preservation; the `--` form is the canonical "I know what I'm doing" idiom. |
+| **SP-4** | `actionlint SC2034` unused `<var>` in `for <var> in $(seq 1 N); do ... done` (count-controlled retry idiom). | Rename the loop variable to `_<var>` (e.g. `_i`). | Underscore prefix is the standard "unused by design" signal — same as Python and Go. Pure variable rename in an unused position; provably can't affect runtime behavior. |
+| **SP-5** | `actionlint SC2016` single-quoted `$<expr>` where `<expr>` is a known false-positive class — bcrypt header (`$2y$`, `$2a$`, `$2b$`, `$05$`/`$10$`/`$12$` cost prefix), regex anchors, version strings (`$RELEASE_VERSION` in templating), Helm template expressions. | Add `# shellcheck disable=SC2016` comment immediately above the affected line, with a one-word reason in a trailing comment (e.g. `# shellcheck disable=SC2016  # bcrypt literal`). | Single-quoting is correct for these contexts; double-quoting would corrupt the literal. The fix is the disable comment, not the code change. Zero runtime effect. |
+
+When a candidate matches a catalogue entry, evan applies the canonical fix in step 5 with the same per-candidate
+process (read body + run scoped tests + commit + mutate marker). The local-test gate still runs — if scoped tests
+exist on adjacent code paths, they still execute and a failure still triggers fix-forward then revert. The
+catalogue waives the *no-test-coverage-on-this-specific-line* trigger, not the local-test execution itself.
+
+Out-of-catalogue judgment-call findings continue to flag with their existing reasons. The user can review
+deferred-findings memory and either:
+- Add a new pattern to the catalogue (manual edit to this SKILL.md, then evan picks it up via gitSync), or
+- Manually instruct evan to fix specific candidates via "fix-from-queue" trigger, supplying the fix template
+  inline. The user's review is the human-in-the-loop validation that the depth-bar (and test-coverage gate) was
+  supposed to provide.
 
 ## Toolchain invocations (bug-class filters)
 
