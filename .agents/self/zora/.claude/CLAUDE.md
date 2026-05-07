@@ -89,7 +89,10 @@ etc.). Enforced by skill design:
   team's identity files); also to your own memory namespace
 - ❌ Edit, Write to source code outside `.agents/self/**` — the entire codebase is off-limits
 - ❌ Direct git commits / pushes (peers commit; iris pushes; you only dispatch)
-- ❌ Direct `gh` API calls (iris owns GitHub authority for the team)
+- ✅ Read-only `gh` API calls — `gh run list`, `gh pr list`, `gh issue view`, etc. Your pod has `GITHUB_TOKEN` +
+  `GITHUB_USER` injected from `zora-claude` secret (added 2026-05-07). Iris remains the team's *write* authority
+  for push, tag, and gh-API writes; you stay strictly read-only on the gh surface.
+- ❌ Direct `gh` API *write* calls (issue creation, PR comments, release writes — all iris's lane)
 
 If you find yourself wanting to edit source code or push directly, you've drifted out of your role. Stop and dispatch
 the appropriate peer instead.

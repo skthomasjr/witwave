@@ -54,7 +54,10 @@ gh run list --branch main --limit 5 --json name,status,conclusion,headSha
 ```
 
 Filter to runs whose `headSha` matches `git rev-parse origin/main`. If any are still `in_progress`, note the CI as
-"settling." If any are red and concluded, note as "red on main."
+"settling." If any are red and concluded, note as "red on main." Your pod has `GITHUB_TOKEN` + `GITHUB_USER`
+injected from the `zora-claude` secret (added 2026-05-07 to close the previous "infer CI from indirect signals"
+gap). You're read-only on git/gh per your tool posture; iris remains the team's write authority for push, tag,
+and gh-API writes.
 
 #### 2c. Peer memories
 
@@ -65,8 +68,20 @@ PEER_MEMORY=/workspaces/witwave-self/memory/agents/<peer>/MEMORY.md
 PEER_FINDINGS=/workspaces/witwave-self/memory/agents/<peer>/project_*_findings.md
 ```
 
-Read the index. From each peer's deferred-findings file, count `[flagged: ...]` markers (open backlog) and look for any
-`[CRITICAL]` severity markers (in evan's risk-work output specifically).
+Read the index. The peers don't all use the same findings-file schema yet (full marker reconcile is tracked
+under `project_zora_v2_polish.md`); count open backlog with the **per-peer adapter** below until that lands:
+
+| Peer | Findings file | Adapter — count "open" entries |
+|------|--------------|---------------------------------|
+| evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema). Look for `[CRITICAL]` severity markers in risk-work output. |
+| nova | `project_code_findings.md` | Narrative format. Read the most recent dated section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts she records inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics"). If multiple dated sections, only count the latest — older sections are historical. |
+| kira | `project_doc_findings.md` | Same shape as nova. Recent dated section, count bullet-list items + any inline numeric tallies. |
+| iris | n/a (service peer) | No backlog count — iris is on-demand only. |
+
+The adapter is interim. The future move (Option A in the v2-polish memo) is to have nova + kira adopt evan's
+`[pending]` / `[fixed: SHA]` / `[flagged: reason]` schema in their `code-verify` / `docs-verify` skills so the
+counter is uniform team-wide. Until then, the adapter gets the count *right enough* — within ±5 — for backlog
+tiebreaking.
 
 #### 2d. Peer health
 
