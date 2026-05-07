@@ -93,12 +93,23 @@ correct.
 
 ### 4. Log findings to memory
 
-Append to `/workspaces/witwave-self/memory/agents/<your-name>/project_doc_findings.md` under a new section:
+Append to `/workspaces/witwave-self/memory/agents/<your-name>/project_doc_findings.md` under a new section.
+Each finding's heading carries a **status marker** matching the team-wide schema (parallel to evan's
+`bug-work` format) so zora's backlog counter reads every peer's findings file uniformly:
+
+- **`[pending]`** — default for newly-detected disagreements. Real cross-doc mismatch awaiting a human
+  decision on which file to update.
+- **`[flagged: <reason>]`** — used when the disagreement has a *specific* judgment-call obstacle worth
+  recording inline (e.g., `[flagged: both-files-may-be-historically-correct-need-current-spec]`).
+- **`[fixed: <SHA>]`** — when one or both files get reconciled later, mutate to record the resolving
+  commit. zora's counter treats `[fixed:]` as closed; `[pending]` and `[flagged:]` as open backlog.
+
+Format:
 
 ```markdown
 ## YYYY-MM-DD — docs-consistency
 
-### <check name> — <brief summary>
+### <check name> — <brief summary> [pending]
 
 - **Disagreement:** files A says X, file B says Y
   - `<file-A>:<line>`: "<excerpt>"
@@ -106,6 +117,10 @@ Append to `/workspaces/witwave-self/memory/agents/<your-name>/project_doc_findin
 - **Likely truth:** <one-line — code/release-tag evidence if available; "needs human ruling" otherwise>
 - **Recommended action:** <which file to update, or flag for human if both could be wrong>
 ```
+
+**Existing narrative-format entries** (from runs before 2026-05-07) stay as-is — don't re-mark retroactively.
+Only new sections written from this skill onward use the marker schema; zora's interim per-peer adapter handles
+the mixed state during the transition.
 
 ### 5. Report
 

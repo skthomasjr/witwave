@@ -68,20 +68,22 @@ PEER_MEMORY=/workspaces/witwave-self/memory/agents/<peer>/MEMORY.md
 PEER_FINDINGS=/workspaces/witwave-self/memory/agents/<peer>/project_*_findings.md
 ```
 
-Read the index. The peers don't all use the same findings-file schema yet (full marker reconcile is tracked
-under `project_zora_v2_polish.md`); count open backlog with the **per-peer adapter** below until that lands:
+Read the index. As of 2026-05-07 all three findings-producing peers (evan / nova / kira) use the same status-
+marker schema — `[pending]`, `[flagged: <reason>]`, `[fixed: <SHA>]` — going forward. Sections written before
+that date are still in their original narrative format, so the **per-peer adapter** below combines a marker count
+on recent sections with a narrative-count fallback on older ones:
 
 | Peer | Findings file | Adapter — count "open" entries |
 |------|--------------|---------------------------------|
-| evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema). Look for `[CRITICAL]` severity markers in risk-work output. |
-| nova | `project_code_findings.md` | Narrative format. Read the most recent dated section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts she records inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics"). If multiple dated sections, only count the latest — older sections are historical. |
-| kira | `project_doc_findings.md` | Same shape as nova. Recent dated section, count bullet-list items + any inline numeric tallies. |
+| evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema since day one). Look for `[CRITICAL]` severity markers in risk-work output. |
+| nova | `project_code_findings.md` | For sections dated **2026-05-07 onward**: count `[pending]` + `[flagged: …]` markers (same canonical schema). For sections dated **before 2026-05-07** (legacy narrative format): read the most recent dated narrative section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts nova recorded inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics"). |
+| kira | `project_doc_findings.md` | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones. |
 | iris | n/a (service peer) | No backlog count — iris is on-demand only. |
 
-The adapter is interim. The future move (Option A in the v2-polish memo) is to have nova + kira adopt evan's
-`[pending]` / `[fixed: SHA]` / `[flagged: reason]` schema in their `code-verify` / `docs-verify` skills so the
-counter is uniform team-wide. Until then, the adapter gets the count *right enough* — within ±5 — for backlog
-tiebreaking.
+The legacy-narrative branch is a transient compatibility shim — once the legacy sections age out (typically as
+peers run new sweeps that supersede the older entries' relevance), the adapter degenerates to a pure marker count
+and the schema is fully uniform team-wide. Until then, the adapter gets the count *right enough* — within ±5 —
+for backlog tiebreaking.
 
 #### 2d. Peer health
 
