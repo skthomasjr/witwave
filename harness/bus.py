@@ -89,7 +89,10 @@ class MessageBus:
                 await asyncio.wait_for(self._queue.put(message), timeout=BUS_SEND_TIMEOUT)
             except asyncio.TimeoutError:
                 logger.error(f"Bus send timed out after {BUS_SEND_TIMEOUT}s — queue full (depth={self._queue.qsize()})")
-                raise asyncio.QueueFull()
+                # `from None` suppresses the implicit TimeoutError chain so
+                # tracebacks surface QueueFull cleanly. The intent (timeout
+                # → queue-full is one cleanup path) is documented at L101.
+                raise asyncio.QueueFull() from None
             # Update queue depth unconditionally after put() succeeds. Placing
             # this update here (before awaiting result) ensures the gauge is
             # correct regardless of whether the awaiting coroutine is cancelled
