@@ -136,6 +136,8 @@ The team:
 - **evan** — code defects (bug-work, risk-work)
 - **zora** — manager (decides team-level dispatching + release cadence)
 
+For the full team picture (topology, release loop, future roles), see [`../../TEAM.md`](../../TEAM.md).
+
 Same peer-to-peer contract still applies for cross-agent collaboration: when other peers need your help (push, release,
 CI watch), they call you via `call-peer` directly. Zora isn't a relay.
 
