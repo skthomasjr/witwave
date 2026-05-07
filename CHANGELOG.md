@@ -6,6 +6,45 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-05-07
+
+`ww` gains a working self-upgrade path for standalone-binary installs and an "all containers, prefixed" default for
+`ww agent logs`, closing two of the more visible operator-experience gaps from the v0.16 line. A METRICS_ENABLED=0
+startup crash in the harness is fixed. Backend images (codex, gemini) pick up Node.js 20 to match claude, and evan's
+bug-work scope expands across the day-one toolchain table to cover charts and the dashboard.
+
+### Added
+
+- **ww**: `ww update` now upgrades standalone-binary installs by reusing the canonical `install.sh` pipeline with
+  `--install-dir` pointed at the running binary's directory. Pre-flight write check surfaces "re-run with sudo" up-front
+  rather than failing mid-download. Closes the gap surfaced after v0.16.5 cut autonomously and `ww update` reported "no
+  automatic upgrade path." `ww update --check` now says "To upgrade: ww update" instead of pointing at the tarball URL.
+- **ww**: `ww agent logs <name>` defaults to tailing every container in the pod (harness + backend(s) + git-sync)
+  interleaved, with each line prefixed by `[<container>]`. Multi-pod scope (rollouts, `--pod` ambiguous match) widens
+  the prefix to `[<short-pod-suffix>/<container>]`. `-c <name>` still filters to one container; unknown container names
+  surface a clean error listing what's available.
+- **backends**: `backends/codex` and `backends/gemini` Dockerfiles install Node.js 20 (claude already had it), so any
+  agent on any backend can run any skill that shells out to a Node-based CLI.
+
+### Fixed
+
+- **harness**: METRICS_ENABLED=0 startup no longer crashes with `NameError: name 'app' is not defined`. The lifespan
+  closure's metrics-disabled branch was calling `app.router.add_route(...)` at lines 2227/2232; the closure parameter
+  had been renamed to `_app` upstream (commit `e027504c`, #924) but the rename wasn't propagated. Both call sites now
+  reference `_app`. Surfaced by evan's bug-work depth=5 sweep at 2026-05-07T18:00Z.
+
+### Agent identity
+
+- **evan**: bug-work day-one toolchain table picks up `charts/witwave` and `charts/witwave-operator`
+  (helm lint + yamllint) and `clients/dashboard` (vue-tsc --noEmit + hadolint). The "deferred to v2" list shrinks to
+  empty — every section the repo currently exposes is now in evan's scan scope. `all-day-one` count: 14 → 17. Chart and
+  dashboard toolchains were already installed in the backend images; the SKILL was just stale.
+- **nova, kira, zora**: findings-marker schema adopted team-wide. `code-verify`, `docs-verify`, and `docs-consistency`
+  SKILLs now end findings bullets with `[pending]` / `[flagged: <reason>]` / `[fixed: <SHA>]` markers — matching the
+  schema evan was already using. Zora's `dispatch-team` per-peer backlog adapter reframes accordingly: marker count on
+  sections dated 2026-05-07 onward, narrative-bullet count only on legacy pre-cutoff sections. Once legacy sections age
+  out, the adapter degenerates to a uniform marker count across all peers.
+
 ## [0.16.5] — 2026-05-07
 
 Closes the harness `-32603` empty-response bug that had been corrupting synchronous JSON-RPC replies whenever an agent
