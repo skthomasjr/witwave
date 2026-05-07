@@ -104,6 +104,53 @@ peer with a routine task in their domain. Floors:
 
 If multiple peers have breached, pick the one with the largest current backlog.
 
+**Choosing depth for evan dispatches (polish-tier control).** evan's `bug-work` and `risk-work` accept a `depth`
+argument 1-10. The team works UP the polish ladder `3 → 5 → 7 → 9`; each tier exhausts the cheap finds for the
+next. The CLAUDE.md priority policy spells out the principle; this section is the mechanics.
+
+Read the current tier from `team_state.md`:
+
+```
+polish_tier_evan_bug:                <int, default 3>
+polish_tier_evan_risk:               <int, default 3>
+polish_tier_evan_bug_zero_streak:    <int, default 0>  # consecutive 0-finding runs at current tier
+polish_tier_evan_risk_zero_streak:   <int, default 0>
+polish_tier_evan_bug_last_run_sha:   <sha, default latest tag at first run>
+polish_tier_evan_risk_last_run_sha:  <sha, default latest tag at first run>
+```
+
+Decide the tier for THIS dispatch:
+
+1. **Reset check.** Look at `git log <last_run_sha>..HEAD`. If any commits landed in evan's section scope
+   (`harness/`, `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`, `helpers/`, `scripts/`,
+   `.github/workflows/`) — set tier back to **3** and zero the streak. Fresh source has new candidates at every
+   tier; start from the cheap ones again.
+2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the current tier — advance the tier to the next
+   rung on the ladder (`3 → 5 → 7 → 9`; cap at 9) and zero the streak. The advance encodes "we've exhausted this
+   tier; go deeper."
+3. **Hold check.** Otherwise keep the tier as-is.
+
+Pass it to evan in the call-peer prompt: `Run your bug-work skill at depth=<tier>, sections=all-day-one`. Same
+shape for risk-work (`sections=all-deps` is the default scope for risk-work).
+
+After the dispatch, when evan reports back, update `team_state.md`:
+
+- If evan's run returned 0/0/0 (0 candidates / 0 fixed / 0 flagged) — increment `zero_streak`. Update
+  `last_run_sha` to current HEAD either way.
+- If evan returned anything substantive (≥1 candidate, fixed or flagged) — zero the streak. Update
+  `last_run_sha` to current HEAD.
+
+Log the tier choice + reason in `decision_log.md` on each dispatch:
+
+```
+- evan bug-work dispatched at depth=5 (advanced from 3 — last 2 runs 0/0/0 at depth=3, no fresh source since).
+- evan risk-work dispatched at depth=3 (reset from 5 — fresh commits in operator/ since last run).
+```
+
+This is how the team becomes *actually* bug-free / risk-free rather than "0 found at the cheap depth." Treat each
+tier as its own ground to cover; only depth=9 across all-day-one with adversarial passes counts as "we've looked
+hard."
+
 #### Priority 3 — Cadence floor breached (team-tidy, your own work)
 
 If no priority 1 or priority 2 firing this tick, AND your `team-tidy` cadence floor (6h) has breached, invoke your own

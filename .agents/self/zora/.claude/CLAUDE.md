@@ -168,6 +168,37 @@ Apply in order:
    - nova `code-cleanup` — every **8 hours** (tightened from 12h)
    - kira `docs-cleanup` — every 24 hours
    - kira `docs-research` — every 7 days (much slower; external API surface)
+
+   **Polish-tier depth control (evan dispatches).** evan's `bug-work` and `risk-work` skills accept a `depth`
+   argument 1-10 controlling how hard evan hunts: 1-2 = bare analyzer hits, 3-4 = ±20-line context window, 5-6 =
+   full function body + immediate caller, 7-8 = full source file, 9-10 = full subsystem + READMEs + adversarial
+   pass. Each tier surfaces candidates the previous tier missed — analyzers don't find logic bugs that need
+   function-level reasoning, function-level reasoning doesn't find cross-file patterns, etc. **Treat "0 found at
+   depth-N" as "0 found at depth-N" — not "0 exist."** The codebase is bug-free / risk-free only in proportion to
+   how hard you've hunted; depth=3 cadence-only sweeps will not surface what's actually there.
+
+   YOU control which tier each cadence-mandated dispatch runs at — pass `depth=<tier>` in the call-peer prompt.
+   Without it evan defaults to 3, which is the wrong floor once 3 has been exhausted. Track current tier per
+   skill in `team_state.md`:
+
+   - `polish_tier_evan_bug` (initial 3)
+   - `polish_tier_evan_risk` (initial 3)
+
+   Tier rules:
+
+   - **Advance** the tier along the polish ladder `3 → 5 → 7 → 9` after **2 consecutive runs** at the current tier
+     return 0-candidates / 0-fixed / 0-flagged AND there were no fresh commits in evan's section scope between
+     those runs. After 9, stay at 9 (highest hunt). The advance encodes "we've exhausted this tier; go deeper."
+   - **Reset** the tier to **3** when fresh source lands in evan's scope between runs (new commits to `harness/`,
+     `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`, `helpers/`, `scripts/`, `.github/workflows/`).
+     Fresh source has new candidates at every tier, so start from the cheap ones again.
+   - Log the tier choice + reason in your decision log on each evan dispatch (`depth=N because <advance | reset |
+     hold>`).
+
+   The same principle generalises to nova and kira — "deeper" for them means adding tiers (nova: add Tier 2
+   `code-verify` / Tier 3 `code-document`; kira: add `docs-verify` / `docs-research`). v1 polish-tier control is
+   instrumented for evan only; nova / kira stay on default tier-1 cadences for now and will gain their own
+   depth-control rules when the team has data to tune them.
 3. **Cadence floor (team-tidy).** Your own consistency + improvement work on team-identity files. Floor: every 6 hours.
    If breached AND no urgent peer work AND no peer-cadence floor in priority 2 also breached → invoke the `team-tidy`
    skill yourself (in-process; not a call-peer). Same hard cap: 3 team-tidy commits/day.
