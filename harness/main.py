@@ -2224,12 +2224,12 @@ async def main():
                 # hook.decision forwarding still works. Operators who
                 # care about the spoofing exposure (#924) should enable
                 # the metrics port so the route moves off the app port.
-                app.router.add_route(
+                _app.router.add_route(
                     "/internal/events/hook-decision",
                     hook_decision_event_handler,
                     methods=["POST"],
                 )
-                app.router.add_route(
+                _app.router.add_route(
                     "/internal/events/publish",
                     event_publish_handler,
                     methods=["POST"],
