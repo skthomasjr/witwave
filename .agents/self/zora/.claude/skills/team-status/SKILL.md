@@ -1,9 +1,9 @@
 ---
 name: team-status
 description:
-  Read team state and return a snapshot for the user. Per-peer health + backlog + last activity, recent releases,
-  any open escalations. Read-only — does NOT make decisions or dispatch. Trigger when the user says "team status",
-  "what's the team doing?", "status report", "who's working?".
+  Read team state and return a snapshot for the user. Per-peer health + backlog + last activity, recent releases, any
+  open escalations. Read-only — does NOT make decisions or dispatch. Trigger when the user says "team status", "what's
+  the team doing?", "status report", "who's working?".
 version: 0.1.0
 ---
 
@@ -43,12 +43,12 @@ Return a structured markdown block:
 
 ### Peers
 
-| Peer  | Status   | Last fired (skill, time) | Open backlog | Notes                          |
-| ----- | -------- | ------------------------ | ------------ | ------------------------------ |
-| iris  | <ok|silent> | release, HH:MM           | n/a          | <any escalation>               |
-| nova  | <ok|silent> | code-cleanup, HH:MM      | N            |                                |
-| kira  | <ok|silent> | docs-cleanup, HH:MM      | N            |                                |
-| evan  | <ok|silent> | bug-work, HH:MM          | N flagged    | <critical-finding count if >0> |
+| Peer | Status | Last fired (skill, time) | Open backlog        | Notes     |
+| ---- | ------ | ------------------------ | ------------------- | --------- | ------------------------------ |
+| iris | <ok    | silent>                  | release, HH:MM      | n/a       | <any escalation>               |
+| nova | <ok    | silent>                  | code-cleanup, HH:MM | N         |                                |
+| kira | <ok    | silent>                  | docs-cleanup, HH:MM | N         |                                |
+| evan | <ok    | silent>                  | bug-work, HH:MM     | N flagged | <critical-finding count if >0> |
 
 ### Recent decisions (last 6 ticks)
 
@@ -68,13 +68,13 @@ Return a structured markdown block:
 
 ### 3. Exit cleanly
 
-Return only the snapshot. Do not dispatch any peer, do not change any memory file, do not invoke any other skill.
-This is read-only.
+Return only the snapshot. Do not dispatch any peer, do not change any memory file, do not invoke any other skill. This
+is read-only.
 
 ## Out of scope for this skill
 
-- **Decisions.** Read-only report. If the user wants you to act, they'll either invoke `dispatch-team` directly
-  or wait for the next heartbeat.
+- **Decisions.** Read-only report. If the user wants you to act, they'll either invoke `dispatch-team` directly or wait
+  for the next heartbeat.
 - **Dispatching peers.** Same as above.
 - **Changing the priority policy or cadence floors.** Policy is in CLAUDE.md; change happens via the user editing
   CLAUDE.md, not via this skill.

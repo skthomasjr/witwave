@@ -114,25 +114,25 @@ analyzer + local-test gating runs identically wherever evan is deployed.
 - **evan**: scaffolded as the team's fourth self-agent — owner of correctness bug discovery across Python, Go,
   Dockerfile, shell, and GitHub Actions sources. Identity (CLAUDE.md + agent-card), team-participation files, and four
   skills: `bug-sweep` (the work skill — 7-step end-to-end pass: scan, validate through an eight-concern
-  intentional-design gauntlet, reason as set, decide fix-vs-flag, fix with web-search + scoped local tests, log,
-  push + CI watch — both delegated to iris), and `git-identity` / `call-peer` / `discover-peers` (cross-agent skills
-  copied byte-identical from kira/nova). 17-section addressable namespace (14 day-one + 3 deferred to v2) with
-  aliases (`all-python`, `all-go`, `all-backends`, `all-tools`, `all-day-one`); single 1-10 depth dial gates both
-  step-2 validation rigor and step-4 fix-bar stringency, with auto-fix only at depth ≥ 5. Batch-revert posture on red
-  CI per trunk-based-dev contract. State lives in commits + memory only — no GitHub issues, no labels, no funnel.
-- **evan → iris CI-watch delegation**: framed as team contract, not workaround. Step 7 of `bug-sweep` delegates BOTH
-  the push AND the CI watch to iris in one `call-peer` round-trip; iris reports back, evan acts on the report. The
-  same shape applies to future siblings (security, test-coverage, etc.) — iris owns all git/GitHub authority for the
-  team, every other agent stays focused on its domain.
+  intentional-design gauntlet, reason as set, decide fix-vs-flag, fix with web-search + scoped local tests, log, push +
+  CI watch — both delegated to iris), and `git-identity` / `call-peer` / `discover-peers` (cross-agent skills copied
+  byte-identical from kira/nova). 17-section addressable namespace (14 day-one + 3 deferred to v2) with aliases
+  (`all-python`, `all-go`, `all-backends`, `all-tools`, `all-day-one`); single 1-10 depth dial gates both step-2
+  validation rigor and step-4 fix-bar stringency, with auto-fix only at depth ≥ 5. Batch-revert posture on red CI per
+  trunk-based-dev contract. State lives in commits + memory only — no GitHub issues, no labels, no funnel.
+- **evan → iris CI-watch delegation**: framed as team contract, not workaround. Step 7 of `bug-sweep` delegates BOTH the
+  push AND the CI watch to iris in one `call-peer` round-trip; iris reports back, evan acts on the report. The same
+  shape applies to future siblings (security, test-coverage, etc.) — iris owns all git/GitHub authority for the team,
+  every other agent stays focused on its domain.
 
 ### Added
 
 - **backends**: evan's bug-class Go toolchain installed uniformly in claude, codex, and gemini images — staticcheck
   2024.1.1, errcheck v1.7.0, ineffassign v0.1.0, controller-gen v0.16.5. Consolidates with nova's existing goimports
-  install into a single five-binary `go install` step. ~80–120 MB image growth per backend. Echo image stays minimal
-  by design.
-- **backends**: evan's bug-class Python toolchain installed alongside nova's existing ruff/yamllint pip block in
-  claude, codex, and gemini images — pytest 8.3.3, pytest-asyncio 0.24.0, httpx 0.27.2, python-kubernetes 31.0.0. Lets
+  install into a single five-binary `go install` step. ~80–120 MB image growth per backend. Echo image stays minimal by
+  design.
+- **backends**: evan's bug-class Python toolchain installed alongside nova's existing ruff/yamllint pip block in claude,
+  codex, and gemini images — pytest 8.3.3, pytest-asyncio 0.24.0, httpx 0.27.2, python-kubernetes 31.0.0. Lets
   `bug-sweep` run scoped local tests (`pytest <section>/`) without per-workflow ad-hoc installs.
 
 ### Fixed
@@ -146,9 +146,9 @@ analyzer + local-test gating runs identically wherever evan is deployed.
 ### Changed
 
 - **tooling**: `.prettierignore` excludes controller-gen output (`charts/witwave-operator/crds/`,
-  `operator/config/crd/bases/`, `operator/config/rbac/role.yaml`) so nova's code-format passes stop reverting it
-  on every run. `.editorconfig` pins shell-script indent to 2-space (matching 7 of 9 `scripts/*.sh`); `install.sh`
-  and `smoke-ww-agent.sh` keep 4-space via per-pattern override to avoid ~700-line reflows.
+  `operator/config/crd/bases/`, `operator/config/rbac/role.yaml`) so nova's code-format passes stop reverting it on
+  every run. `.editorconfig` pins shell-script indent to 2-space (matching 7 of 9 `scripts/*.sh`); `install.sh` and
+  `smoke-ww-agent.sh` keep 4-space via per-pattern override to avoid ~700-line reflows.
 
 ## [0.14.0] — 2026-05-06
 

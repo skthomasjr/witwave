@@ -26,8 +26,8 @@ Parse from the user's prompt:
 - **`sections`** — comma-separated list of section names or aliases. Default `all-day-one` if unspecified. Refuse
   cleanly if a section name doesn't match the list below or if a v2-deferred section is requested.
 
-Parse permissively. `bug-work depth=5 sections=harness,shared`, `find bugs in operator depth 7`, `fix bugs`, and
-plain `work bugs` are all valid.
+Parse permissively. `bug-work depth=5 sections=harness,shared`, `find bugs in operator depth 7`, `fix bugs`, and plain
+`work bugs` are all valid.
 
 ## Sections
 
@@ -36,22 +36,22 @@ Dockerfile, shell, and GitHub Actions. Three more are scaffolded but their toolc
 
 ### Day-one toolchain
 
-| Section                  | Files in tree                          | Toolchain                                                                |
-| ------------------------ | -------------------------------------- | ------------------------------------------------------------------------ |
-| `harness`                | Python + Dockerfile                    | `ruff` (B) + `hadolint` (bug-class)                                      |
-| `shared`                 | Python                                 | `ruff` (B)                                                               |
-| `backends/claude`        | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `backends/codex`         | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `backends/gemini`        | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `backends/echo`          | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `tools/kubernetes`       | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `tools/helm`             | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `tools/prometheus`       | Python + Dockerfile                    | `ruff` (B) + `hadolint`                                                  |
-| `operator`               | Go + Dockerfile + kubebuilder markers  | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint` + `controller-gen` drift |
-| `clients/ww`             | Go (+ Dockerfile if present)           | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint`  |
-| `helpers/git-sync`       | Dockerfile only                        | `hadolint`                                                               |
-| `scripts`                | Shell                                  | `shellcheck` (bug-class)                                                 |
-| `workflows`              | GitHub Actions YAML                    | `actionlint`                                                             |
+| Section            | Files in tree                         | Toolchain                                                                                        |
+| ------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `harness`          | Python + Dockerfile                   | `ruff` (B) + `hadolint` (bug-class)                                                              |
+| `shared`           | Python                                | `ruff` (B)                                                                                       |
+| `backends/claude`  | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `backends/codex`   | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `backends/gemini`  | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `backends/echo`    | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `tools/kubernetes` | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `tools/helm`       | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `tools/prometheus` | Python + Dockerfile                   | `ruff` (B) + `hadolint`                                                                          |
+| `operator`         | Go + Dockerfile + kubebuilder markers | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint` + `controller-gen` drift |
+| `clients/ww`       | Go (+ Dockerfile if present)          | `go vet` + `staticcheck` (SA) + `errcheck` + `ineffassign` + `hadolint`                          |
+| `helpers/git-sync` | Dockerfile only                       | `hadolint`                                                                                       |
+| `scripts`          | Shell                                 | `shellcheck` (bug-class)                                                                         |
+| `workflows`        | GitHub Actions YAML                   | `actionlint`                                                                                     |
 
 ### Deferred to v2
 
@@ -74,8 +74,8 @@ Aliases compose with explicit sections: `all-go,scripts` is valid.
 - **TOML / JSON** — parse errors only; nothing bug-class.
 - **Lockfiles / `requirements.txt` / `go.mod`** — needs an external tracker we don't have.
 - **Generated / vendored** — `**/zz_generated.*`, `**/vendor/**`, `clients/ww/dist/**`,
-  `clients/ww/internal/operator/embedded/**`, `clients/dashboard/dist/**`, controller-gen output. Touching these
-  creates per-pass revert cycles.
+  `clients/ww/internal/operator/embedded/**`, `clients/dashboard/dist/**`, controller-gen output. Touching these creates
+  per-pass revert cycles.
 - **Test code** — `tests/`, `**/*_test.go`, `**/test_*.py`. Tests verify your fixes; you don't add bugs to them.
 
 ## Depth scale
@@ -83,17 +83,17 @@ Aliases compose with explicit sections: `all-go,scripts` is valid.
 Depth = **how hard you hunt for bugs.** Higher depth = more LLM time per candidate, deeper analysis, wider net that
 catches subtler bugs analyzers don't surface alone. **Every depth fixes** — the fix-bar is depth-independent.
 
-| Depth   | What you read per candidate                                                            | Concerns checked from the gauntlet                       | Candidate pool                                                              |
-| ------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| **1-2** | Just the cited line                                                                    | None — trust the analyzer                                | Bare analyzer hits — the no-brainer wins                                    |
-| **3-4** | ±20-line context window                                                                | #1 (`#NNNN` ref), #2 (adjacent handler)                  | Drops obvious false positives                                               |
-| **5-6** | Full function body + immediate caller                                                  | #1, #2, #3 (synchronization), #4 (defensive earlier)     | Adds candidates analyzers don't see — logic bugs spotted by reading intent  |
-| **7-8** | Full source file                                                                       | All 8                                                    | Cross-function patterns the per-line analyzers miss                         |
-| **9-10**| Full subsystem (file + callers + callees) + READMEs/AGENTS.md + adversarial pass       | All 8 + adversarial + web-search any unfamiliar APIs     | Subtle architectural / cross-file / cross-package bugs                      |
+| Depth    | What you read per candidate                                                      | Concerns checked from the gauntlet                   | Candidate pool                                                             |
+| -------- | -------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| **1-2**  | Just the cited line                                                              | None — trust the analyzer                            | Bare analyzer hits — the no-brainer wins                                   |
+| **3-4**  | ±20-line context window                                                          | #1 (`#NNNN` ref), #2 (adjacent handler)              | Drops obvious false positives                                              |
+| **5-6**  | Full function body + immediate caller                                            | #1, #2, #3 (synchronization), #4 (defensive earlier) | Adds candidates analyzers don't see — logic bugs spotted by reading intent |
+| **7-8**  | Full source file                                                                 | All 8                                                | Cross-function patterns the per-line analyzers miss                        |
+| **9-10** | Full subsystem (file + callers + callees) + READMEs/AGENTS.md + adversarial pass | All 8 + adversarial + web-search any unfamiliar APIs | Subtle architectural / cross-file / cross-package bugs                     |
 
-**Polish trajectory.** Run depth 1-2 wide first (cheap, catches mechanical wins everywhere), then depth 5-6 on the
-same scope (function-level reasoning catches the next tier), then 7-8 (cross-function patterns), then 9-10
-(architectural). Each tier's candidate pool shrinks because the previous tier exhausted the cheap finds.
+**Polish trajectory.** Run depth 1-2 wide first (cheap, catches mechanical wins everywhere), then depth 5-6 on the same
+scope (function-level reasoning catches the next tier), then 7-8 (cross-function patterns), then 9-10 (architectural).
+Each tier's candidate pool shrinks because the previous tier exhausted the cheap finds.
 
 **Defaults** (caller can override):
 
@@ -105,21 +105,21 @@ same scope (function-level reasoning catches the next tier), then 7-8 (cross-fun
 
 ## The intentional-design gauntlet (8 concerns)
 
-Used in step 2 (validate). For each candidate, walk the concerns at the depth-table's intensity. **When in doubt,
-drop the candidate** — false positives that escape this step waste effort everywhere downstream.
+Used in step 2 (validate). For each candidate, walk the concerns at the depth-table's intensity. **When in doubt, drop
+the candidate** — false positives that escape this step waste effort everywhere downstream.
 
 1. **Inline `#NNNN` reference within ±20 lines.** GitHub-issue refs in the witwave codebase document intentional
    choices. A nearby `#NNNN` usually means the candidate is a misread.
-2. **Adjacent handler within ±10 lines.** `else` branch, `finally` block, early-return guard, broader `except` two
-   lines below — these are the patterns most often missed.
+2. **Adjacent handler within ±10 lines.** `else` branch, `finally` block, early-return guard, broader `except` two lines
+   below — these are the patterns most often missed.
 3. **Synchronization in place.** Lock (`async with _lock`, `threading.Lock`), single-threaded asyncio loop, GIL
    atomicity for ref rebinds and single-list-index assignments. If only one path writes, it isn't a race.
 4. **Defensive check earlier on the call path.** For "missing nil-check" / "missing validation" candidates, read what
    calls the function. If the caller validates, the internal gap is fine.
-5. **Documented design tradeoff.** A comment near the cited code explains the choice (e.g. CLI falling back to
-   anonymous when credentials aren't found, watch handler returning empty on transient errors). Drop the candidate.
-6. **Idempotent operations.** "Double cancel/delete/cleanup" is usually safe (`context.CancelFunc`, `set.discard`,
-   k8s `client.Delete`). Drop the candidate.
+5. **Documented design tradeoff.** A comment near the cited code explains the choice (e.g. CLI falling back to anonymous
+   when credentials aren't found, watch handler returning empty on transient errors). Drop the candidate.
+6. **Idempotent operations.** "Double cancel/delete/cleanup" is usually safe (`context.CancelFunc`, `set.discard`, k8s
+   `client.Delete`). Drop the candidate.
 7. **Bug still present in current code.** Operate on `HEAD`. If the analyzer's line reference doesn't match what's
    actually there, drop.
 8. **Stale line numbers.** Re-locate if findable; drop if not.
@@ -140,59 +140,59 @@ Used in step 4 (decide fix vs. flag). All four must hold to fix; otherwise the c
    `actionlint` core, `hadolint DL3022/DL3025/DL4006`. Ambiguous: `staticcheck SA9xxx`, anything with hedge words
    ("may", "likely", "potentially"). Default: high-signal only auto-fixes; ambiguous flags.
 
-The fix-bar is depth-independent — a high-confidence errcheck hit at depth 1 is just as fixable as one at depth 8.
-At depth 9-10, every committed fix also gets a regression test (see step 5.7); that's a commit-shape requirement,
-not a fix-bar gate.
+The fix-bar is depth-independent — a high-confidence errcheck hit at depth 1 is just as fixable as one at depth 8. At
+depth 9-10, every committed fix also gets a regression test (see step 5.7); that's a commit-shape requirement, not a
+fix-bar gate.
 
 ## Safe-pattern catalogue (waives the test-coverage gate)
 
-A curated set of (analyzer rule + fix template) pairs where the canonical fix literally cannot change runtime
-behavior — only traceback presentation, build hardening posture, or cosmetic noise. Candidates matching ALL of:
-analyzer rule, surrounding-context shape, AND fix template — bypass the test-coverage gate in fix-bar rule 3.
-Untested-path findings that match the catalogue are auto-fixable; non-matching findings still flag.
+A curated set of (analyzer rule + fix template) pairs where the canonical fix literally cannot change runtime behavior —
+only traceback presentation, build hardening posture, or cosmetic noise. Candidates matching ALL of: analyzer rule,
+surrounding-context shape, AND fix template — bypass the test-coverage gate in fix-bar rule 3. Untested-path findings
+that match the catalogue are auto-fixable; non-matching findings still flag.
 
-The catalogue is **deliberately narrow.** New entries require a clear safety justification: the fix must
-demonstrably not change observable behavior of the code, only its diagnostics / hardening / presentation.
-Pattern invention beyond these entries is still out of scope (see "Out of scope" → "Pattern invention").
+The catalogue is **deliberately narrow.** New entries require a clear safety justification: the fix must demonstrably
+not change observable behavior of the code, only its diagnostics / hardening / presentation. Pattern invention beyond
+these entries is still out of scope (see "Out of scope" → "Pattern invention").
 
-| ID | Analyzer rule + context shape | Fix template | Why it bypasses test-coverage |
-|----|------------------------------|--------------|-------------------------------|
-| **SP-1** | `ruff B904` raise-without-from in `except X: raise Y(...)`. Y is an established exception type already raised elsewhere in the codebase; the except branch's intent is "translate exception type" not "augment with context." | `except X as exc:` + `raise Y(...) from None` (suppresses chain noise). Use `from exc` instead if a comment in the surrounding code says context is wanted. | Behavior-preserving from caller perspective — only changes traceback presentation. Callers see the same Y exception either way; can't break tests. |
-| **SP-2** | `hadolint DL4006` missing pipefail on `RUN ... \| ...`. The Dockerfile has no existing `SHELL` directive. | Insert `SHELL ["/bin/bash", "-o", "pipefail", "-c"]` once at top of file, after the FROM/ENV blocks and before the first RUN. Single insertion covers every DL4006 in the file. | Hardening — surfaces silent pipe failures that were previously swallowed. The "global blast radius" is the point; if any subsequent RUN was depending on pipe-failure silence, that's also a bug. Image still builds; test-coverage gap doesn't apply because the change can only make existing-silent-bugs loud. |
-| **SP-3** | `actionlint SC2035` `<cmd> *.glob` in a workflow `run:` block where the cwd contains files with controlled prefixes (e.g. `goreleaser` output dir, version-named archives). | Insert `--` separator: `<cmd> -- *.glob`. **Never** use `./` prefix (would change output bytes). | `--` ends option parsing; `sha256sum` and similar commands produce byte-identical output. Critical for SLSA-subject preservation; the `--` form is the canonical "I know what I'm doing" idiom. |
-| **SP-4** | `actionlint SC2034` unused `<var>` in `for <var> in $(seq 1 N); do ... done` (count-controlled retry idiom). | Rename the loop variable to `_<var>` (e.g. `_i`). | Underscore prefix is the standard "unused by design" signal — same as Python and Go. Pure variable rename in an unused position; provably can't affect runtime behavior. |
-| **SP-5** | `actionlint SC2016` single-quoted `$<expr>` where `<expr>` is a known false-positive class — bcrypt header (`$2y$`, `$2a$`, `$2b$`, `$05$`/`$10$`/`$12$` cost prefix), regex anchors, version strings (`$RELEASE_VERSION` in templating), Helm template expressions. | Add `# shellcheck disable=SC2016` comment immediately above the affected line, with a one-word reason in a trailing comment (e.g. `# shellcheck disable=SC2016  # bcrypt literal`). | Single-quoting is correct for these contexts; double-quoting would corrupt the literal. The fix is the disable comment, not the code change. Zero runtime effect. |
+| ID       | Analyzer rule + context shape                                                                                                                                                                                                                                        | Fix template                                                                                                                                                                        | Why it bypasses test-coverage                                                                                                                                                                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SP-1** | `ruff B904` raise-without-from in `except X: raise Y(...)`. Y is an established exception type already raised elsewhere in the codebase; the except branch's intent is "translate exception type" not "augment with context."                                        | `except X as exc:` + `raise Y(...) from None` (suppresses chain noise). Use `from exc` instead if a comment in the surrounding code says context is wanted.                         | Behavior-preserving from caller perspective — only changes traceback presentation. Callers see the same Y exception either way; can't break tests.                                                                                                                                                                |
+| **SP-2** | `hadolint DL4006` missing pipefail on `RUN ... \| ...`. The Dockerfile has no existing `SHELL` directive.                                                                                                                                                            | Insert `SHELL ["/bin/bash", "-o", "pipefail", "-c"]` once at top of file, after the FROM/ENV blocks and before the first RUN. Single insertion covers every DL4006 in the file.     | Hardening — surfaces silent pipe failures that were previously swallowed. The "global blast radius" is the point; if any subsequent RUN was depending on pipe-failure silence, that's also a bug. Image still builds; test-coverage gap doesn't apply because the change can only make existing-silent-bugs loud. |
+| **SP-3** | `actionlint SC2035` `<cmd> *.glob` in a workflow `run:` block where the cwd contains files with controlled prefixes (e.g. `goreleaser` output dir, version-named archives).                                                                                          | Insert `--` separator: `<cmd> -- *.glob`. **Never** use `./` prefix (would change output bytes).                                                                                    | `--` ends option parsing; `sha256sum` and similar commands produce byte-identical output. Critical for SLSA-subject preservation; the `--` form is the canonical "I know what I'm doing" idiom.                                                                                                                   |
+| **SP-4** | `actionlint SC2034` unused `<var>` in `for <var> in $(seq 1 N); do ... done` (count-controlled retry idiom).                                                                                                                                                         | Rename the loop variable to `_<var>` (e.g. `_i`).                                                                                                                                   | Underscore prefix is the standard "unused by design" signal — same as Python and Go. Pure variable rename in an unused position; provably can't affect runtime behavior.                                                                                                                                          |
+| **SP-5** | `actionlint SC2016` single-quoted `$<expr>` where `<expr>` is a known false-positive class — bcrypt header (`$2y$`, `$2a$`, `$2b$`, `$05$`/`$10$`/`$12$` cost prefix), regex anchors, version strings (`$RELEASE_VERSION` in templating), Helm template expressions. | Add `# shellcheck disable=SC2016` comment immediately above the affected line, with a one-word reason in a trailing comment (e.g. `# shellcheck disable=SC2016  # bcrypt literal`). | Single-quoting is correct for these contexts; double-quoting would corrupt the literal. The fix is the disable comment, not the code change. Zero runtime effect.                                                                                                                                                 |
 
-When a candidate matches a catalogue entry, evan applies the canonical fix in step 5 with the same per-candidate
-process (read body + run scoped tests + commit + mutate marker). The local-test gate still runs — if scoped tests
-exist on adjacent code paths, they still execute and a failure still triggers fix-forward then revert. The
-catalogue waives the *no-test-coverage-on-this-specific-line* trigger, not the local-test execution itself.
+When a candidate matches a catalogue entry, evan applies the canonical fix in step 5 with the same per-candidate process
+(read body + run scoped tests + commit + mutate marker). The local-test gate still runs — if scoped tests exist on
+adjacent code paths, they still execute and a failure still triggers fix-forward then revert. The catalogue waives the
+_no-test-coverage-on-this-specific-line_ trigger, not the local-test execution itself.
 
 Out-of-catalogue judgment-call findings continue to flag with their existing reasons. The user can review
 deferred-findings memory and either:
+
 - Add a new pattern to the catalogue (manual edit to this SKILL.md, then evan picks it up via gitSync), or
-- Manually instruct evan to fix specific candidates via "fix-from-queue" trigger, supplying the fix template
-  inline. The user's review is the human-in-the-loop validation that the depth-bar (and test-coverage gate) was
-  supposed to provide.
+- Manually instruct evan to fix specific candidates via "fix-from-queue" trigger, supplying the fix template inline. The
+  user's review is the human-in-the-loop validation that the depth-bar (and test-coverage gate) was supposed to provide.
 
 ## Toolchain invocations (bug-class filters)
 
-| Tool          | Invocation                                                                                                          |
-| ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `ruff`        | `ruff check --select B --no-fix <section>` — bugbear only; never `--select E,W,F`                                   |
-| `go vet`      | `cd <section> && go vet ./...`                                                                                      |
-| `staticcheck` | `cd <section> && staticcheck -checks=SA* ./...` — only SA-prefix; skip ST/S/QF                                      |
-| `errcheck`    | `cd <section> && errcheck ./...`                                                                                    |
-| `ineffassign` | `cd <section> && ineffassign ./...`                                                                                 |
-| `hadolint`    | `hadolint --no-fail --ignore=DL3008 --ignore=DL3015 --ignore=DL3018 --ignore=DL3059 --ignore=DL4001 <Dockerfile>`   |
-| `shellcheck`  | `shellcheck --severity=warning --include=SC2086,SC2046,SC2155,SC2207,SC1090,SC2236,SC2068,SC2206,SC2128,SC2178 <script.sh>` |
-| `actionlint`  | `actionlint <workflow.yml>`                                                                                         |
+| Tool                             | Invocation                                                                                                                                                                                                                        |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ruff`                           | `ruff check --select B --no-fix <section>` — bugbear only; never `--select E,W,F`                                                                                                                                                 |
+| `go vet`                         | `cd <section> && go vet ./...`                                                                                                                                                                                                    |
+| `staticcheck`                    | `cd <section> && staticcheck -checks=SA* ./...` — only SA-prefix; skip ST/S/QF                                                                                                                                                    |
+| `errcheck`                       | `cd <section> && errcheck ./...`                                                                                                                                                                                                  |
+| `ineffassign`                    | `cd <section> && ineffassign ./...`                                                                                                                                                                                               |
+| `hadolint`                       | `hadolint --no-fail --ignore=DL3008 --ignore=DL3015 --ignore=DL3018 --ignore=DL3059 --ignore=DL4001 <Dockerfile>`                                                                                                                 |
+| `shellcheck`                     | `shellcheck --severity=warning --include=SC2086,SC2046,SC2155,SC2207,SC1090,SC2236,SC2068,SC2206,SC2128,SC2178 <script.sh>`                                                                                                       |
+| `actionlint`                     | `actionlint <workflow.yml>`                                                                                                                                                                                                       |
 | `controller-gen` (operator only) | `cd <checkout>/operator && make manifests && cd <checkout> && git diff --exit-code operator/config/crd/bases/` — uses the project's existing `manifests` target so the drift check stays in lockstep with how CI regenerates CRDs |
 
 ## Memory format
 
-The deferred-findings file is `/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md`. Each run
-appends a date-stamped section. Each candidate carries one of three status markers:
+The deferred-findings file is `/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md`. Each run appends a
+date-stamped section. Each candidate carries one of three status markers:
 
 - `[pending]` — written by step 1.5 immediately after scan. Default state.
 - `[fixed: <SHA>]` — written by step 5.7 right after the commit lands. Per-candidate, not at end of run.
@@ -211,7 +211,7 @@ Run-section template:
 
 ### <section name>
 
-- **<file>:<line>** `<analyzer rule>` — <one-line analyzer message>  [pending]
+- **<file>:<line>** `<analyzer rule>` — <one-line analyzer message> [pending]
 - ...
 ```
 
@@ -247,8 +247,8 @@ STUCK=$(git -C <checkout> rev-list --count origin/main..HEAD)
 
 If `STUCK == 0`: proceed to step 1.
 
-If `STUCK > 0`: previous run died after step 5 (commits) but before step 7 (push). Delegate a recovery push + CI
-watch to iris (use the same call-peer template as step 7, framed as recovery). Wait for her report.
+If `STUCK > 0`: previous run died after step 5 (commits) but before step 7 (push). Delegate a recovery push + CI watch
+to iris (use the same call-peer template as step 7, framed as recovery). Wait for her report.
 
 - **Iris reports green** → recovery complete, proceed to step 1.
 - **Iris reports red** → batch-revert the stuck batch (same procedure as step 7), log the failure, proceed to step 1.
@@ -262,18 +262,18 @@ PRE_SWEEP_SHA=$(git -C <checkout> rev-parse HEAD)
 
 ### 1. Scan
 
-For each section in the resolved input, run the analyzers from the toolchain table above on the file types that
-section contains. If a section's toolchain isn't installed in this image (v2 sections requested early), skip with a
-clear summary entry.
+For each section in the resolved input, run the analyzers from the toolchain table above on the file types that section
+contains. If a section's toolchain isn't installed in this image (v2 sections requested early), skip with a clear
+summary entry.
 
 Concatenate all hits into the **candidate list**. Each candidate carries: section, file, line, rule, message, raw
 analyzer output.
 
 ### 1.5. Persist the candidate list to memory IMMEDIATELY
 
-Before any per-candidate work in steps 2-5, write the full raw candidate list to memory using the run-section
-template above. This is a durability guard against mid-loop LLM termination — once written to disk, the candidate
-list survives a session death.
+Before any per-candidate work in steps 2-5, write the full raw candidate list to memory using the run-section template
+above. This is a durability guard against mid-loop LLM termination — once written to disk, the candidate list survives a
+session death.
 
 ```sh
 mkdir -p /workspaces/witwave-self/memory/agents/evan
@@ -308,24 +308,27 @@ Apply the fix-bar (4 rules above). Bin to **fix** or **flag**.
 For each candidate in the fix bin, processed in step-3 order:
 
 1. **Read the code in full** — body + immediate callers + immediate callees. At depth 9-10, full subsystem.
-2. **Web-search the API if unfamiliar.** Subtle Go context propagation, asyncio cancellation, controller-runtime
-   queue behaviour, Helm template lookup ordering — confirm before writing the fix. If the search reveals the fix
-   is more complex than the analyzer suggested, drop to flag with `fix-needs-unfamiliar-api-confirmation`.
+2. **Web-search the API if unfamiliar.** Subtle Go context propagation, asyncio cancellation, controller-runtime queue
+   behaviour, Helm template lookup ordering — confirm before writing the fix. If the search reveals the fix is more
+   complex than the analyzer suggested, drop to flag with `fix-needs-unfamiliar-api-confirmation`.
 3. **Write the fix.** Minimal scope; analyzer's suggestion if obvious, otherwise smallest well-grounded fix.
 4. **Run scoped tests locally:**
+
    - Go: `cd <checkout>/<section> && go test ./...`
    - Python: `cd <checkout> && pytest <section>/`
 
    **If tests pass** → continue.
 
-   **If tests fail** → fix-forward, ONCE. Read the failure (test name, assertion, traceback). Adjust the fix
-   in-place; don't yet revert. Re-run the same scoped tests.
+   **If tests fail** → fix-forward, ONCE. Read the failure (test name, assertion, traceback). Adjust the fix in-place;
+   don't yet revert. Re-run the same scoped tests.
+
    - Pass on retry → that adjusted code becomes the commit.
-   - Still fails on retry → revert (`git -C <checkout> checkout -- <file>`); flag with
-     `fix-forward-failed: <one-line>`. Move on.
+   - Still fails on retry → revert (`git -C <checkout> checkout -- <file>`); flag with `fix-forward-failed: <one-line>`.
+     Move on.
 
    Bound: exactly one fix-forward attempt per candidate. Catches small mistakes; prevents bad-fix-begets-worse-fix
    spirals.
+
 5. **Verify the bug is gone.** Re-read the changed code. The analyzer rule that flagged would no longer fire. No
    half-measures, no `TODO`. No adjacent regressions in the surrounding 20 lines.
 6. **Commit (one bug per commit):**
@@ -341,10 +344,10 @@ For each candidate in the fix bin, processed in step-3 order:
    ```
 
    No unrelated changes.
-7. **Mutate the marker in memory IMMEDIATELY.** `[pending]` → `[fixed: <commit-SHA>]`. Per-candidate, not at end of
-   run.
-8. **At depth 9-10**, also write a regression test that fails on the pre-fix code and passes on the fixed code, in
-   the same commit.
+
+7. **Mutate the marker in memory IMMEDIATELY.** `[pending]` → `[fixed: <commit-SHA>]`. Per-candidate, not at end of run.
+8. **At depth 9-10**, also write a regression test that fails on the pre-fix code and passes on the fixed code, in the
+   same commit.
 
 ### 6. Finalise the run section in memory
 
@@ -352,7 +355,7 @@ Walk every `[pending]` marker still present (candidates that step 4 binned to fl
 `[flagged: <reason>]` using the reason vocabulary. Append the descriptive sub-bullets:
 
 ```markdown
-- **<file>:<line>** `<analyzer rule>` — <one-line summary of what>  [flagged: <reason>]
+- **<file>:<line>** `<analyzer rule>` — <one-line summary of what> [flagged: <reason>]
   - Why: <one-line summary of why it's a bug>
   - Suggested fix: <one-line summary of approach>
 ```
@@ -367,9 +370,9 @@ Mutate the run-section header `**Status: in-progress.**` → `**Status: complete
 If `PRE_SWEEP_SHA == HEAD` (no commits produced): skip this step. Report "no fixes committed; M findings logged" and
 exit cleanly.
 
-Otherwise: this step is **fully delegated to iris** via `call-peer`. Iris owns all git and GitHub authority for the
-team — push posture and `gh`-API operations including the CI watch. Single round-trip handles both, parallel to
-kira-commits / iris-pushes and nova-commits / iris-pushes.
+Otherwise: this step is **fully delegated to iris** via `call-peer`. Iris owns all git and GitHub authority for the team
+— push posture and `gh`-API operations including the CI watch. Single round-trip handles both, parallel to kira-commits
+/ iris-pushes and nova-commits / iris-pushes.
 
 Send iris this prompt (substitute the bracketed values):
 
@@ -377,11 +380,12 @@ Send iris this prompt (substitute the bracketed values):
 >
 > 1. Run `git-push` to publish them.
 > 2. Watch the CI workflows that trigger on this push. Report each workflow's conclusion (green/red) and run URL.
-> 3. **For any red workflow**, also fetch the failing job's log via `gh run view <run-id> --log-failed` and include
->    the relevant excerpt in your report. Don't take remediation action yourself — I'll decide whether to
->    fix-forward or batch-revert.
+> 3. **For any red workflow**, also fetch the failing job's log via `gh run view <run-id> --log-failed` and include the
+>    relevant excerpt in your report. Don't take remediation action yourself — I'll decide whether to fix-forward or
+>    batch-revert.
 >
 > Commits:
+>
 > - `<SHA1>` `fix(<section>): <subject>`
 > - …
 >
@@ -389,24 +393,24 @@ Send iris this prompt (substitute the bracketed values):
 
 Wait for her reply.
 
-**Iris reports push failure** (rebase conflict she couldn't resolve): STOP. Surface the situation. The next bug-work
-run will re-attempt the delegation naturally.
+**Iris reports push failure** (rebase conflict she couldn't resolve): STOP. Surface the situation. The next bug-work run
+will re-attempt the delegation naturally.
 
 **Iris reports push success + all CI green**: done. Capture per-workflow conclusion + duration in the run summary.
 
-**Iris reports any CI red**: **fix-forward, ONCE.** Don't reflexively batch-revert. The trunk-based-dev contract is
-"if you break main, fix or revert immediately" — fix is preferred, revert is the fallback.
+**Iris reports any CI red**: **fix-forward, ONCE.** Don't reflexively batch-revert. The trunk-based-dev contract is "if
+you break main, fix or revert immediately" — fix is preferred, revert is the fallback.
 
 1. **Read iris's failure log excerpt.** Common shapes: test failure, lint/format failure, build/compile failure,
    drift/sync check failure (often pre-existing on `main` and merely surfaced by your push triggering a path-filtered
    workflow).
-2. **In scope to fix-forward?** Yes if the fix is small, targeted, clearly remediable from the failure log alone
-   (re-run a sync script, quote a shell variable, drop a stray import, adjust an exception chain). No if it would
-   require redesigning the original bug fix or reading large swaths of unrelated code.
-3. **In scope** → write a fix-forward commit. Run scoped local tests on it (same as step 5.4). Then ask iris to
-   push the fix-forward + re-watch CI.
-   - All CI green → DONE. Original batch + fix-forward all stay landed. Log
-     `[ci-fix-forward: <commit-SHA>]` under the run section.
+2. **In scope to fix-forward?** Yes if the fix is small, targeted, clearly remediable from the failure log alone (re-run
+   a sync script, quote a shell variable, drop a stray import, adjust an exception chain). No if it would require
+   redesigning the original bug fix or reading large swaths of unrelated code.
+3. **In scope** → write a fix-forward commit. Run scoped local tests on it (same as step 5.4). Then ask iris to push the
+   fix-forward + re-watch CI.
+   - All CI green → DONE. Original batch + fix-forward all stay landed. Log `[ci-fix-forward: <commit-SHA>]` under the
+     run section.
    - CI still red → fall back to batch-revert (don't recurse on fix-forward).
    - Local tests fail on the fix-forward → fall back to batch-revert.
 4. **Out of scope OR fix-forward attempt failed** → batch-revert:
@@ -423,12 +427,11 @@ run will re-attempt the delegation naturally.
    "
    ```
 
-   Delegate the revert push to iris. Append a "batch reverted" entry to deferred-findings memory listing each
-   reverted commit + the failing workflow URL. If iris's revert push also fails, surface the situation and stop.
-   Don't loop.
+   Delegate the revert push to iris. Append a "batch reverted" entry to deferred-findings memory listing each reverted
+   commit + the failing workflow URL. If iris's revert push also fails, surface the situation and stop. Don't loop.
 
-Bound: **exactly one fix-forward attempt per CI failure event.** Same shape as step 5's local-test fix-forward —
-catches small targeted adjustments; prevents spirals.
+Bound: **exactly one fix-forward attempt per CI failure event.** Same shape as step 5's local-test fix-forward — catches
+small targeted adjustments; prevents spirals.
 
 ### 8. Report
 

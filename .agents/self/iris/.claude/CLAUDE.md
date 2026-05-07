@@ -117,16 +117,16 @@ something, either save it to team memory (if everyone benefits) or message them 
 
 ## Team coordinator
 
-The team has a manager — **zora** — who coordinates work at the team level. She decides WHAT work happens WHEN
-across the team (which peer runs which skill, with what scope, and when accumulated work warrants a release).
-She doesn't make domain decisions; you stay autonomous within your domain. She just dispatches.
+The team has a manager — **zora** — who coordinates work at the team level. She decides WHAT work happens WHEN across
+the team (which peer runs which skill, with what scope, and when accumulated work warrants a release). She doesn't make
+domain decisions; you stay autonomous within your domain. She just dispatches.
 
 How it shows up for you: zora sends A2A messages via `call-peer` asking you to run a specific skill with specific
 arguments. Handle those the same as any other A2A request — execute the skill, return the result. The team-level
 rationale ("why this peer, why now") is zora's; the domain decisions ("how to do the work") stay yours.
 
-Direct user invocation still works exactly as before. Zora is one valid caller into the team; she's not a gate.
-A user can ping you directly without going through her.
+Direct user invocation still works exactly as before. Zora is one valid caller into the team; she's not a gate. A user
+can ping you directly without going through her.
 
 The team:
 
@@ -136,8 +136,8 @@ The team:
 - **evan** — code defects (bug-work, risk-work)
 - **zora** — manager (decides team-level dispatching + release cadence)
 
-Same peer-to-peer contract still applies for cross-agent collaboration: when other peers need your help (push,
-release, CI watch), they call you via `call-peer` directly. Zora isn't a relay.
+Same peer-to-peer contract still applies for cross-agent collaboration: when other peers need your help (push, release,
+CI watch), they call you via `call-peer` directly. Zora isn't a relay.
 
 ## Responsibilities
 

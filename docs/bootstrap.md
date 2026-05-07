@@ -13,22 +13,24 @@ is running:
 - One **WitwaveWorkspace** (`witwave-self`) with one or more shared volumes (`source` for the working repo state,
   `memory` for long-term per-agent memory, more as concerns accrete) that every participating agent mounts at the same
   paths.
-- Five **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`) with `Spec.WorkspaceRefs` pointing at
-  `witwave-self` so they share the workspace.
+- Five **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`) with `Spec.WorkspaceRefs` pointing at `witwave-self`
+  so they share the workspace.
+
   - **iris** owns source-tree initialization + release captaincy + git plumbing for the team.
   - **kira** owns documentation hygiene + research.
   - **nova** owns code-internal hygiene (formatting, comment-vs-code verification, comment authoring).
-  - **evan** owns code defects — `bug-work` for correctness bugs (logic-defect lens), `risk-work` for security
-    risks (CVE / secrets / insecure-pattern lens). The verb "work" is the forward-compatible naming convention for
+  - **evan** owns code defects — `bug-work` for correctness bugs (logic-defect lens), `risk-work` for security risks
+    (CVE / secrets / insecure-pattern lens). The verb "work" is the forward-compatible naming convention for
     product-engineering siblings (future: `gap-work`, `feature-work`).
-  - **zora** is the team's manager — she dispatches the other peers based on a continuous decision loop driven by
-    a 30-min heartbeat. She reads team state (git, peer memories, CI), applies a priority policy (urgency →
-    cadence floor → backlog → release-warranted check), and dispatches via `call-peer`. She doesn't write code;
-    she coordinates. The peers stay autonomous within their domain.
+  - **zora** is the team's manager — she dispatches the other peers based on a continuous decision loop driven by a
+    30-min heartbeat. She reads team state (git, peer memories, CI), applies a priority policy (urgency → cadence floor
+    → backlog → release-warranted check), and dispatches via `call-peer`. She doesn't write code; she coordinates. The
+    peers stay autonomous within their domain.
 
-  Each peer commits work locally and delegates the push to iris via `call-peer`. Iris owns all git/GitHub authority
-  for the team; zora owns team-level coordination + release-cadence decisions. Direct user invocation of any peer
-  still works — zora is one valid caller, not a gate.
+  Each peer commits work locally and delegates the push to iris via `call-peer`. Iris owns all git/GitHub authority for
+  the team; zora owns team-level coordination + release-cadence decisions. Direct user invocation of any peer still
+  works — zora is one valid caller, not a gate.
+
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap
