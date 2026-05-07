@@ -3,7 +3,9 @@ package update
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -87,4 +89,80 @@ func TestCommandWithTimeoutKillsHangingChild(t *testing.T) {
 	// Stash unused symbol references so static-check doesn't gripe.
 	var _ *exec.ExitError = (*exec.ExitError)(nil)
 	_ = errors.New
+}
+
+// Tests for the binary-self-upgrade path added 2026-05-07. shellQuoteSingle
+// must produce POSIX-safe output for any path string; dirWritable must
+// distinguish writable from non-writable directories without leaving
+// debris behind.
+
+func TestShellQuoteSingle(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "/usr/local/bin", "'/usr/local/bin'"},
+		{"with spaces", "/Users/Test User/bin", "'/Users/Test User/bin'"},
+		{"with single quote", "/Users/o'malley/bin", `'/Users/o'\''malley/bin'`},
+		{"with dollar", "/opt/${PREFIX}/bin", "'/opt/${PREFIX}/bin'"},
+		{"with backtick", "/opt/`evil`/bin", "'/opt/`evil`/bin'"},
+		{"empty", "", "''"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shellQuoteSingle(tc.in); got != tc.want {
+				t.Errorf("shellQuoteSingle(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDirWritableHappyPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := dirWritable(dir); err != nil {
+		t.Errorf("dirWritable(%q) = %v, want nil for a fresh TempDir", dir, err)
+	}
+	// Confirm no probe debris remains — t.TempDir is auto-cleaned but
+	// dirWritable's contract is that it cleans up after itself even
+	// outside test scopes.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("os.ReadDir(%q): %v", dir, err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("dirWritable left debris in dir: %v", names)
+	}
+}
+
+func TestDirWritableDeniedNonExistent(t *testing.T) {
+	// A directory that doesn't exist must surface as an error so the
+	// caller suggests sudo / move-to-owned-dir.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	if err := dirWritable(missing); err == nil {
+		t.Errorf("dirWritable(%q) = nil, expected an error for nonexistent dir", missing)
+	}
+}
+
+func TestDirWritableDeniedReadOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("read-only directory permissions are different on Windows; ww auto-upgrade not supported there yet")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("cannot meaningfully test denied write permission as root")
+	}
+	dir := t.TempDir()
+	// 0500 = readable + executable but not writable.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("os.Chmod: %v", err)
+	}
+	defer func() { _ = os.Chmod(dir, 0o755) }() // restore so TempDir cleanup works
+
+	if err := dirWritable(dir); err == nil {
+		t.Errorf("dirWritable(%q) = nil, expected permission error on 0500-mode dir", dir)
+	}
 }

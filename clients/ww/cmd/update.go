@@ -127,7 +127,11 @@ func runUpdate(cc *cobra.Command, force, check bool) error {
 		if instr := method.UpgradeCommand(); instr != "" {
 			fmt.Printf("  To upgrade: %s\n", instr)
 		} else {
-			fmt.Println("  Standalone binary — download the new tarball from the URL above.")
+			// Standalone binary now has its own automatic self-upgrade
+			// path (re-runs the canonical install.sh into the running
+			// binary's directory), so the hint is just "run ww update"
+			// rather than the prior "download manually" copy.
+			fmt.Println("  To upgrade: ww update")
 		}
 		return nil
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -282,38 +283,63 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		// Re-run the canonical install pipeline. The script is
 		// idempotent and self-contained — it'll pick up the latest
 		// stable, verify the SHA256, and atomically replace the
-		// running binary at the same install location. We invoke
-		// `sh` with the script piped in over stdin to mirror what a
-		// user would type, rather than trying to fetch + exec a
-		// local copy of install.sh (which the binary doesn't ship).
+		// running binary at the same install location.
 		//
-		// Bounded by a generous timeout — the script itself does
-		// retried HTTP downloads and may have to traverse a corporate
-		// proxy. Re-uses _goCmdTimeout because the work shape (one
-		// HTTP fetch + a local file write) is comparable.
-		shCmd, cancelSh := commandWithTimeout(ctx, _goCmdTimeout, "sh", "-c",
-			"set -e; "+
-				"if command -v curl >/dev/null 2>&1; then "+
-				"  curl -fsSL "+curlInstallURL+" | sh; "+
-				"elif command -v wget >/dev/null 2>&1; then "+
-				"  wget -qO- "+curlInstallURL+" | sh; "+
-				"else "+
-				"  echo 'ww update: neither curl nor wget on PATH' >&2; exit 1; "+
-				"fi",
-		)
-		defer cancelSh()
-		shCmd.Stdout, shCmd.Stderr = stdout, stderr
-		// Same posture as the brew shell-out (#1554): refuse to
-		// inherit stdin so a script that decides to prompt
-		// (`sudo` password, etc.) fails fast rather than wedging.
-		shCmd.Stdin = nil
-		// Sanitise creds out of the child env — install.sh has no
-		// reason to see ANTHROPIC_API_KEY etc.
-		shCmd.Env = sanitizeShellEnv(os.Environ())
-		if err := shCmd.Run(); err != nil {
-			return fmt.Errorf("curl-installer upgrade: %w", err)
+		// No --install-dir override here: a curl-installed binary lives
+		// where install.sh's default put it (or where the user passed
+		// --prefix originally; not currently captured in the marker file).
+		// Re-running with no override matches that original choice for
+		// default installs.
+		if err := runCurlInstallScript(ctx, "", stdout, stderr); err != nil {
+			return err
 		}
 		fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
+		return nil
+
+	case InstallMethodBinary:
+		// Standalone binary — drop the canonical install.sh into the
+		// same directory the running binary lives in, so the upgrade
+		// replaces in place rather than installing alongside at
+		// install.sh's default /usr/local/bin. Resolve via os.Executable
+		// + EvalSymlinks so a symlink-into-PATH resolves to the real
+		// binary location.
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(stderr,
+				"ww update: couldn't resolve the running binary path (%v) — "+
+					"falling back to a manual upgrade hint:\n", err)
+			fmt.Fprintln(stderr,
+				"  Download the new tarball from the releases URL above and "+
+					"replace the binary manually.")
+			return nil
+		}
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = real
+		}
+		installDir := filepath.Dir(filepath.Clean(exe))
+
+		// Permission pre-check: if the install directory isn't writable
+		// by this process, point the user at the sudo path rather than
+		// letting install.sh fail mid-stream. install.sh has its own
+		// check + diagnostic, but catching it here lets us suggest the
+		// right form ("sudo ww update") rather than a brew-flavoured one.
+		if err := dirWritable(installDir); err != nil {
+			fmt.Fprintf(stderr,
+				"ww update: install directory %q is not writable by this user (%v).\n",
+				installDir, err)
+			fmt.Fprintln(stderr,
+				"  Re-run with sudo: `sudo ww update`,")
+			fmt.Fprintln(stderr,
+				"  or move the binary to a directory you own (e.g. ~/.local/bin)")
+			fmt.Fprintln(stderr,
+				"  and run `ww update` again.")
+			return nil
+		}
+
+		if err := runCurlInstallScript(ctx, installDir, stdout, stderr); err != nil {
+			return err
+		}
+		fmt.Fprintf(stderr, "Upgraded in place at %s. Run your ww command again to use the new version.\n", installDir)
 		return nil
 
 	default:
@@ -323,6 +349,75 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		)
 		return nil
 	}
+}
+
+// runCurlInstallScript downloads and executes the canonical install.sh
+// from the latest GitHub release. When installDir is non-empty, it's
+// passed as `--install-dir <dir>` so install.sh writes into that exact
+// location (used by the InstallMethodBinary self-upgrade path to replace
+// the running binary in place rather than dropping a copy at install.sh's
+// default /usr/local/bin).
+//
+// The script is fetched fresh each call (not cached) because the canonical
+// pipeline lives at .../releases/latest/download/install.sh and is the
+// single source of truth for download + checksum-verify + atomic-replace.
+// Re-fetching is the idempotency guarantee.
+//
+// Bounded by _goCmdTimeout — the script does retried HTTP downloads and
+// may have to traverse a corporate proxy. Stdin is closed (#1554) so any
+// interactive prompt fails fast rather than wedging the parent.
+// Environment is sanitized so install.sh doesn't see ANTHROPIC_API_KEY
+// or other unrelated credentials.
+func runCurlInstallScript(ctx context.Context, installDir string, stdout, stderr io.Writer) error {
+	// Build the install.sh args. When installDir is set, append
+	// `-- --install-dir <dir>`. The leading `--` ends sh's argument
+	// processing so install.sh sees its own flags cleanly.
+	scriptArgs := ""
+	if installDir != "" {
+		scriptArgs = " -s -- --install-dir " + shellQuoteSingle(installDir)
+	}
+
+	shCmd, cancelSh := commandWithTimeout(ctx, _goCmdTimeout, "sh", "-c",
+		"set -e; "+
+			"if command -v curl >/dev/null 2>&1; then "+
+			"  curl -fsSL "+curlInstallURL+" | sh"+scriptArgs+"; "+
+			"elif command -v wget >/dev/null 2>&1; then "+
+			"  wget -qO- "+curlInstallURL+" | sh"+scriptArgs+"; "+
+			"else "+
+			"  echo 'ww update: neither curl nor wget on PATH' >&2; exit 1; "+
+			"fi",
+	)
+	defer cancelSh()
+	shCmd.Stdout, shCmd.Stderr = stdout, stderr
+	shCmd.Stdin = nil
+	shCmd.Env = sanitizeShellEnv(os.Environ())
+	if err := shCmd.Run(); err != nil {
+		return fmt.Errorf("curl-installer upgrade: %w", err)
+	}
+	return nil
+}
+
+// shellQuoteSingle wraps s in POSIX-safe single quotes, escaping any
+// embedded single quotes via the standard `'\''` sequence. Used to pass
+// arbitrary filesystem paths through `sh -c` without worrying about
+// spaces, dollar signs, backticks, etc.
+func shellQuoteSingle(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// dirWritable returns nil when the current process can create a file
+// inside dir, or an error describing what's blocking. Used as a
+// permission pre-check on the binary self-upgrade path so we can surface
+// "re-run with sudo" instead of letting install.sh fail mid-write.
+func dirWritable(dir string) error {
+	probe, err := os.CreateTemp(dir, ".ww-update-probe-*")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	_ = os.Remove(name)
+	return nil
 }
 
 // brewInstalledVersion returns the version string brew reports as the
