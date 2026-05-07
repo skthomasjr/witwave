@@ -105,6 +105,33 @@ configuration like `TASK_TIMEOUT_SECONDS` per-agent based on observed run times,
 HR but for agents — operational lifecycle rather than substantive work. Coordinates with zora on team capacity but
 operates one layer below (zora dispatches *work* to agents; agent-resources keeps the agents *runnable*).
 
+### devops — likely **otto** or **dale**
+Owns the build, CI/CD, and observability infrastructure of the witwave platform itself. Improves Dockerfile build
+times, evolves GitHub Actions workflows, tunes Prometheus alerts, watches Grafana dashboards, fixes broken
+pipelines. Distinct from iris (who *uses* the build process to publish releases) and agent-resources (who manages
+*agent* infra) — devops owns the **platform's own infra**: the build/deploy/monitor surface that ships witwave to
+its users.
+
+### security — likely **vera** or **maya**
+Higher-level security work that goes beyond evan's automated `risk-work` lens. Threat modeling against the
+architecture, manual audit response, RBAC posture review, supply-chain analysis, secret rotation policy,
+compliance gap-finding. Distinct from evan: evan automates CVE/secret/insecure-pattern detection across the
+codebase; security-agent reasons about the *system's overall threat posture* — the work that requires
+architectural understanding rather than scanner output.
+
+### software architecture — likely **theo** or **lyra**
+Watches the *shape* of the system rather than individual files. Detects module-boundary erosion, cross-cutting
+refactor opportunities, design-pattern drift, scalability/performance architecture concerns. Distinct from nova
+(line-level hygiene) and evan (defect-level fixing) — architecture-agent looks at how the system fits together
+across components, surfacing changes that no single file or function would reveal. Many of his findings will be
+flag-only; substantive refactor proposals deserve human review before landing.
+
+### testing — name + scope TBD
+At least one testing-focused agent is on the roadmap, but the scope needs a design discussion before scaffolding
+— possibilities span "writes new tests where evan's fix-bar flagged untested code paths," "runs existing suites
+and surfaces flakiness/regressions," "mutation testing to evaluate test quality," "property-based test
+generation," "E2E test maintenance." Each is a different shape of work. Will be revisited.
+
 ## How the loop closes
 
 1. **Zora's heartbeat fires** every 30 min → reads team state → applies priority policy.
