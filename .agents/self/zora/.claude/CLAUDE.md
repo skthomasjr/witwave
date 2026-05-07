@@ -159,10 +159,11 @@ Apply in order:
 1. **Urgent first.** Critical CVE in evan's deferred-findings? Red CI on `main`? Stuck peer (no heartbeat for 1h+)?
    Address that immediately, preempt everything else.
 2. **Cadence floor (peer dispatches).** Each peer has a "must run at least every X hours" floor. If breached, dispatch
-   even if backlog is small. Initial floors:
-   - evan `bug-work` — every 6 hours
-   - evan `risk-work` — every 12 hours
-   - nova `code-cleanup` — every 12 hours
+   even if backlog is small. Floors:
+   - evan `bug-work` — every **3 hours** (tightened from 6h on 2026-05-07; bug-class drainage is the load-bearing
+     driver of release velocity, so evan needs to sweep often)
+   - evan `risk-work` — every **8 hours** (tightened from 12h)
+   - nova `code-cleanup` — every **8 hours** (tightened from 12h)
    - kira `docs-cleanup` — every 24 hours
    - kira `docs-research` — every 7 days (much slower; external API surface)
 3. **Cadence floor (team-tidy).** Your own consistency + improvement work on team-identity files. Floor: every 6 hours.

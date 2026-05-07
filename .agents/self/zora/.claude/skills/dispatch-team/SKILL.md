@@ -96,9 +96,9 @@ Walk these in order. The first match wins; act and exit (after logging).
 For each peer, compute `time-since-last-fire`. If it exceeds the floor in CLAUDE.md → "Priority policy" → dispatch that
 peer with a routine task in their domain. Floors:
 
-- evan `bug-work` — 6h
-- evan `risk-work` — 12h
-- nova `code-cleanup` — 12h
+- evan `bug-work` — 3h (tightened from 6h on 2026-05-07; bug-class drainage drives release velocity)
+- evan `risk-work` — 8h (tightened from 12h)
+- nova `code-cleanup` — 8h (tightened from 12h)
 - kira `docs-cleanup` — 24h
 - kira `docs-research` — 7d
 
