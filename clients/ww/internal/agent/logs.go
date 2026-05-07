@@ -19,9 +19,12 @@ import (
 type LogsOptions struct {
 	Agent     string
 	Namespace string
-	// Container — pod container to tail. Empty defaults to "harness"
-	// (the orchestrator). Set to a backend name (echo/claude/codex/gemini)
-	// to tail a specific backend sidecar.
+	// Container — single container name to tail. Empty means "tail every
+	// container in the agent pod (harness + backend(s) + git-sync)" with
+	// each line prefixed by `[<container>]` so the user can tell streams
+	// apart. Set to a specific name (echo/claude/codex/gemini/harness/
+	// git-sync) to filter to that one container — the prefix is still
+	// emitted for consistency.
 	Container string
 	// Follow — stream until context is cancelled. Default true.
 	Follow bool
@@ -38,18 +41,21 @@ type LogsOptions struct {
 }
 
 // Logs streams container logs for a WitwaveAgent's pods. Pattern mirrors
-// internal/operator/logs.go: one goroutine per pod fan-in to a single
-// writer under a mutex so line boundaries don't interleave.
+// internal/operator/logs.go but with a (pod × container) fan-out instead
+// of pod-only — an agent pod has multiple containers (harness +
+// backend(s) + git-sync) and the user typically wants all of them
+// interleaved with a [container]-prefix on every line.
+//
+// Concurrency: one goroutine per (pod, container) pair, all writing to a
+// single Writer under one mutex so line boundaries don't interleave.
+// Follow blocks until ctx cancels; no-follow returns when every stream
+// EOFs.
 func Logs(ctx context.Context, cfg *rest.Config, opts LogsOptions) error {
 	if opts.Out == nil {
 		return fmt.Errorf("LogsOptions.Out is required")
 	}
 	if opts.Agent == "" {
 		return fmt.Errorf("LogsOptions.Agent is required")
-	}
-	container := opts.Container
-	if container == "" {
-		container = "harness"
 	}
 
 	k8s, err := kubernetes.NewForConfig(cfg)
@@ -68,27 +74,55 @@ func Logs(ctx context.Context, cfg *rest.Config, opts LogsOptions) error {
 		)
 	}
 
-	multi := len(pods) > 1
+	// Resolve the (pod, container) pairs to tail. When opts.Container is
+	// non-empty we filter to that one; otherwise we list each pod's
+	// containers via the API. Doing this up-front rather than failing
+	// inside per-stream goroutines lets us return a clean error on a typo
+	// like `-c clude`.
+	type target struct{ pod, container string }
+	var targets []target
+	for _, p := range pods {
+		containers, err := podContainerNames(ctx, k8s, opts.Namespace, p, opts.Container)
+		if err != nil {
+			return err
+		}
+		for _, c := range containers {
+			targets = append(targets, target{pod: p, container: c})
+		}
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("no containers to tail for agent %s/%s (filter %q yielded no matches)",
+			opts.Namespace, opts.Agent, opts.Container)
+	}
+
+	// Prefix shape: `[container]` is the common case (one pod, one or
+	// many containers). When more than one pod is in scope (rollout, or
+	// an explicit --pod targeting one of several), include a short pod
+	// suffix in the prefix — the last `_-_`-separated chunk of the pod
+	// name is the unique-per-pod hash, enough to disambiguate without
+	// dragging the full deployment name through every log line.
+	multiPod := len(pods) > 1
 	var writeMu sync.Mutex
-	writeLine := func(pod, line string) {
+	writeLine := func(pod, container, line string) {
 		writeMu.Lock()
 		defer writeMu.Unlock()
-		if multi {
-			fmt.Fprintf(opts.Out, "[%s] %s\n", pod, line)
+		if multiPod {
+			fmt.Fprintf(opts.Out, "[%s/%s] %s\n", shortPodSuffix(pod), container, line)
 		} else {
-			fmt.Fprintln(opts.Out, line)
+			fmt.Fprintf(opts.Out, "[%s] %s\n", container, line)
 		}
 	}
 
 	var wg sync.WaitGroup
-	errCh := make(chan error, len(pods))
-	for _, pod := range pods {
+	errCh := make(chan error, len(targets))
+	for _, t := range targets {
 		wg.Add(1)
-		p := pod
+		t := t
 		go func() {
 			defer wg.Done()
-			if err := streamAgentPodLogs(ctx, k8s, opts.Namespace, p, container, opts, writeLine); err != nil {
-				errCh <- fmt.Errorf("pod %s: %w", p, err)
+			emit := func(_, line string) { writeLine(t.pod, t.container, line) }
+			if err := streamAgentPodLogs(ctx, k8s, opts.Namespace, t.pod, t.container, opts, emit); err != nil {
+				errCh <- fmt.Errorf("pod %s container %s: %w", t.pod, t.container, err)
 			}
 		}()
 	}
@@ -103,6 +137,45 @@ func Logs(ctx context.Context, cfg *rest.Config, opts LogsOptions) error {
 		}
 	}
 	return nil
+}
+
+// podContainerNames returns the containers to tail for one pod. When
+// filter is empty, every container in the pod's spec is returned. When
+// filter is non-empty, only that container is returned — and an error
+// surfaces if the named container doesn't exist on the pod (catches
+// typos before we waste a stream).
+func podContainerNames(ctx context.Context, k8s kubernetes.Interface, ns, pod, filter string) ([]string, error) {
+	p, err := k8s.CoreV1().Pods(ns).Get(ctx, pod, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get pod %s/%s: %w", ns, pod, err)
+	}
+	all := make([]string, 0, len(p.Spec.Containers))
+	for i := range p.Spec.Containers {
+		all = append(all, p.Spec.Containers[i].Name)
+	}
+	if filter == "" {
+		return all, nil
+	}
+	for _, c := range all {
+		if c == filter {
+			return []string{c}, nil
+		}
+	}
+	return nil, fmt.Errorf("container %q not found in pod %s/%s; available: %v", filter, ns, pod, all)
+}
+
+// shortPodSuffix returns the last hyphen-separated segment of a pod name
+// (the per-pod random hash for ReplicaSet-managed pods). Used in the
+// log-line prefix when multiple pods are in scope so the user can tell
+// the old replica from the new one during a rollout. Falls back to the
+// full name when there's no hyphen.
+func shortPodSuffix(pod string) string {
+	for i := len(pod) - 1; i >= 0; i-- {
+		if pod[i] == '-' {
+			return pod[i+1:]
+		}
+	}
+	return pod
 }
 
 // selectAgentPods returns the pod names to tail for a given agent.

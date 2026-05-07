@@ -1650,9 +1650,11 @@ func newAgentLogsCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <name>",
 		Short: "Tail logs from a WitwaveAgent's pod(s)",
-		Long: "Streams logs from every pod matching the agent's label selector. Defaults\n" +
-			"to the harness container; pass -c <backend-name> to tail a specific backend\n" +
-			"(echo, claude, codex, gemini) or any other sidecar.",
+		Long: "Streams logs from every pod matching the agent's label selector. By default\n" +
+			"every container in the pod (harness + backend(s) + git-sync) is tailed and each\n" +
+			"line is prefixed with `[<container>]` so you can tell streams apart. Pass\n" +
+			"-c <name> to filter to a single container; the prefix is still emitted for\n" +
+			"consistency with `kubectl logs --prefix` semantics.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentLogs(cmd.Context(), f, args[0], agent.LogsOptions{
@@ -1666,7 +1668,7 @@ func newAgentLogsCmd(f *agentFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&container, "container", "c", "",
-		"Container name within the agent pod (default: harness)")
+		"Filter to a single container (default: tail every container in the pod, prefixed)")
 	cmd.Flags().Int64Var(&tail, "tail", 100,
 		"Number of recent log lines to emit before following (0 = full history)")
 	cmd.Flags().DurationVar(&since, "since", 0,
