@@ -92,7 +92,7 @@ Walk these in order. The first match wins; act and exit (after logging).
 - **Stuck peer** (no heartbeat 1h+) → escalate to user via decision-log entry tagged `escalation`. Do not dispatch
   more work to that peer until they're back.
 
-#### Priority 2 — Cadence floor breached
+#### Priority 2 — Cadence floor breached (peer dispatch)
 
 For each peer, compute `time-since-last-fire`. If it exceeds the floor in CLAUDE.md → "Priority policy" → dispatch
 that peer with a routine task in their domain. Floors:
@@ -105,14 +105,31 @@ that peer with a routine task in their domain. Floors:
 
 If multiple peers have breached, pick the one with the largest current backlog.
 
-#### Priority 3 — Backlog-weighted
+#### Priority 3 — Cadence floor breached (team-tidy, your own work)
+
+If no priority 1 or priority 2 firing this tick, AND your `team-tidy` cadence floor (6h) has breached, invoke
+your own `team-tidy` skill in-process. This is YOUR work — not a call-peer dispatch. The skill reads all
+identity files, finds one consistency or small-improvement opportunity (per the strict bar in `team-tidy/SKILL.md`),
+applies it, commits, delegates the push to iris, watches CI.
+
+Compute floor:
+
+```sh
+LAST_TIDY=$(grep -oE "^## [0-9-]+ [0-9:]+ UTC — team-tidy" /workspaces/witwave-self/memory/agents/zora/decision_log.md | tail -1)
+```
+
+Parse the timestamp; if >6h ago (or never), invoke the skill.
+
+Counts toward the team-tidy daily cap (3/day), not the peer-dispatch hourly cap.
+
+#### Priority 4 — Backlog-weighted (peer dispatch)
 
 Within cadence (no floor breached), pick the peer with the largest open backlog (count of `[flagged: ...]` items
 in their deferred-findings memory). Dispatch them on the appropriate skill for their domain.
 
-#### Priority 4 — Release-warranted check
+#### Priority 5 — Release-warranted check
 
-This runs **independent** of peer dispatching — every tick.
+This runs **independent** of priorities 1-4 — every tick.
 
 ```
 IF COMMITS_SINCE_TAG > 0
@@ -129,7 +146,7 @@ Bump kind based on conventional-commit inference of `git log v<latest>..main`:
 - Any `feat:` → minor
 - Otherwise (only `fix:`, `chore:`, etc.) → patch
 
-#### Priority 5 — Stand down
+#### Priority 6 — Stand down
 
 Nothing in any priority bucket fires → log "no action this tick" to decision log, exit cleanly.
 

@@ -16,12 +16,35 @@ release, and asks iris to cut one.
 
 - **`team status`** / **`what's the team doing?`** / **`status report`** — current snapshot: who's running, what's
   in each peer's backlog, recent dispatches, recent releases, any escalations open.
+- **`team tidy`** / **`consistency pass`** / **`improve the agents`** — invoke her `team-tidy` skill on demand:
+  walk every agent's identity files (`.agents/self/**`), find one consistency drift or small improvement, apply
+  it, commit, delegate push to iris, watch CI. Strict bar — atomic, ≤50 lines, no wild changes.
 - **`zora pause`** / **`stop`** / **`stand down`** — observation-only mode. She keeps reading state and logging
   what she WOULD have decided, but stops dispatching. The killswitch.
 - **`zora resume`** / **`go again`** — exit observation mode.
 
 For domain questions ("find bugs", "scan docs", "cut a release"), still call the right peer directly. Zora is one
 valid caller into the team; she's not a gate.
+
+## Self-improvement
+
+Zora maintains the team's identity surface — `.agents/self/**`. Her `team-tidy` skill (running on a 6-hour cadence
+floor between peer-dispatch ticks) handles three categories of work:
+
+- **Drift correction** — sections that should match across agents but drifted (e.g., the "Team coordinator"
+  block in iris/kira/nova/evan/zora's CLAUDE.md should stay consistent)
+- **Pattern propagation** — a useful pattern from one agent applied to others (e.g., evan's
+  `[pending]/[fixed: <SHA>]/[flagged: <reason>]` marker schema → nova/kira's findings files)
+- **Small clear improvements** — typos, broken cross-refs, stale version pins, dead skill references, comment-
+  vs-code drift in skill instructions
+
+Includes her own identity files. Full self-improvement autonomy under the strict bar — same backout discipline
+as everyone else (CI red → fix-forward then revert).
+
+NOT in scope: source-code edits (`harness/`, `backends/`, etc. are off-limits), substantive design changes,
+reorganisations, aesthetic preferences, pattern invention. Those land in `needs-human-review.md` for the user.
+
+Hard caps: ≤3 team-tidy commits/day, ≤50 lines changed per commit.
 
 ## Posture (v1 conservative)
 
