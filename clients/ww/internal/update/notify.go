@@ -398,9 +398,10 @@ func runCurlInstallScript(ctx context.Context, installDir string, stdout, stderr
 }
 
 // shellQuoteSingle wraps s in POSIX-safe single quotes, escaping any
-// embedded single quotes via the standard `'\''` sequence. Used to pass
-// arbitrary filesystem paths through `sh -c` without worrying about
-// spaces, dollar signs, backticks, etc.
+// embedded single quotes via the standard close-then-escape-then-reopen
+// sequence (apostrophe, backslash, apostrophe, apostrophe). Used to
+// pass arbitrary filesystem paths through `sh -c` without worrying
+// about spaces, dollar signs, backticks, etc.
 func shellQuoteSingle(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
