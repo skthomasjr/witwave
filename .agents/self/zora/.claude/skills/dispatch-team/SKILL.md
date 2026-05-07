@@ -126,16 +126,37 @@ Counts toward the team-tidy daily cap (3/day), not the peer-dispatch hourly cap.
 Within cadence (no floor breached), pick the peer with the largest open backlog (count of `[flagged: ...]` items in
 their deferred-findings memory). Dispatch them on the appropriate skill for their domain.
 
-#### Priority 5 — Release-warranted check
+#### Priority 5 — Release-warranted check (velocity-driven)
 
 This runs **independent** of priorities 1-4 — every tick.
 
+**Step 1: compute weighted commits since latest tag.** For each commit in `git log v<latest>..main`:
+
+| Commit prefix                                    | Weight |
+| ------------------------------------------------ | ------ |
+| `feat:` / `feat(<scope>):`                       | 2.0    |
+| `fix:` / `fix(<scope>):`                         | 1.0    |
+| `docs:` / `docs(<scope>):`                       | 0.5    |
+| `chore:` / `style:` / `refactor:` / `test:`      | 0.25   |
+| Anything else (no conventional prefix)           | 0.5    |
+
+**Exclude these from the weighted sum** (release-artifact commits — counting them re-triggers a release for
+releasing):
+
+- `docs(changelog):` commits.
+- Any commit whose message body indicates it was authored by iris during a release cut.
+
+**Step 2: detect critical-fix fast-path.** Scan `git log v<latest>..main` for any commit matching `fix(security):`
+OR a body containing the literal word `critical`. If found, set `critical_fix_present = true`.
+
+**Step 3: gate.**
+
 ```
-IF COMMITS_SINCE_TAG > 0
+IF (weighted_commits ≥ 3.0 OR critical_fix_present)
 AND no CI red on main HEAD
 AND no in-flight release pipeline (check gh for running "Release" / "Release — ww CLI" / "Release — Helm charts")
 AND no in-flight batch-revert (check git log for recent "Revert evan bug-work batch")
-AND time since last release > 1h
+AND ≥ 15 minutes since last release  ← hygiene floor only; not a cadence knob
 AND no critical findings open in any peer's deferred-findings (the medium quality bar)
 THEN dispatch iris with the release skill
 ```
@@ -145,6 +166,11 @@ Bump kind based on conventional-commit inference of `git log v<latest>..main`:
 - Any `BREAKING CHANGE:` / `!:` → major
 - Any `feat:` → minor
 - Otherwise (only `fix:`, `chore:`, etc.) → patch
+
+**Why velocity-driven.** The previous policy (≥1h floor + max 4 releases/day) double-locked itself the night of
+2026-05-06 → 05-07: 4 productive releases burst-shipped in ~6h, then the team stood down for the next 14h with the
+release surface frozen. Velocity-driven cadence lets bursty mornings ship 6 releases when there's real content and
+quiet stretches batch over hours, without arbitrary daily cliffs.
 
 #### Priority 6 — Stand down
 
@@ -156,8 +182,10 @@ Before any dispatch in steps 3.1-3.4:
 
 - **Max 5 dispatches/hour:** count entries in `decision_log.md` with timestamp within the last hour. If ≥5, abort the
   dispatch, log `[capped: dispatches/hour]`, exit.
-- **Max 4 releases/day:** count `[release-dispatched]` entries in `decision_log.md` in the last 24h. If ≥4, abort the
-  release dispatch (if that's what you were about to do), log `[capped: releases/day]`, fall back to the next priority.
+- **Max 20 releases/day (runaway guard, not cadence policy):** count `[release-dispatched]` entries in
+  `decision_log.md` in the last 24h. If ≥20, this is a runaway loop — log `[capped: releases/day]`, enter pause-mode,
+  and escalate to the user via `[escalation: release-storm]`. Velocity-driven release-warranted is the everyday knob;
+  this exists only to halt a malfunction.
 - **Max 3 batch-reverts/day:** count `[revert-detected]` entries. If ≥3, this is systemic — escalate to user via
   `[escalation: revert-storm]` and enter pause-mode automatically.
 - **Cycle detection:** for the candidate you're about to dispatch a fix for, check whether the same `[file:line]` has

@@ -1,9 +1,10 @@
 ---
 description: >-
   Drives zora's continuous decision loop. Each tick invokes the dispatch-team skill, which reads team state, applies the
-  priority policy from CLAUDE.md, and dispatches the appropriate peer (or stands down). v1 conservative: 30-minute
-  cadence; tighten to 15 min after observation.
-schedule: "*/30 * * * *"
+  priority policy from CLAUDE.md, and dispatches the appropriate peer (or stands down). 15-minute cadence — tightened
+  from 30 min on 2026-05-07 alongside the velocity-driven release policy so release latency stays in lockstep with how
+  fast work lands.
+schedule: "*/15 * * * *"
 enabled: true
 ---
 

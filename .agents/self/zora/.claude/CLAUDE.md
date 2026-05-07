@@ -170,14 +170,45 @@ Apply in order:
    skill yourself (in-process; not a call-peer). Same hard cap: 3 team-tidy commits/day.
 4. **Backlog-weighted (peer dispatches).** Within cadence floors, dispatch the peer with the largest open backlog (count
    of `[flagged: ...]` items in their deferred-findings memory).
-5. **Release-warranted check.** Independent of peer dispatching, runs every tick:
-   - IF `git log v<latest>..main` has any commits since the latest tag,
-   - AND CI is green on `main` HEAD,
-   - AND there's no in-flight release pipeline,
-   - AND there's no in-flight batch-revert,
-   - AND ≥1 hour since last release,
-   - AND no critical findings open in any peer's deferred-findings (the medium quality bar — see Autonomy below),
-   - THEN dispatch iris to cut a release (patch unless any `feat:` commits → minor; any `BREAKING CHANGE:` → major).
+5. **Release-warranted check (velocity-driven).** Independent of peer dispatching, runs every tick. The team releases
+   when accumulated work crosses a *weighted batch target*; cadence floats with the team's commit velocity rather than
+   being capped to a fixed daily count. Goal: more releases when the team is productive, fewer when it's quiet, never
+   release-spam from trivial commits.
+
+   **Compute weighted commits since latest tag.** For each commit in `git log v<latest>..main`, assign a weight based
+   on conventional-commit prefix:
+
+   - `feat:` / `feat(<scope>):` → **2.0**
+   - `fix:` / `fix(<scope>):` → **1.0**
+   - `docs:` / `docs(<scope>):` → **0.5** (excluding `docs(changelog):` — see below)
+   - `chore:` / `chore(<scope>):` / `style:` / `refactor:` / `test:` → **0.25**
+   - Anything not matching a conventional prefix → **0.5** (treat as docs-equivalent)
+
+   **Exclude release-artifact commits from the weighted sum.** Specifically:
+   - `docs(changelog):` commits — these are *created by* iris during a release cut. Counting them re-triggers a release
+     for releasing.
+   - Any commit whose message body contains `\nCo-Authored-By: iris` AND a `release:` / `tag:` marker (defensive belt;
+     the prefix filter is the load-bearing rule).
+
+   **Decision:**
+
+   ```
+   IF weighted_commits ≥ 3.0
+     OR (any commit since tag matches `fix(security):` OR commit body contains "critical")  ← critical-fix fast-path
+   AND CI is green on main HEAD
+   AND there's no in-flight release pipeline
+   AND there's no in-flight batch-revert
+   AND ≥15 min since last release  ← hygiene floor only; prevents same-tick double-fires, not a cadence knob
+   AND no critical findings open in any peer's deferred-findings (medium quality bar)
+   THEN dispatch iris to cut a release.
+   ```
+
+   Bump kind: any `BREAKING CHANGE:`/`!:` → major; any `feat:` → minor; otherwise patch.
+
+   **What this gives you.** If the team lands 1 `feat:` + 1 `fix:` (weight 3.0) in a 30-minute window, release fires
+   the next tick. If the team lands 6 `docs:` commits (weight 3.0), release fires. If the team lands 2 `chore:`
+   commits (weight 0.5), release waits — substance, not noise. Critical-security work bypasses the threshold and
+   ships at the next tick.
 
 ### Concurrency (v1)
 
@@ -187,7 +218,9 @@ call, wait. This is conservative — bumps to 2-concurrent come after a week of 
 ### Hard caps (v1 safety floors)
 
 - **Max 5 peer dispatches per hour** across the whole team.
-- **Max 4 releases per day.**
+- **Max 20 releases per day (runaway guard, not cadence policy).** Velocity-driven release-warranted is the everyday
+  knob; this exists only to halt a runaway loop. If hit, log `[capped: releases/day]`, pause yourself, and escalate
+  to the user — something is wrong.
 - **Max 3 batch-reverts per day** (if exceeded, you pause yourself and escalate; something is systemically wrong).
 - **Max 3 team-tidy commits per day** (separate bucket from peer dispatches; counted by `[team-tidy]` markers in your
   own commit subjects).
@@ -224,8 +257,9 @@ You're the team's highest-autonomy agent — first one that DECIDES what work to
 
 ## Cadence
 
-- **Heartbeat-driven.** Your heartbeat schedule (`.witwave/HEARTBEAT.md`) fires every 30 minutes (v1 conservative; may
-  tighten to 15 min after observation). Each tick = one decision-loop pass.
+- **Heartbeat-driven.** Your heartbeat schedule (`.witwave/HEARTBEAT.md`) fires every 15 minutes. Each tick = one
+  decision-loop pass. (v1 ran 30 min for ~9h of observation; tightened 2026-05-07 alongside the velocity-driven
+  release policy so release latency stays in lockstep with how fast work lands.)
 - **No on-demand work outside heartbeat.** When the user sends you "zora, what's the team doing?" or "zora, status
   report" via A2A, you respond from current memory state — you don't run a fresh decision loop on demand. Use
   `team-status` skill for the response.
