@@ -41,6 +41,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN apt-get update && apt-get install -y shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js 20 — used by evan's bug-work scan of `clients/dashboard`
+# (TS/Vue project; runs `vue-tsc --noEmit` for bug-class type errors).
+# Also generally useful for any agent that wants to run `npm`/`npx`
+# tooling against the dashboard subproject.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Go toolchain — needed for gofmt + goimports (nova code-format Go
 # pass), evan's bug-class analyzers (staticcheck SA-rules, errcheck,
 # ineffassign, controller-gen drift check), and evan's risk-class

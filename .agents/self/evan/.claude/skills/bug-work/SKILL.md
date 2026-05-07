@@ -54,14 +54,16 @@ Dockerfile, shell, and GitHub Actions. Three more are scaffolded but their toolc
 | `workflows`              | GitHub Actions YAML                   | `actionlint`                                                                                     |
 | `charts/witwave`         | Helm chart (templates + values + Chart.yaml) | `helm lint` + `yamllint`                                                                  |
 | `charts/witwave-operator`| Helm chart (templates + values + Chart.yaml) | `helm lint` + `yamllint`                                                                  |
+| `clients/dashboard`      | TS + Vue + Dockerfile                 | `vue-tsc --noEmit` (bug-class TypeScript / Vue type errors) + `hadolint`                          |
 
 ### Deferred to v2
 
-`clients/dashboard` (TS/Vue + Dockerfile). If the caller specifies it, refuse cleanly with
-`"section <name> requires toolchain not yet installed in this image"` and log the request. The two `charts/*`
-sections were promoted to day-one on 2026-05-07 once the helm v3.16.3 install (already present in the backend
-images for nova's helm-lint step) was wired into evan's bug-work; the dashboard's TS/Vue toolchain stays deferred
-pending an ESLint + vue-eslint-parser install in the backend images.
+None remaining as of 2026-05-07 — every section the repo currently exposes is in day-one scope. The two
+`charts/*` sections were promoted from v2 once the helm v3.16.3 install (already present in the backend images
+for nova's helm-lint step) was wired into evan's bug-work; `clients/dashboard` was promoted in the same window
+once Node.js 20 was added to the codex + gemini backend images (claude already had it for the Claude Code CLI),
+and we recognised that the dashboard team's existing `vue-tsc --noEmit` build step IS their bug-class checker —
+no new ESLint config needed.
 
 ### Aliases
 
@@ -70,7 +72,7 @@ pending an ESLint + vue-eslint-parser install in the backend images.
 - `all-backends` → all four backends
 - `all-tools` → all three tools
 - `all-charts` → `charts/witwave`, `charts/witwave-operator`
-- `all-day-one` → every section in the day-one table above (16)
+- `all-day-one` → every section in the day-one table above (17)
 
 Aliases compose with explicit sections: `all-go,scripts` is valid.
 
@@ -195,6 +197,7 @@ deferred-findings memory and either:
 | `actionlint`                     | `actionlint <workflow.yml>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `helm lint` (charts only)        | `helm lint <chart-dir>` — runs Helm's built-in chart validator across `Chart.yaml`, `values.yaml`, and every template in `templates/`. Surfaces parse errors, missing required values, broken template references. Bug-class only — INFO-level findings (e.g. "icon is recommended") are filtered out at parse time. Pinned to v3.16.3 in the backend image.                                                                                                                                                                                                                                                                                                                                                                       |
 | `yamllint` (charts only)         | `yamllint -f parsable <chart-dir>` — covers chart YAML hygiene that helm lint doesn't catch (key-duplicates, truthy-not-quoted, indentation drift). Use the project's `.yamllint.yaml` config when present.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `vue-tsc` (dashboard only)       | `cd <checkout>/clients/dashboard && (test -d node_modules \|\| npm ci --no-audit --no-fund) && npx vue-tsc --noEmit` — runs the dashboard's own TypeScript+Vue build-time bug checker. The same command is in the dashboard's `package.json` `build` script so its output format and rule set match what the dashboard team already gates on. The `npm ci` is conditional (skipped if `node_modules/` already populated) to keep repeat invocations fast. First-run cost is ~30-60s on the npm install; subsequent runs ~5s.                                                                                                                                                                                                       |
 | `controller-gen` (operator only) | `cd <checkout>/operator && make manifests && cd <checkout> && git diff --exit-code operator/config/crd/bases/` (capture drift result), then **restore working-tree residue** `git checkout -- operator/go.mod operator/config/` so the probe doesn't leave the tree dirty for subsequent gauntlet / fix-bar steps. The `manifests` target keeps the drift check in lockstep with CI; the restore step is the wrap-in-stash containment iris and zora endorsed in the 2026-05-07 dirty-tree escalation. Same restore should run if any other operator-section probe (e.g. `go vet` triggering `go mod`-side effects) dirties the tree — verify clean via `git status --porcelain operator/` after each tool, restore if non-empty. |
 
 ## Memory format

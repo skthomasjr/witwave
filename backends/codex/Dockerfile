@@ -44,6 +44,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # the binaries available; iris and kira don't invoke them but the cost
 # is one image build, not per-agent images.
 
+# Node.js 20 — used by evan's bug-work scan of `clients/dashboard`
+# (TS/Vue project; runs `vue-tsc --noEmit` for bug-class type errors).
+# Also generally useful for any agent that wants to run `npm`/`npx`
+# tooling against the dashboard subproject.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # shellcheck — diagnostic linter for shell scripts (nova code-format).
 RUN apt-get update && apt-get install -y shellcheck \
     && rm -rf /var/lib/apt/lists/*
