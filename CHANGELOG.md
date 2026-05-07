@@ -6,6 +6,47 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.16.5] — 2026-05-07
+
+Closes the harness `-32603` empty-response bug that had been corrupting synchronous JSON-RPC replies whenever an agent
+returned a clean empty string (observed across evan empty-sweeps, kira docs work, and nova code-cleanup runs since
+2026-05-06). Alongside that fix, zora's policy gains depth-control across evan / nova / kira so polish-tier sweeps
+escalate when cheap-pass tiers exhaust, and the team picks up its first per-agent self-maintenance loop with `self-tidy`
+running once per 24h on a staggered cron across all five peers.
+
+### Fixed
+
+- **harness**: `executor.execute()` now always enqueues a final A2A Message event, defaulting to empty text on empty
+  responses, so the SDK's `DefaultRequestHandler` always has at least one event to serialise into a JSON-RPC success
+  reply. Previously the `if _response:` gate skipped the enqueue on empty-string returns, leaving the SDK with nothing
+  to serialise and surfacing `-32603` to the caller despite a clean execute. Adds `logger.exception()` at the catch site
+  so future exception paths capture full traceback instead of getting re-raised opaquely. Scoped to
+  `harness/executor.py:execute()`; zero changes to backend interfaces or A2A SDK pinning.
+
+### Documentation
+
+- **repo-wide**: markdownlint + prettier auto-fixes applied across the docs surface — formatting-only, no semantic
+  changes.
+
+### Agent identity
+
+- **team**: `self-tidy` skill added — each peer runs a byte-identical per-agent daily self-maintenance pass
+  (memory-index consolidation, cross-agent awareness refresh, agent-card drift check) on a staggered 24h cron (iris
+  02:15Z, kira 06:30Z, nova 10:45Z, evan 15:00Z, zora 19:15Z). Sibling to zora's `team-tidy` (cross-cutting, zora-only);
+  self-tidy is per-agent and stays scoped to the running agent's own files. Cap: 1 commit per agent per day, ≤50 lines,
+  atomic. Same iris-delegated push contract every other peer follows.
+- **zora**: direct `gh` CI-read auth wired (`zora-claude` secret now carries `GITHUB_TOKEN` + `GITHUB_USER`) so the
+  release-warranted check can call `gh run list --branch main` directly instead of inferring CI state from indirect
+  signals; gh writes stay strictly in iris's lane. Per-peer backlog adapter added to step 2c so evan's canonical
+  `[pending]` / `[flagged: ...]` schema and nova/kira's narrative tally formats both feed the dispatch tiebreaker.
+- **zora**: polish-tier depth control extended across the team. evan dispatches now pick the depth tier per cadence
+  (reset to 3 on fresh source, advance 3 → 5 → 7 → 9 after 2 consecutive 0/0/0 runs, hold otherwise) and the polish
+  baseline raises 3 → 5 once cheap-pass ground has been swept. Same advance/reset/hold logic extends to nova
+  (`code-cleanup` ↔ `code-document` one-shot) and kira (`docs-cleanup` ↔ `docs-research` one-shot) — deeper passes fire
+  as one-shots when the default tier returns 0/0/0 for 2 consecutive runs on stable source, then flip back. State
+  tracked per skill in `team_state.md`. Dispatches/hour cap raised 5 → 8 to give the tightened cadence floors breathing
+  room. kira `docs-cleanup` cadence floor tightens 24h → 6h so docs sweeps keep pace with the team's commit rate.
+
 ## [0.16.4] — 2026-05-07
 
 Operator-regen drift closure plus a team-cadence sharpening. The operator-section probes (evan bug-work, evan risk-work,
