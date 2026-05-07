@@ -6,6 +6,17 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.16.3] — 2026-05-07
+
+CI hygiene patch. Single fix from evan's bug-work catalogue (SP-4 unused-loop-var rename) in the install-script CI
+workflow.
+
+### Fixed
+
+- **workflows**: unused loop variable `i` renamed to `_i` in the install-script CI poll loop
+  (`.github/workflows/ci-install-script.yml`) — count-controlled retry idiom; pure variable rename in unused position,
+  no runtime effect.
+
 ## [0.16.2] — 2026-05-07
 
 Documentation-only release. The team's self-agent roster gets a written reference: a new `TEAM.md` under `.agents/self/`
