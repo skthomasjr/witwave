@@ -6,6 +6,43 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.16.4] — 2026-05-07
+
+Operator-regen drift closure plus a team-cadence sharpening. The operator-section probes (evan bug-work, evan
+risk-work, nova code-cleanup) had been dirtying the working tree on every run because two committed files diverged
+from current-toolchain output, costing the team's dispatch cap on motion-without-progress; this release commits the
+regenerated state and adds a working-tree restore around the probes themselves so the failure can't recur. Alongside
+that, zora's release policy moves from a count-based daily cap to a velocity-driven release-warranted check, and
+evan's bug-class scope broadens to pull pyflakes-class items off nova's deferred shelf.
+
+### Fixed
+
+- **operator**: `operator/go.mod` and `operator/config/webhook/manifests.yaml` regenerated against the pinned
+  `controller-gen v0.18.0` + `go mod tidy` so committed state matches what the toolchain produces. `go-logr/logr` flips
+  from indirect to direct (operator imports it directly); webhook manifest is a pure YAML emitter-style flip
+  (sequence-dash positioning, 81/81 lines, zero semantic change). Combined with the probe-restore wrap below, this
+  closes the regen-drift escalation that had been burning the team's dispatch cap.
+
+### Agent identity
+
+- **team**: each peer's CLAUDE.md gains a one-line cross-reference to `.agents/self/TEAM.md` right after the
+  team-roster block, so the canonical roster + topology + future-roles overview is reachable from any agent's identity
+  file instead of being browse-only. Unblocks zora's `team-tidy` skill, which had been escalation-blocked for ~10h on
+  this exact gap.
+- **evan**: bug-work probes wrap operator-section toolchain runs (`make manifests`, `go vet`, `go mod` side effects)
+  with `git checkout -- operator/go.mod operator/config/` after capturing drift results, so probe residue can't dirty
+  the tree for the next peer. Bug-class scope broadens from `B` to `B,F` — pyflakes (F821 undefined-name, F811
+  redefinition, F823 referenced-before-assignment, F841 unused-variable-masking-typos) IS bug-class and was being
+  filtered out incorrectly; items currently sitting in nova's deferred-findings memory under those rules will flow
+  through evan's fix-bar pipeline on his next sweep.
+- **zora**: release policy switches from a count-based cap (max 4/day, ≥1h floor) to a velocity-driven
+  release-warranted check that fires when weighted commits since the latest tag cross 3.0 (feat=2.0, fix=1.0, docs=0.5,
+  chore/style/refactor/test=0.25) or a `fix(security):` / critical commit lands. Hygiene floor of 15 min between
+  releases prevents same-tick double-fires; hard cap of 20 releases/day acts as a runaway guard only. Heartbeat
+  tightens 30 min → 15 min so release latency tracks the new velocity policy. Cadence floors for evan bug-work
+  (6h → 3h), evan risk-work (12h → 8h), and nova code-cleanup (12h → 8h) tighten alongside so the produce side keeps
+  pace with the publish side.
+
 ## [0.16.3] — 2026-05-07
 
 CI hygiene patch. Single fix from evan's bug-work catalogue (SP-4 unused-loop-var rename) in the install-script CI
