@@ -1143,23 +1143,48 @@ class AgentExecutor(A2AAgentExecutor):
                         caller_id=caller_id,
                     )
                     _success = True
-                    if _response:
+                    # Always enqueue a final agent message — even when the response
+                    # text is empty (#harness-32603 fix). The A2A SDK's
+                    # DefaultRequestHandler waits for at least one Message event from
+                    # execute() to declare the task complete and serialise a JSON-RPC
+                    # success reply. When execute() returned with no events queued
+                    # (the prior `if _response:` gate skipped the enqueue), the SDK
+                    # had nothing to return and surfaced JSON-RPC -32603 to the
+                    # caller — even though run() had succeeded. Empty-pass evan
+                    # sweeps reproduced this in seconds despite zero per-call latency.
+                    # Enqueue a placeholder text on empty response so the SDK can
+                    # always complete the task cleanly.
+                    _outbound_text = _response if _response else ""
+                    _msg = new_agent_text_message(_outbound_text)
+                    if trace_context is not None and trace_context.trace_id:
                         # Stamp trace_id on the outbound A2A response message
                         # metadata so callers can correlate the reply with the
                         # end-to-end trace (#636). Additive / optional — absent
                         # when no trace context exists.
-                        _msg = new_agent_text_message(_response)
-                        if trace_context is not None and trace_context.trace_id:
-                            _existing = _msg.metadata or {}
-                            _existing["trace_id"] = trace_context.trace_id
-                            if trace_context.parent_id:
-                                _existing["span_id"] = trace_context.parent_id
-                            _msg.metadata = _existing
-                        await event_queue.enqueue_event(_msg)
+                        _existing = _msg.metadata or {}
+                        _existing["trace_id"] = trace_context.trace_id
+                        if trace_context.parent_id:
+                            _existing["span_id"] = trace_context.parent_id
+                        _msg.metadata = _existing
+                    await event_queue.enqueue_event(_msg)
                     if harness_a2a_requests_total is not None:
                         harness_a2a_requests_total.labels(status="success").inc()
                 except Exception as _exc:
                     _error = repr(_exc)
+                    # Log the full traceback at the catch site (#harness-32603 diagnostic).
+                    # Without this, exceptions raised after run() succeeds (during message
+                    # build, event-queue enqueue, or A2A SDK serialisation) are silently
+                    # re-raised and surface to the caller as JSON-RPC -32603 with empty
+                    # body. The repr in `_error` reaches webhooks but isn't logged here,
+                    # so operators can't diagnose without enabling debug + reproducing.
+                    logger.exception(
+                        "executor.execute raised after run(); session_id=%s backend=%s "
+                        "trace_id=%s response_bytes=%d — caller will see JSON-RPC -32603",
+                        session_id,
+                        backend_id or self._default_backend_id,
+                        trace_context.trace_id if trace_context is not None else "",
+                        len(_response or ""),
+                    )
                     if harness_a2a_requests_total is not None:
                         harness_a2a_requests_total.labels(status="error").inc()
                     set_span_error(_span, _exc)
