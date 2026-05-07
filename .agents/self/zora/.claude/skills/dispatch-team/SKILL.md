@@ -106,9 +106,9 @@ If multiple peers have breached, pick the one with the largest current backlog.
 
 **Choosing depth for evan dispatches (polish-tier control).** evan's `bug-work` and `risk-work` accept a `depth`
 argument 1-10. The team works UP the polish ladder `5 → 7 → 9`; each tier exhausts the cheap finds for the next.
-Cadence-mandated sweeps start at **depth=5** (per evan's own SKILL "After 1-3 has been run" default), not at the
-parser default of 3 — depth 1-3 are reserved for ad-hoc cheap-pass triggered by the user or a peer. The CLAUDE.md
-priority policy spells out the principle; this section is the mechanics.
+Cadence-mandated sweeps start at **depth=5** (per evan's own SKILL "After 1-3 has been run" default), not at the parser
+default of 3 — depth 1-3 are reserved for ad-hoc cheap-pass triggered by the user or a peer. The CLAUDE.md priority
+policy spells out the principle; this section is the mechanics.
 
 Read the current tier from `team_state.md`:
 
@@ -123,24 +123,23 @@ polish_tier_evan_risk_last_run_sha:  <sha, default latest tag at first run>
 
 Decide the tier for THIS dispatch:
 
-1. **Reset check.** Look at `git log <last_run_sha>..HEAD`. If any commits landed in evan's section scope
-   (`harness/`, `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`, `helpers/`, `scripts/`,
-   `.github/workflows/`) — set tier back to **5** and zero the streak. Fresh source has new candidates worth a
-   fresh function-level reasoning sweep.
-2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the current tier — advance the tier to the next
-   rung on the ladder (`5 → 7 → 9`; cap at 9) and zero the streak. The advance encodes "we've exhausted this
-   tier; go deeper."
+1. **Reset check.** Look at `git log <last_run_sha>..HEAD`. If any commits landed in evan's section scope (`harness/`,
+   `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`, `helpers/`, `scripts/`, `.github/workflows/`) — set
+   tier back to **5** and zero the streak. Fresh source has new candidates worth a fresh function-level reasoning sweep.
+2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the current tier — advance the tier to the next rung
+   on the ladder (`5 → 7 → 9`; cap at 9) and zero the streak. The advance encodes "we've exhausted this tier; go
+   deeper."
 3. **Hold check.** Otherwise keep the tier as-is.
 
-Pass it to evan in the call-peer prompt: `Run your bug-work skill at depth=<tier>, sections=all-day-one`. Same
-shape for risk-work (`sections=all-deps` is the default scope for risk-work).
+Pass it to evan in the call-peer prompt: `Run your bug-work skill at depth=<tier>, sections=all-day-one`. Same shape for
+risk-work (`sections=all-deps` is the default scope for risk-work).
 
 After the dispatch, when evan reports back, update `team_state.md`:
 
-- If evan's run returned 0/0/0 (0 candidates / 0 fixed / 0 flagged) — increment `zero_streak`. Update
-  `last_run_sha` to current HEAD either way.
-- If evan returned anything substantive (≥1 candidate, fixed or flagged) — zero the streak. Update
-  `last_run_sha` to current HEAD.
+- If evan's run returned 0/0/0 (0 candidates / 0 fixed / 0 flagged) — increment `zero_streak`. Update `last_run_sha` to
+  current HEAD either way.
+- If evan returned anything substantive (≥1 candidate, fixed or flagged) — zero the streak. Update `last_run_sha` to
+  current HEAD.
 
 Log the tier choice + reason in `decision_log.md` on each dispatch:
 
@@ -149,13 +148,12 @@ Log the tier choice + reason in `decision_log.md` on each dispatch:
 - evan risk-work dispatched at depth=5 (reset from 7 — fresh commits in operator/ since last run).
 ```
 
-This is how the team becomes *actually* bug-free / risk-free rather than "0 found at the cheap depth." Treat each
-tier as its own ground to cover; only depth=9 across all-day-one with adversarial passes counts as "we've looked
-hard."
+This is how the team becomes _actually_ bug-free / risk-free rather than "0 found at the cheap depth." Treat each tier
+as its own ground to cover; only depth=9 across all-day-one with adversarial passes counts as "we've looked hard."
 
-**Choosing the skill for nova / kira dispatches (polish-tier control).** Same advance/reset mechanism as evan,
-but instead of a depth integer the "tier" is a skill name. Cheap-pass = the default cleanup skill; deep-pass =
-the heavier authoring/research skill.
+**Choosing the skill for nova / kira dispatches (polish-tier control).** Same advance/reset mechanism as evan, but
+instead of a depth integer the "tier" is a skill name. Cheap-pass = the default cleanup skill; deep-pass = the heavier
+authoring/research skill.
 
 Read from `team_state.md`:
 
@@ -170,30 +168,28 @@ polish_skill_kira_last_run_sha:   <sha, default latest tag at first run>
 
 Section scope for the fresh-source check:
 
-- nova: same as evan (source code paths — `harness/`, `backends/`, `tools/`, `shared/`, `operator/`,
-  `clients/ww/`, `helpers/`, `scripts/`, `.github/workflows/`, plus `clients/dashboard/src/`).
+- nova: same as evan (source code paths — `harness/`, `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`,
+  `helpers/`, `scripts/`, `.github/workflows/`, plus `clients/dashboard/src/`).
 - kira: docs surface — any `*.md` (root, per-subproject, `docs/**`, `.agents/**`), `AGENTS.md`, `CLAUDE.md`,
-  `CHANGELOG.md`, `README.md`. (When kira herself commits docs that land here, the next-dispatch reset is fine —
-  fresh docs may have new drift to find.)
+  `CHANGELOG.md`, `README.md`. (When kira herself commits docs that land here, the next-dispatch reset is fine — fresh
+  docs may have new drift to find.)
 
 Decide the skill for THIS dispatch:
 
 1. **Reset check.** If `git log <last_run_sha>..HEAD -- <scope>` returns any commits, set the skill back to the
    cheap-pass default and zero the streak.
-2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the cheap-pass — flip to the deep-pass skill
-   for THIS dispatch (then auto-flip back to cheap-pass next time, since the deep-pass is one-shot, not
-   steady-state).
+2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the cheap-pass — flip to the deep-pass skill for THIS
+   dispatch (then auto-flip back to cheap-pass next time, since the deep-pass is one-shot, not steady-state).
 3. **Hold check.** Otherwise keep the skill as-is.
 
-Pass it to the peer in the call-peer prompt: `Run your <skill_name> skill` (no depth arg — nova/kira don't
-accept one).
+Pass it to the peer in the call-peer prompt: `Run your <skill_name> skill` (no depth arg — nova/kira don't accept one).
 
 After the dispatch, when the peer reports back, update `team_state.md`:
 
 - 0 commits / 0 findings → increment `zero_streak`. Update `last_run_sha`.
 - ≥1 commit OR ≥1 finding → zero the streak. Update `last_run_sha`.
-- If THIS dispatch was a deep-pass (advance fired), zero the streak regardless and flip back to cheap-pass for
-  next time. (The deep-pass only fires on advance; it never holds as steady state.)
+- If THIS dispatch was a deep-pass (advance fired), zero the streak regardless and flip back to cheap-pass for next
+  time. (The deep-pass only fires on advance; it never holds as steady state.)
 
 Log in `decision_log.md`:
 
@@ -231,22 +227,21 @@ This runs **independent** of priorities 1-4 — every tick.
 
 **Step 1: compute weighted commits since latest tag.** For each commit in `git log v<latest>..main`:
 
-| Commit prefix                                    | Weight |
-| ------------------------------------------------ | ------ |
-| `feat:` / `feat(<scope>):`                       | 2.0    |
-| `fix:` / `fix(<scope>):`                         | 1.0    |
-| `docs:` / `docs(<scope>):`                       | 0.5    |
-| `chore:` / `style:` / `refactor:` / `test:`      | 0.25   |
-| Anything else (no conventional prefix)           | 0.5    |
+| Commit prefix                               | Weight |
+| ------------------------------------------- | ------ |
+| `feat:` / `feat(<scope>):`                  | 2.0    |
+| `fix:` / `fix(<scope>):`                    | 1.0    |
+| `docs:` / `docs(<scope>):`                  | 0.5    |
+| `chore:` / `style:` / `refactor:` / `test:` | 0.25   |
+| Anything else (no conventional prefix)      | 0.5    |
 
-**Exclude these from the weighted sum** (release-artifact commits — counting them re-triggers a release for
-releasing):
+**Exclude these from the weighted sum** (release-artifact commits — counting them re-triggers a release for releasing):
 
 - `docs(changelog):` commits.
 - Any commit whose message body indicates it was authored by iris during a release cut.
 
-**Step 2: detect critical-fix fast-path.** Scan `git log v<latest>..main` for any commit matching `fix(security):`
-OR a body containing the literal word `critical`. If found, set `critical_fix_present = true`.
+**Step 2: detect critical-fix fast-path.** Scan `git log v<latest>..main` for any commit matching `fix(security):` OR a
+body containing the literal word `critical`. If found, set `critical_fix_present = true`.
 
 **Step 3: gate.**
 
@@ -268,8 +263,8 @@ Bump kind based on conventional-commit inference of `git log v<latest>..main`:
 
 **Why velocity-driven.** The previous policy (≥1h floor + max 4 releases/day) double-locked itself the night of
 2026-05-06 → 05-07: 4 productive releases burst-shipped in ~6h, then the team stood down for the next 14h with the
-release surface frozen. Velocity-driven cadence lets bursty mornings ship 6 releases when there's real content and
-quiet stretches batch over hours, without arbitrary daily cliffs.
+release surface frozen. Velocity-driven cadence lets bursty mornings ship 6 releases when there's real content and quiet
+stretches batch over hours, without arbitrary daily cliffs.
 
 #### Priority 6 — Stand down
 
@@ -280,12 +275,12 @@ Nothing in any priority bucket fires → log "no action this tick" to decision l
 Before any dispatch in steps 3.1-3.4:
 
 - **Max 8 dispatches/hour:** count entries in `decision_log.md` with timestamp within the last hour. If ≥8, abort the
-  dispatch, log `[capped: dispatches/hour]`, exit. (Raised from 5 on 2026-05-07; 5/hr was binding under the
-  tightened cadence floors when iris-cleanup chains stacked alongside peer dispatches.)
-- **Max 20 releases/day (runaway guard, not cadence policy):** count `[release-dispatched]` entries in
-  `decision_log.md` in the last 24h. If ≥20, this is a runaway loop — log `[capped: releases/day]`, enter pause-mode,
-  and escalate to the user via `[escalation: release-storm]`. Velocity-driven release-warranted is the everyday knob;
-  this exists only to halt a malfunction.
+  dispatch, log `[capped: dispatches/hour]`, exit. (Raised from 5 on 2026-05-07; 5/hr was binding under the tightened
+  cadence floors when iris-cleanup chains stacked alongside peer dispatches.)
+- **Max 20 releases/day (runaway guard, not cadence policy):** count `[release-dispatched]` entries in `decision_log.md`
+  in the last 24h. If ≥20, this is a runaway loop — log `[capped: releases/day]`, enter pause-mode, and escalate to the
+  user via `[escalation: release-storm]`. Velocity-driven release-warranted is the everyday knob; this exists only to
+  halt a malfunction.
 - **Max 3 batch-reverts/day:** count `[revert-detected]` entries. If ≥3, this is systemic — escalate to user via
   `[escalation: revert-storm]` and enter pause-mode automatically.
 - **Cycle detection:** for the candidate you're about to dispatch a fix for, check whether the same `[file:line]` has
