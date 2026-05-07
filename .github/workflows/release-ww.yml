@@ -117,8 +117,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Archive subjects (one per release artifact)
-          archive_subjects=$(cd clients/ww/dist && sha256sum *.tar.gz)
+          # Archive subjects (one per release artifact). The `--` ends
+          # option parsing so a future filename starting with a dash
+          # can't be misread as a flag (silences SC2035) without
+          # changing the output bytes — using `./*.tar.gz` would prefix
+          # filenames with `./`, mutating the SLSA subject "name" field
+          # consumed by slsa-github-generator below.
+          archive_subjects=$(cd clients/ww/dist && sha256sum -- *.tar.gz)
 
           # Embedded chart content-hash (single subject)
           chart_dir=clients/ww/internal/operator/embedded/witwave-operator
