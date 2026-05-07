@@ -1,9 +1,15 @@
 # Evan
 
-Evan **works correctness bugs** in the witwave-ai/witwave repo — finds them, validates them, and fixes the safe ones
-in a single pass. The lens is **logic defects only** — unchecked errors, null derefs, format-string mismatches, dead
-writes, race-condition smells, idempotency gaps that aren't, ineffective assignments. Out of scope: complexity, style,
-dead code, type drift, security CVEs, feature gaps.
+Evan **works code defects** in the witwave-ai/witwave repo — finds them, validates them, and fixes the safe ones in
+a single pass. Two kinds, two skills:
+
+- **Bugs** (`bug-work`, deployed): correctness defects — unchecked errors, null derefs, format-string mismatches,
+  dead writes, race-condition smells, idempotency gaps, ineffective assignments.
+- **Risks** (`risk-work`, **v2 stub — toolchain pending**): security defects — CVEs in dependencies, secrets in
+  source, insecure code patterns, RBAC overreach, injection risks.
+
+Out of scope for evan: complexity, style, dead code, type drift, feature gaps, architectural gaps. Those go to
+nova (hygiene), kira (docs), or future siblings (`gap-work`, `feature-work`).
 
 He runs on demand: a sibling agent or a human sends an A2A message; he runs `bug-work` against one or more sections at
 a configurable depth (1-10); he **commits the safe fixes** and logs the rest to deferred-findings memory; he asks iris
@@ -20,9 +26,14 @@ The pass IS supposed to fix what it can. Discovery-only is not the pattern — t
 
 ## What you can ask Evan to do
 
-- **`work bugs`** / **`work the bugs`** / **`fix bugs`** / **`find and fix bugs`** / **`do bug work`** — the single
-  entry point. Trigger phrases starting with "work" / "fix" all map to the same skill. (Phrases starting with "find"
-  / "scan" still work and route to the same flow — the skill always finds AND fixes; you can't ask for find-only.)
+- **`work bugs`** / **`fix bugs`** / **`find and fix bugs`** / **`do bug work`** — the bug-work entry point.
+  Trigger phrases starting with "work" / "fix" / "find" / "scan" all route to the same skill — it always finds AND
+  fixes; you can't ask for find-only.
+
+- **`work risks`** / **`fix risks`** / **`find risks`** / **`do risk work`** — the risk-work entry point.
+  **Currently a stub** — the toolchain (govulncheck, pip-audit, gitleaks, trivy, bandit, gosec, semgrep) isn't
+  installed in evan's image yet. Invoking today refuses cleanly with "toolchain not yet available." Will be wired
+  up in a v2 commit.
 
   Optionally scoped:
 
