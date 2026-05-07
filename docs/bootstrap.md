@@ -13,15 +13,22 @@ is running:
 - One **WitwaveWorkspace** (`witwave-self`) with one or more shared volumes (`source` for the working repo state,
   `memory` for long-term per-agent memory, more as concerns accrete) that every participating agent mounts at the same
   paths.
-- Three **WitwaveAgent**s (`iris`, `kira`, `nova`) with `Spec.WorkspaceRefs` pointing at `witwave-self` so they share
-  the workspace. Iris owns source-tree initialization + release captaincy; kira owns documentation hygiene; nova owns
-  code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to iris
-  via `call-peer`. A fourth agent (`evan`) is scaffolded under `.agents/self/evan/` for correctness bug discovery
-  (logic-defect lens — unchecked errors, null derefs, races, dead writes, format-string mismatches). His v1 design is
-  burned in (CLAUDE.md, agent-card, `bug-work` skill, three cross-agent skills) and deployed alongside iris/kira/nova
-  on the team's claude images. The verb "work" is the team's forward-compatible naming convention for product-
-  engineering agents; future siblings would be `risk-work`, `gap-work`, `feature-work`. Additional named agents can
-  be added later in the same shape.
+- Five **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`) with `Spec.WorkspaceRefs` pointing at
+  `witwave-self` so they share the workspace.
+  - **iris** owns source-tree initialization + release captaincy + git plumbing for the team.
+  - **kira** owns documentation hygiene + research.
+  - **nova** owns code-internal hygiene (formatting, comment-vs-code verification, comment authoring).
+  - **evan** owns code defects — `bug-work` for correctness bugs (logic-defect lens), `risk-work` for security
+    risks (CVE / secrets / insecure-pattern lens). The verb "work" is the forward-compatible naming convention for
+    product-engineering siblings (future: `gap-work`, `feature-work`).
+  - **zora** is the team's manager — she dispatches the other peers based on a continuous decision loop driven by
+    a 30-min heartbeat. She reads team state (git, peer memories, CI), applies a priority policy (urgency →
+    cadence floor → backlog → release-warranted check), and dispatches via `call-peer`. She doesn't write code;
+    she coordinates. The peers stay autonomous within their domain.
+
+  Each peer commits work locally and delegates the push to iris via `call-peer`. Iris owns all git/GitHub authority
+  for the team; zora owns team-level coordination + release-cadence decisions. Direct user invocation of any peer
+  still works — zora is one valid caller, not a gate.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap
@@ -94,6 +101,13 @@ GITHUB_USER_NOVA=nova-agent-witwave
 # the design is finalised and Step 6 is added below.
 GITHUB_TOKEN_EVAN=github_pat_replace_me
 GITHUB_USER_EVAN=evan-agent-witwave
+
+# Zora's GitHub credentials — placeholder. Zora doesn't commit code
+# (she dispatches peers; iris pushes). PAT is fully optional. Leave
+# replace_me unless the evan-agent-witwave GitHub account exists and
+# you want commits authored by zora-agent to link to a GitHub user.
+GITHUB_TOKEN_ZORA=github_pat_replace_me
+GITHUB_USER_ZORA=zora-agent-witwave
 
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar

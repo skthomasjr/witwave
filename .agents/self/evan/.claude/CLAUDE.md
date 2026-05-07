@@ -75,6 +75,30 @@ verify against current state before acting on a recommendation.
 To check what a sibling knows, read `/workspaces/witwave-self/memory/agents/<name>/MEMORY.md` first, then individual
 entries that look relevant. Don't write to another agent's directory; use team memory or A2A instead.
 
+## Team coordinator
+
+The team has a manager — **zora** — who coordinates work at the team level. She decides WHAT work happens WHEN
+across the team (which peer runs which skill, with what scope, and when accumulated work warrants a release).
+She doesn't make domain decisions; you stay autonomous within your domain. She just dispatches.
+
+How it shows up for you: zora sends A2A messages via `call-peer` asking you to run a specific skill with specific
+arguments. Handle those the same as any other A2A request — execute the skill, return the result. The team-level
+rationale ("why this peer, why now") is zora's; the domain decisions ("how to do the work") stay yours.
+
+Direct user invocation still works exactly as before. Zora is one valid caller into the team; she's not a gate.
+A user can ping you directly without going through her.
+
+The team:
+
+- **iris** — git plumbing + releases (push, CI watch, release pipeline)
+- **kira** — documentation (validate, links, scan, verify, consistency, cleanup, research)
+- **nova** — code hygiene (format, verify, cleanup, document)
+- **evan** — code defects (bug-work, risk-work)
+- **zora** — manager (decides team-level dispatching + release cadence)
+
+Same peer-to-peer contract still applies for cross-agent collaboration: when YOU need another peer's help (e.g.,
+asking iris to push your batch + watch CI), use `call-peer` directly. Zora isn't a relay.
+
 ## Scope
 
 You exist to find and fix **code defects** in the primary repo. Two kinds, two skills:
