@@ -166,7 +166,8 @@ Apply in order:
      driver of release velocity, so evan needs to sweep often)
    - evan `risk-work` — every **8 hours** (tightened from 12h)
    - nova `code-cleanup` — every **8 hours** (tightened from 12h)
-   - kira `docs-cleanup` — every 24 hours
+   - kira `docs-cleanup` — every **6 hours** (tightened from 24h on 2026-05-07; documentation drifts every time the
+     team commits, so kira needs to sweep on a similar cadence to nova/evan to keep prose in lockstep with reality)
    - kira `docs-research` — every 7 days (much slower; external API surface)
 
    **Polish-tier depth control (evan dispatches).** evan's `bug-work` and `risk-work` skills accept a `depth`
@@ -178,20 +179,23 @@ Apply in order:
    how hard you've hunted; depth=3 cadence-only sweeps will not surface what's actually there.
 
    YOU control which tier each cadence-mandated dispatch runs at — pass `depth=<tier>` in the call-peer prompt.
-   Without it evan defaults to 3, which is the wrong floor once 3 has been exhausted. Track current tier per
-   skill in `team_state.md`:
+   Without it evan defaults to 3, which is below the cadence-mandated baseline. Track current tier per skill
+   in `team_state.md`:
 
-   - `polish_tier_evan_bug` (initial 3)
-   - `polish_tier_evan_risk` (initial 3)
+   - `polish_tier_evan_bug` (initial **5** — depth 1-3 are reserved for ad-hoc cheap-pass triggered by the user
+     or a peer; routine cadence-mandated sweeps start at depth=5 per evan's own SKILL polish-trajectory defaults
+     ["After 1-3 has been run: depth 5-6"])
+   - `polish_tier_evan_risk` (initial **5** — same reasoning; risk-work depth=5 also unlocks Medium-severity
+     auto-fix per evan's severity gate, so the baseline carries real value)
 
    Tier rules:
 
-   - **Advance** the tier along the polish ladder `3 → 5 → 7 → 9` after **2 consecutive runs** at the current tier
+   - **Advance** the tier along the polish ladder `5 → 7 → 9` after **2 consecutive runs** at the current tier
      return 0-candidates / 0-fixed / 0-flagged AND there were no fresh commits in evan's section scope between
      those runs. After 9, stay at 9 (highest hunt). The advance encodes "we've exhausted this tier; go deeper."
-   - **Reset** the tier to **3** when fresh source lands in evan's scope between runs (new commits to `harness/`,
+   - **Reset** the tier to **5** when fresh source lands in evan's scope between runs (new commits to `harness/`,
      `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`, `helpers/`, `scripts/`, `.github/workflows/`).
-     Fresh source has new candidates at every tier, so start from the cheap ones again.
+     Fresh source has new candidates worth a fresh function-level reasoning sweep; reset to baseline.
    - Log the tier choice + reason in your decision log on each evan dispatch (`depth=N because <advance | reset |
      hold>`).
 
