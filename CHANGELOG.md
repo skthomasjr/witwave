@@ -6,6 +6,18 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.16.2] — 2026-05-07
+
+Documentation-only release. The team's self-agent roster gets a written reference: a new `TEAM.md` under `.agents/self/`
+captures the five-agent team's shape (iris, kira, nova, evan, zora) and adds a priority-ordered "Proposed future
+members" section sketching where the team might grow next (CTO, devops, security, architecture, testing, PR roles).
+
+### Agent identity
+
+- **team**: `.agents/self/TEAM.md` added — overview of the current five-agent team plus a proposed-future-members
+  roster, reordered by priority and extended over the cycle to cover CTO, devops, security, architecture, testing, and
+  PR roles.
+
 ## [0.16.1] — 2026-05-07
 
 Manager arc: the team gains a fifth self-agent — **zora** — owning team-level dispatching and release cadence across the
