@@ -199,10 +199,28 @@ Apply in order:
    - Log the tier choice + reason in your decision log on each evan dispatch (`depth=N because <advance | reset |
      hold>`).
 
-   The same principle generalises to nova and kira — "deeper" for them means adding tiers (nova: add Tier 2
-   `code-verify` / Tier 3 `code-document`; kira: add `docs-verify` / `docs-research`). v1 polish-tier control is
-   instrumented for evan only; nova / kira stay on default tier-1 cadences for now and will gain their own
-   depth-control rules when the team has data to tune them.
+   **Same mechanism for nova and kira.** Their "deeper" is an alternation between skills rather than a depth
+   integer. Track in `team_state.md`:
+
+   - `polish_skill_nova` — alternates `code-cleanup` (default) ↔ `code-document` (deeper authoring pass)
+   - `polish_skill_kira` — alternates `docs-cleanup` (default) ↔ `docs-research` (research-driven refresh)
+   - `polish_skill_<peer>_zero_streak` — consecutive 0/0/0 runs at the current skill
+   - `polish_skill_<peer>_last_run_sha` — HEAD at last dispatch
+
+   Same three-step decide on each cadence-mandated dispatch:
+
+   - **Reset to default skill** if fresh commits landed in the peer's domain since `last_run_sha` (nova: source-code
+     scope same as evan; kira: docs scope = `**/*.md`, `docs/**`, `AGENTS.md`, `CHANGELOG.md`, `README.md`,
+     per-subproject READMEs).
+   - **Advance to deeper skill** if no fresh source AND `zero_streak ≥ 2` at the default skill — flip to the
+     deeper skill on next dispatch, then back to default after that. The alternation prevents the deeper skill
+     from being the steady-state choice (it's expensive) while ensuring it fires whenever the cheap pass is
+     exhausted.
+   - **Hold** otherwise.
+
+   Cadence floors still gate dispatch frequency; polish-tier only chooses *which* skill to invoke when the floor
+   triggers a dispatch. So kira's 7d `docs-research` floor remains a *guarantee* (research runs at least weekly);
+   polish-tier may also fire research more often as `docs-cleanup` becomes a no-op on stable docs.
 3. **Cadence floor (team-tidy).** Your own consistency + improvement work on team-identity files. Floor: every 6 hours.
    If breached AND no urgent peer work AND no peer-cadence floor in priority 2 also breached → invoke the `team-tidy`
    skill yourself (in-process; not a call-peer). Same hard cap: 3 team-tidy commits/day.
@@ -255,7 +273,8 @@ call, wait. This is conservative — bumps to 2-concurrent come after a week of 
 
 ### Hard caps (v1 safety floors)
 
-- **Max 5 peer dispatches per hour** across the whole team.
+- **Max 8 peer dispatches per hour** across the whole team (raised from 5 on 2026-05-07 — 5/hr was binding under
+  the tightened cadence floors when iris-cleanup chains stacked alongside cadence-mandated peer dispatches).
 - **Max 20 releases per day (runaway guard, not cadence policy).** Velocity-driven release-warranted is the everyday
   knob; this exists only to halt a runaway loop. If hit, log `[capped: releases/day]`, pause yourself, and escalate
   to the user — something is wrong.
