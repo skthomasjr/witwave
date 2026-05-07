@@ -134,6 +134,9 @@ jobs:
             exit 1
           fi
           # Positive case: htpasswd populated → must render cleanly.
+          # $2y$ / $05$ are bcrypt header fields, not shell variables;
+          # the single-quoting on the htpasswd literal below is correct.
+          # shellcheck disable=SC2016
           helm template ci-1626-ok charts/witwave \
               --set ingress.enabled=true \
               --set ingress.auth.enabled=true \
