@@ -11,6 +11,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HELM_VERSION=v3.20.2 \
     KUBECTL_VERSION=v1.31.0
 
+# Run every subsequent RUN under bash with `pipefail` so a curl/sha256sum
+# failure inside a pipe surfaces instead of being masked by a successful
+# tail (tar -xz, sha256sum -c -). Matches the pattern set by the backend
+# Dockerfiles. Silences hadolint DL4006 on the curl|tar pipeline at L20
+# and the sha256-verify pipeline at L55.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # kubectl ships alongside helm in this image so diff_manifest (#1127)
 # can compute a server-side diff of a raw manifest against the live
 # cluster. The binary is only used for ``kubectl diff -f -`` — we do
