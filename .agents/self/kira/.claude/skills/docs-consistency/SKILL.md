@@ -3,10 +3,12 @@ name: docs-consistency
 description:
   Cross-check Category C documentation for internal agreement — version numbers across files, claims about what each
   subproject does vs its parent's description, root README links to docs/ files (and vice versa) that all resolve,
-  per-subproject README claims about commands matching the actual CLI surface. Memory-log mismatches; never auto-fix
-  (the right resolution is always a judgment call). Trigger when the user says "check doc consistency", "are the docs in
-  agreement?", or as a step inside `docs-cleanup`.
-version: 0.1.0
+  per-subproject README claims about commands matching the actual CLI surface, and team-roster sync between
+  `.agents/self/TEAM.md` and `docs/bootstrap.md` (the only Cat-A file pulled in, and only because it pairs canonically
+  with the bootstrap walkthrough). Memory-log mismatches; never auto-fix (the right resolution is always a judgment
+  call). Trigger when the user says "check doc consistency", "are the docs in agreement?", "is the team in sync",
+  "are we missing agents in bootstrap", or as a step inside `docs-cleanup`.
+version: 0.2.0
 ---
 
 # docs-consistency
@@ -131,10 +133,10 @@ agents, their one-line role descriptions, and the order they're presented. From 
    tail end of "we added someone and forgot to update the diagram."
 
 **Live-cluster cross-check** (optional / out-of-scope today). Eventually this check could call
-`kubectl get pods -n witwave-self -l app.kubernetes.io/managed-by=witwave-operator` and compare the deployed-pod
-set against the roster. Today kira's runtime doesn't have cluster RBAC, so don't attempt it; record the finding
-as `[flagged: live-check-unavailable]` if you want to track the gap. The file-vs-file checks above are the
-primary signal.
+`kubectl get pods -n witwave-self -l app.kubernetes.io/managed-by=witwave-operator -o jsonpath='{.items[*].metadata.labels.app\.kubernetes\.io/name}'`
+to enumerate live agent names and compare against the roster. Today kira's runtime doesn't have cluster RBAC, so
+don't attempt it; record the finding as `[flagged: live-check-unavailable]` if you want to track the gap. The
+file-vs-file checks above are the primary signal.
 
 ### 4. Log findings to memory
 
@@ -171,20 +173,29 @@ during the transition.
 
 Return a structured summary:
 
-- Total Cat C files scanned
-- Per-check counts: how many disagreements found in each (version, subproject↔root, prose-references, command-surface)
+- Total Cat C files scanned (plus `TEAM.md` for Check E)
+- Per-check counts: how many disagreements found in each (version, subproject↔root, prose-references,
+  command-surface, team-roster)
 - Pointer to the deferred-findings memory entry just written
 
 ## When to invoke
 
 - Inside `docs-cleanup` (the orchestrator).
-- On demand: "are the docs in agreement?", "check doc consistency", "find conflicting claims".
+- On demand: "are the docs in agreement?", "check doc consistency", "find conflicting claims",
+  "is the team in sync", "are we missing agents in bootstrap".
 - After a release or a CLI rename — that's when version drift and command-surface drift are most likely.
+- After adding or removing a self-agent (a `.agents/self/<name>/` checkout-in or removal) — that's
+  when team-roster drift between `TEAM.md` and `bootstrap.md` is most likely.
 
 ## Out of scope for this skill
 
-- **Cat A / Cat B** — explicitly off-limits per the doc-categories policy. Consistency between agent identity files
-  (e.g. iris's CLAUDE.md vs kira's) is a different kind of check that needs a different posture.
+- **Per-agent identity files (Cat A)** — consistency between agent prompts (iris's `CLAUDE.md` vs kira's,
+  per-agent `agent-card.md` agreement, `SKILL.md` cross-agent uniformity) is off-limits per the doc-categories
+  policy and needs a different posture. The single named exception is `.agents/self/TEAM.md` in Check E because
+  it pairs canonically with `docs/bootstrap.md` as the team's roster narrative; nothing else under `.agents/`
+  is read.
+- **Cat B (repo-root `CLAUDE.md`, `AGENTS.md`, `.claude/skills/**`)** — explicitly off-limits; these are
+  AI-coding-assistant prompts, not human-facing docs.
 - **Auto-fixing** — every disagreement is a judgment call. Findings land in memory; humans decide.
 - **External-resource consistency** (e.g. README claims about Discord channels, blog posts, third-party docs) — out of
   scope; these change for reasons unrelated to this repo.
