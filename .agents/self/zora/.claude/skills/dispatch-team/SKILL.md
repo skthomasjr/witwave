@@ -20,7 +20,7 @@ None from the prompt. Read state from:
 - Peer `MEMORY.md` indexes + deferred-findings memory files
 - Recent CI workflow runs (via shell-out to `gh run list` — read-only; iris owns the auth, but read on `main` is
   unauth-allowed for public repos)
-- **Active HTTP probe of each peer's harness `/health`** (every tick — Step 2d). The probe is the authoritative
+- **Active HTTP probe of each peer's harness `/.well-known/agent.json`** (every tick — Step 2d). The probe is the authoritative
   signal for peer liveness; without it, peer-OFFLINE flags can persist indefinitely against actually-running
   pods (this happened to finn on 2026-05-08 — flag stuck despite finn being 3/3 Running for 3+ hours).
 - Your own memory: `decision_log.md` (your last decisions), `team_state.md` (last-fire times + per-peer
@@ -110,16 +110,19 @@ is fully uniform team-wide. Until then, the adapter gets the count _right enough
 Two signals combine here. The active probe is authoritative; the heartbeat history is a fallback diagnostic.
 
 **Active probe (every tick).** For each peer in `[iris, nova, kira, evan, finn]`, hit the peer's harness
-`/health` endpoint via the URL in `reference_peer_<peer>.md`. The probe is a plain HTTP GET with a 5-second
-timeout; no auth required (the `/health` path is public). Expected response is HTTP 200 with body containing
-`ok` or `healthy` (the harness's `/health` is liveness — returns 200 once the process is up, even while
-initialising).
+`/.well-known/agent.json` endpoint via the URL in `reference_peer_<peer>.md`. The probe is a plain HTTP GET with a 5-second
+timeout; no auth required (this is the A2A discovery path, public by design). Expected response is HTTP 200 with a JSON
+body describing the agent (name, skills, etc.). We use this endpoint rather than a `/health` route because the harness
+proxies A2A discovery but does NOT expose a separate `/health` path — calling `/health` returns 404 on every peer
+(verified 2026-05-08 when the first version of this Step 2d wired the wrong path). A 200 from `/.well-known/agent.json`
+means the harness is running AND its backend is reachable enough to render the agent card, which is a slightly
+stronger liveness signal than a bare `/health` would have provided.
 
 ```sh
 for peer in iris nova kira evan finn; do
   PEER_URL=$(grep -m1 -oE 'http[s]?://[^[:space:]]+' /workspaces/witwave-self/memory/agents/zora/reference_peer_${peer}.md 2>/dev/null)
   if [ -z "$PEER_URL" ]; then continue; fi
-  curl -fsS --max-time 5 "${PEER_URL%/}/health" >/dev/null 2>&1 && echo "${peer}=ONLINE" || echo "${peer}=PROBE-FAIL"
+  curl -fsS --max-time 5 "${PEER_URL%/}/.well-known/agent.json" >/dev/null 2>&1 && echo "${peer}=ONLINE" || echo "${peer}=PROBE-FAIL"
 done
 ```
 
