@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,8 @@ type sendFlags struct {
 	contextID  string
 	namespace  string
 	token      string
+	async      bool
+	asyncWait  time.Duration
 }
 
 func newSendCmd() *cobra.Command {
@@ -108,6 +111,52 @@ func newSendCmd() *cobra.Command {
 				out.Warnf("no token configured; request will be unauthenticated")
 			}
 
+			// Async dispatch: fire the request with a brief deadline.
+			// Empirically the harness routes the prompt to its backend
+			// inside a few hundred ms (harness logs show the executor's
+			// "Session ... (new)" message well before the upstream LLM
+			// call finishes). Once the harness has the prompt, the work
+			// proceeds independently of the client connection — so we
+			// can hang up early and return the contextId for tailing.
+			//
+			// If a deadline doesn't fire (server returns inside the
+			// window), we just print the response like sync mode.
+			// Non-deadline errors propagate as real failures so a wedged
+			// connection / 401 / 502 doesn't get masked as "dispatched".
+			if sf.async {
+				asyncCtx, cancel := context.WithTimeout(ctx, sf.asyncWait)
+				defer cancel()
+				var resp a2aResponse
+				err := c.DoJSON(asyncCtx, http.MethodPost, targetURL, body, &resp, false)
+				if err == nil && resp.Error == nil {
+					if out.IsJSON() {
+						return out.EmitJSON(resp)
+					}
+					if text := extractText(resp); text != "" {
+						fmt.Fprintln(out.Out, text)
+					}
+					return nil
+				}
+				// Deadline-exceeded → harness has the prompt, work
+				// continues server-side. Surface the contextId.
+				if errors.Is(err, context.DeadlineExceeded) {
+					tailNS := sf.namespace
+					if tailNS == "" {
+						tailNS = "<namespace>"
+					}
+					fmt.Fprintf(out.Out, "Dispatched to %s (contextId=%s, messageId=%s).\n", agent, ctxID, msgID)
+					fmt.Fprintf(out.Out, "Tail with: ww conversation show %s -n %s --follow\n", ctxID, tailNS)
+					return nil
+				}
+				// Real transport error or server-side JSON-RPC error:
+				// don't pretend we dispatched.
+				if err != nil {
+					return handleErr(out, err)
+				}
+				out.Errorf("%s", resp.Error.Message)
+				return logicalErr(fmt.Errorf("%s", resp.Error.Message))
+			}
+
 			var resp a2aResponse
 			if err := c.DoJSON(ctx, http.MethodPost, targetURL, body, &resp, false); err != nil {
 				return handleErr(out, err)
@@ -135,6 +184,10 @@ func newSendCmd() *cobra.Command {
 		"Agent's namespace (default: kubeconfig context's namespace, falling back to 'witwave')")
 	cmd.Flags().StringVar(&sf.token, "send-token", "",
 		"Override the agent's CONVERSATIONS_AUTH_TOKEN (default: read from <agent>-claude Secret)")
+	cmd.Flags().BoolVar(&sf.async, "async", false,
+		"fire-and-forget: return as soon as the harness has the prompt, surface the contextId for tailing instead of blocking on the LLM response")
+	cmd.Flags().DurationVar(&sf.asyncWait, "async-wait", 3*time.Second,
+		"with --async, how long to wait for the harness to receive the request before treating it as dispatched")
 	return cmd
 }
 
