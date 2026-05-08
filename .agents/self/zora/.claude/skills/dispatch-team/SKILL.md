@@ -47,17 +47,34 @@ LAST_RELEASE_TIME=$(git -C <checkout> log -1 --format=%cI "${LATEST_TAG}" 2>/dev
 LAST_COMMIT_TIME=$(git -C <checkout> log -1 --format=%cI origin/main 2>/dev/null)
 ```
 
-#### 2b. CI state on main HEAD
+#### 2b. CI state across every commit since latest tag
+
+A binary built from a *failing* commit is broken even if HEAD has moved past it — so checking only HEAD's CI
+runs the way the original v1 policy did silently masked multi-hour red windows (the 2026-05-07 ww-CLI gofmt
+incident: 3 consecutive `CI — ww CLI` failures spanning ~1h45m were invisible to zora because each subsequent
+commit's "CI — docs" run on the new HEAD was green, while the prior commits' ww-CLI failure aged out of the
+HEAD-only filter).
+
+Today's check covers **every commit between `v<latest-tag>` and `origin/main`**:
 
 ```sh
-gh run list --branch main --limit 5 --json name,status,conclusion,headSha
+LATEST_TAG=$(git -C <checkout> describe --tags --abbrev=0)
+COMMITS=$(git -C <checkout> rev-list "${LATEST_TAG}..origin/main")  # newest-first
+gh run list --branch main --limit 50 --json name,status,conclusion,headSha
 ```
 
-Filter to runs whose `headSha` matches `git rev-parse origin/main`. If any are still `in_progress`, note the CI as
-"settling." If any are red and concluded, note as "red on main." Your pod has `GITHUB_TOKEN` + `GITHUB_USER`
-injected from the `zora-claude` secret (added 2026-05-07 to close the previous "infer CI from indirect signals"
-gap). You're read-only on git/gh per your tool posture; iris remains the team's write authority for push, tag,
-and gh-API writes.
+For each `(workflow_name, headSha)` pair where `headSha` ∈ COMMITS:
+
+- **Any concluded with `failure`** → mark CI as `[red on <commit_sha[0:8]>: <workflow>]` and feed this signal
+  into Priority 1 (red-CI auto-dispatch). Order doesn't matter — one failure on any commit since the tag
+  blocks the whole window from being considered "green."
+- **Any still `in_progress`** → mark CI as `[settling]`. Don't fire release-warranted; do still proceed with
+  cadence-floor dispatches because settling is normal post-push state.
+- **All concluded `success`** across every (workflow, commit) pair → mark CI as `[green]`.
+
+Your pod has `GITHUB_TOKEN` + `GITHUB_USER` injected from the `zora-claude` secret (added 2026-05-07 to close
+the previous "infer CI from indirect signals" gap). You're read-only on git/gh per your tool posture; iris
+remains the team's write authority for push, tag, and gh-API writes.
 
 #### 2c. Peer memories
 
@@ -103,10 +120,44 @@ Walk these in order. The first match wins; act and exit (after logging).
 
 - **Critical CVE in evan's deferred-findings** → dispatch `evan risk-work` with explicit instruction to fix that
   candidate now (preempt other risk-work work).
-- **Red CI on main** that no peer is currently fixing → log to memory + send a status note via call-peer to whoever the
-  breaking commit's author is (likely a peer; if unclear, escalate to user).
-- **Stuck peer** (no heartbeat 1h+) → escalate to user via decision-log entry tagged `escalation`. Do not dispatch more
-  work to that peer until they're back.
+- **Red CI on any commit since latest tag** → **dispatch evan to fix it**, regardless of who authored the
+  breaking commit. Author-agnostic: a binary built from a failing commit is broken whether the author was a
+  peer or a human; treating "human authored = wait for human" is what froze the team for ~1h45m on the
+  2026-05-07 ww-CLI gofmt incident. Procedure:
+
+  1. Fetch the failing job's logs:
+     ```sh
+     gh run view <run-id> --log-failed
+     ```
+  2. Extract the failing-step name + a tight context window (~30 lines around the first FAIL).
+  3. `call-peer evan` with prompt: `Run bug-work on <failing-workflow> failure on commit <sha[0:8]>. Failing
+     step: <step>. Context: <log excerpt>. Goal: produce a fix commit that turns this workflow green. Use
+     your existing fix-bar; if the fix is out of scope (config / infra / not bug-class), flag and report
+     back.` Mark this dispatch with `[priority-1: red-ci-recovery]` so it doesn't share the cadence-driven
+     dispatch budget.
+  4. If two consecutive evan attempts fail to clear the red CI → escalate harder per the time-bounded
+     escalation rules below; do NOT keep retrying evan indefinitely.
+
+- **Stuck peer** (peer dispatch in flight >1h, OR peer's pod has dirty WIP blocking subsequent dispatches) →
+  follow the **time-bounded escalation** ladder below. Don't just stand down forever — past versions of this
+  policy held the team idle for 3+ hours waiting for human resolution while every cadence floor breached and
+  zero fix attempts ran. Today's policy attempts auto-recovery before paging the user.
+
+  - **T+0** — file `[escalation: stuck-peer]` in `decision_log.md` AND in
+    `/workspaces/witwave-self/memory/escalations.md` (team-visible surface). Stop dispatching the stuck peer.
+  - **T+30m** — dispatch iris with `git-investigate-and-restore` (or her general git-plumbing surface):
+    "peer <name>'s pod tree has dirty WIP `<file-list>`; investigate the diff, decide commit-or-discard
+    based on whether the change looks complete and safe, log decision in your memory, restore the tree to
+    clean either way." Iris is the team's git plumber — she's the right surface for "investigate, decide,
+    unblock."
+  - **T+1h** — if still stuck after iris's recovery attempt: **harder escalation** to user. Append a
+    one-line summary to `escalations.md` with `[needs-human]` prefix, including (peer, file-list, age).
+    The user should see this on their next `ww escalations` (or equivalent visibility surface).
+  - **T+2h** — automatic pause-mode entry. Touch `pause_mode.flag`; emit `[escalation: auto-paused]` log
+    entry. Continue ticking but log-only until the user clears the flag.
+
+  Cadence floors continue counting throughout — when the escalation resolves, breached cadences fire
+  immediately on the recovery tick.
 
 #### Priority 2 — Cadence floor breached (peer dispatch)
 

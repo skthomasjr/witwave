@@ -71,31 +71,52 @@ commits). If either has output, **stop and surface**:
 > "Refusing to release — local checkout has [uncommitted changes / > unpushed commits]. Push or revert before
 > re-invoking."
 
-### 3. Verify CI is green on HEAD
+### 3. Verify CI is green across every workflow on `main`
+
+Query the **latest run per workflow on `main`**, not just runs on this exact commit. Path-filtered workflows
+(e.g. `CI — ww CLI` only triggers when `clients/ww/**` changes) won't have a run on a release commit that
+doesn't touch those paths — and the workflow's last failing run on an earlier commit silently passes the
+on-this-commit-only check even though the code that workflow tests is still broken in the tree.
+
+This gap is exactly what let v0.17.0 cut on 2026-05-07 while `CI — ww CLI` had been failing for ~1h45m on
+three prior commits. The release commit (`a2fc8777`, a `docs(changelog):`-only commit) didn't itself run
+`CI — ww CLI`, the on-commit check found the runs that DID fire all green, and iris tagged.
+
+Today's check covers the workflow surface:
 
 ```sh
 HEAD_SHA=$(git -C <checkout> rev-parse HEAD)
-gh run list --branch <branch> --commit "$HEAD_SHA" \
-  --json name,status,conclusion,url --jq '.[]'
+
+# Per-workflow latest status on main, regardless of which commit triggered each.
+gh run list --branch <branch> --limit 50 \
+  --json name,status,conclusion,url,headSha,createdAt \
+  --jq 'group_by(.name) | map(sort_by(.createdAt) | last) | .[]'
 ```
 
 Tabulate per-workflow status:
 
-- **Every workflow `conclusion = "success"`**: proceed to step 4.
-- **Any `status` in {`in_progress`, `queued`}**: STOP. Surface the list of still-running workflows and ask the caller to
-  re-invoke once complete.
-- **Any `conclusion` in {`failure`, `cancelled`, `timed_out`}**: STOP. Surface which workflow failed and its URL. Note
-  that the skill does NOT auto-fix or auto-revert; future versions may delegate to a build-fixer agent, but for now the
-  caller must fix or revert main and re-invoke.
+- **Every workflow's latest run `conclusion = "success"`**: proceed to step 4.
+- **Any `status` in {`in_progress`, `queued`}**: STOP. Surface the list of still-running workflows and ask the
+  caller to re-invoke once they finish.
+- **Any `conclusion` in {`failure`, `cancelled`, `timed_out`}**: STOP. **Refuse to tag**, regardless of whether
+  that workflow's latest run was on the release commit or an earlier one. The failing workflow's tested code
+  lives in the tree we're about to release; the artifact built from this tree will inherit that breakage.
 
-Sample failure response:
+Surface the failure with both the failing commit and the release commit so the caller can see the gap:
 
-> "Refusing to release — main is not green at HEAD `<short-sha>`:
+> "Refusing to release — main is not green:
 >
-> - `CI — ww CLI` failed (https://github.com/.../runs/...)
+> - `CI — ww CLI` failed (last run on commit `0dbd02b9`, https://github.com/.../runs/...)
 > - `CI — Charts` succeeded
+> - `CI — docs` succeeded (latest on HEAD `<short-sha>`)
 >
-> Fix or revert main, then re-invoke `release`."
+> The `CI — ww CLI` failure is older than HEAD but tests code that's still in the tree. Fix or revert main,
+> wait for that workflow to re-run green, then re-invoke `release`."
+
+The future build-fixer agent we'll eventually delegate to is **evan**, who already has the bug-class fix-bar
+machinery for exactly this kind of failure. For now this skill keeps the refuse-to-tag posture; zora's
+Priority 1 red-CI logic should already be dispatching evan against the failing commit independently of this
+release skill's gate.
 
 #### Caveat: the changelog commit's own CI fires asynchronously
 
