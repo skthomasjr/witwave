@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -87,6 +88,7 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 		quiet    bool
 		expand   bool
 		fullText bool
+		follow   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -161,6 +163,10 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 				renderListTable(os.Stdout, summaries, f.allNamespaces)
 			}
 			renderUnreachableFooter(os.Stderr, unreachable)
+
+			if follow {
+				return followAllSessions(ctx, cfg, summaries, results, tokenFn)
+			}
 			return nil
 		},
 	}
@@ -178,7 +184,153 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 		"Render each session as a boxed card with the transcript inline (Option-A combined view)")
 	cmd.Flags().BoolVar(&fullText, "full-text", false,
 		"With --expand: don't truncate per-entry text at 500 chars")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false,
+		"After printing the initial view, live-tail every session via SSE — appends new turns inline as they arrive (Ctrl-C exits cleanly)")
 	return cmd
+}
+
+// followAllSessions opens one port-forward per agent in scope, then a
+// session-stream goroutine per session in the rendered list, and pipes
+// every incoming envelope to stdout under a shared mutex so line
+// boundaries don't interleave. Append-style rendering (no redraw) so
+// the initial table/cards stay anchored at the top of the buffer and
+// new turns scroll in below — like a multi-channel chat window.
+//
+// Lifecycle:
+//   - One port-forward per agent (NOT per session) — N session streams
+//     multiplex over each agent's existing tunnel.
+//   - Streams started concurrently; each runs until the session
+//     emits a stream.overrun OR ctx cancels (Ctrl-C).
+//   - On Ctrl-C: ctx cancellation propagates to every StreamSession
+//     goroutine and to every Forward via its own ctx-watcher; all
+//     close cleanly. Returns nil (Ctrl-C is success).
+func followAllSessions(
+	ctx context.Context,
+	cfg *rest.Config,
+	summaries []conversation.SessionSummary,
+	results []conversation.FanOutResult,
+	tokenFn func(conversation.AgentTarget) string,
+) error {
+	if len(summaries) == 0 {
+		fmt.Fprintln(os.Stderr, "(no sessions to follow)")
+		return nil
+	}
+
+	// Build session_id → AgentTarget so we know which port-forward
+	// each session needs.
+	sessionToTarget := make(map[string]conversation.AgentTarget)
+	for _, r := range results {
+		if r.Err != nil {
+			continue
+		}
+		for _, e := range r.Entries {
+			if e.SessionID != "" {
+				sessionToTarget[e.SessionID] = r.Target
+			}
+		}
+	}
+
+	// One port-forward per unique agent — N sessions multiplex over it.
+	type agentKey struct{ ns, name string }
+	forwards := make(map[agentKey]*portforward.Forward)
+	defer func() {
+		for _, fwd := range forwards {
+			fwd.Close()
+		}
+	}()
+	for _, target := range sessionToTarget {
+		k := agentKey{target.Namespace, target.Agent}
+		if _, ok := forwards[k]; ok {
+			continue
+		}
+		fwd, err := portforward.OpenPort(ctx, cfg, target.Namespace, target.Agent, portforward.BackendHTTPPort)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ww conversation list --follow: skipping %s/%s (port-forward to backend failed: %v)\n",
+				target.Namespace, target.Agent, err)
+			continue
+		}
+		forwards[k] = fwd
+	}
+	if len(forwards) == 0 {
+		return fmt.Errorf("could not port-forward to any backend in scope; nothing to follow")
+	}
+
+	fmt.Fprintln(os.Stdout, "")
+	fmt.Fprintln(os.Stdout, "─── live (Ctrl-C to exit) ───")
+	fmt.Fprintln(os.Stdout, "")
+
+	// Mutex around stdout so multi-line envelope renders stay atomic.
+	var writeMu sync.Mutex
+	emit := func(s conversation.SessionSummary, env conversation.StreamEnvelope) {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		renderLiveEnvelope(os.Stdout, s, env)
+	}
+
+	var wg sync.WaitGroup
+	for _, s := range summaries {
+		target, ok := sessionToTarget[s.SessionID]
+		if !ok {
+			continue
+		}
+		fwd, ok := forwards[agentKey{target.Namespace, target.Agent}]
+		if !ok {
+			continue // forward failed earlier; skip this session
+		}
+		wg.Add(1)
+		s := s
+		token := tokenFn(target)
+		go func() {
+			defer wg.Done()
+			stream, err := conversation.StreamSession(ctx, fwd.BaseURL, token, s.SessionID, func(err error) {
+				fmt.Fprintf(os.Stderr, "stream %s/%s: %v\n", target.Agent, shortSessionID(s.SessionID), err)
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ww conversation list --follow: skipping session %s/%s (stream open failed: %v)\n",
+					target.Agent, shortSessionID(s.SessionID), err)
+				return
+			}
+			for env := range stream {
+				emit(s, env)
+				if env.Type == "stream.overrun" {
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return nil
+}
+
+// renderLiveEnvelope writes one streamed envelope to w with a session-
+// origin prefix so the user can tell which session is updating in the
+// multi-stream output. Format mirrors `ww conversation show --follow`'s
+// per-entry shape with an extra `↻ <short-id> <agent>` line above so the
+// ownership is clear at a glance.
+func renderLiveEnvelope(
+	w *os.File,
+	summary conversation.SessionSummary,
+	env conversation.StreamEnvelope,
+) {
+	ts := conversation.FormatTSCompact(env.TS)
+	short := shortSessionID(summary.SessionID)
+	switch env.Type {
+	case "session.message":
+		role, _ := env.Payload["role"].(string)
+		text, _ := env.Payload["text"].(string)
+		model, _ := env.Payload["model"].(string)
+		label := role
+		if model != "" {
+			label = fmt.Sprintf("%s (%s)", role, model)
+		}
+		fmt.Fprintf(w, "↻ %s · %s · [%s] %s:\n", short, summary.Agent, ts, label)
+		for _, ln := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+			fmt.Fprintf(w, "    %s\n", ln)
+		}
+		fmt.Fprintln(w)
+	default:
+		fmt.Fprintf(w, "↻ %s · %s · [%s] (%s)\n", short, summary.Agent, ts, env.Type)
+	}
 }
 
 func filterTargetsByAgent(targets []conversation.AgentTarget, name string) []conversation.AgentTarget {
