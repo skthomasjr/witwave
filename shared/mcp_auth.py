@@ -75,11 +75,18 @@ def require_bearer_token(
         if scope.get("type") != "http":
             await app(scope, receive, send)
             return
-        # /health is an unauthenticated liveness/readiness probe target
-        # (#848). Kubernetes kubelet probes cannot carry bearer tokens,
-        # and the endpoint exposes only static JSON so gating it would
-        # add operational risk without security benefit.
-        if scope.get("path") == "/health" and scope.get("method", "GET") in ("GET", "HEAD"):
+        # /health, /health/live, /health/ready are unauthenticated
+        # liveness/readiness probe targets (#848). Kubernetes kubelet
+        # probes cannot carry bearer tokens, and the endpoint exposes
+        # only static JSON so gating it would add operational risk
+        # without security benefit. The three paths are aliases here
+        # because MCP tools don't currently distinguish liveness from
+        # readiness — exposing all three keeps the surface uniform with
+        # the harness (which uses /health/live + /health/ready) and the
+        # backends (which use /health + /health/ready).
+        if scope.get("path") in ("/health", "/health/live", "/health/ready") and scope.get(
+            "method", "GET"
+        ) in ("GET", "HEAD"):
             await _send_health(send)
             return
         token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()

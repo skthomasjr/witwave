@@ -883,6 +883,7 @@ async def main():
         # /health/ready.
         Route("/health/start", health_start),  # #1686
         Route("/health", health),
+        Route("/health/live", health),  # alias of /health — uniform liveness surface across harness/backends/MCP tools
         Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),

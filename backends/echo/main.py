@@ -144,6 +144,8 @@ def build_app() -> Starlette:
 
     routes = [
         Route("/health", health),
+        Route("/health/live", health),  # alias — uniform liveness surface across harness/backends/MCP tools
+        Route("/health/ready", health),  # alias — echo has no real readiness gate, so liveness == readiness
         Mount("/", app=a2a_built),
     ]
     return Starlette(routes=routes)
