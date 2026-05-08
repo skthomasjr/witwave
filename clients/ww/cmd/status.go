@@ -94,7 +94,12 @@ func probeOne(ctx context.Context, c *client.Client, a agentEntry) statusRow {
 	start := time.Now()
 	// Use GetBytes on the absolute URL so Resolve treats it as-is.
 	hc := c.HTTP()
-	u := strings.TrimRight(a.URL, "/") + "/health"
+	// Probe the harness's /health/live endpoint (the K8s liveness probe
+	// path; returns 200 once the process is up). The harness does NOT
+	// expose a bare /health route — only /health/live and /health/ready
+	// — so calling /health used to 404 on every peer here, surfacing
+	// every agent as "down" in `ww status` output.
+	u := strings.TrimRight(a.URL, "/") + "/health/live"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		row.Error = err.Error()
