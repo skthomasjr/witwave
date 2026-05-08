@@ -6,6 +6,30 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-05-08
+
+Unbreaks `ww update` for macOS users who installed via Homebrew Cask — the cask path was being misclassified as the
+binary/curl install method, so `ww update` was dropping phantom binaries into `/usr/local/bin` instead of running
+`brew upgrade ww`. On the agents-bootstrap side, the team's sixth member — **finn** (gap-fixer) — lands as scaffolded
+identity + backend wiring, completing the documented six-agent topology.
+
+### Fixed
+
+- **ww**: `ww update` now detects Homebrew Cask installs (executable resolves under `$(brew --prefix)/Caskroom/`) and
+  routes through `brew upgrade --cask ww` instead of the binary/curl path. The detector also ignores any stale
+  `~/.local/share/ww/install-method` Curl marker when the running binary lives inside Caskroom — earlier curl-script
+  installs left that marker behind, and Cask installs that ran on top would inherit it and silently take the wrong
+  upgrade path. Bug surfaced when `ww update` shipped phantom binaries into `/usr/local/bin` for brew-cask users
+  instead of upgrading the cask in place.
+
+### Agent identity
+
+- **finn**: Sixth team member scaffolded as **gap-fixer** — the agent that fills what's missing across the team's
+  output (orphan TODOs, half-landed refactors, dangling references no one else has claimed). Companion
+  `agents/finn/backend.yaml` wires finn into the harness backend alongside the other five agents, and
+  `agents/bootstrap.md` is updated to cover all six (iris, kira, nova, evan, zora, finn) so onboarding documents
+  match the deployed topology.
+
 ## [0.21.0] — 2026-05-08
 
 `ww send` and `ww tail` gain auto port-forward parity with the rest of the CLI — agents addressed by name route over a
