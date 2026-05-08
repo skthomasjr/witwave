@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 from typing import Awaitable, Callable, Optional
 
 from starlette.applications import Starlette
@@ -83,8 +84,6 @@ def start_metrics_server_in_thread(
     metric exposition — what MCP tools need today — is safe because the
     default registry is thread-safe.
     """
-    import threading
-
     if logger is None:
         logger = logging.getLogger(__name__)
     bind_port = port if port is not None else _resolve_metrics_port()
