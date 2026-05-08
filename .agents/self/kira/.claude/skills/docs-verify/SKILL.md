@@ -95,18 +95,18 @@ not a finding).
 ### 5. Log findings to memory
 
 For each broken reference, append to the deferred-findings memory file at
-`/workspaces/witwave-self/memory/agents/<your-name>/project_doc_findings.md` under a new section.
-Each finding's heading carries a **status marker** matching the team-wide schema (parallel to evan's
-`bug-work` format) so zora's backlog counter reads every peer's findings file uniformly:
+`/workspaces/witwave-self/memory/agents/<your-name>/project_doc_findings.md` under a new section. Each finding's heading
+carries a **status marker** matching the team-wide schema (parallel to evan's `bug-work` format) so zora's backlog
+counter reads every peer's findings file uniformly:
 
-- **`[pending]`** — default for newly-detected mismatches. Real claim-vs-reality drift; awaiting human
-  decision on which side to update.
-- **`[flagged: <reason>]`** — used when the mismatch has a *specific* judgment-call obstacle worth
-  recording inline (e.g., `[flagged: claim-may-be-aspirational-not-current-state]` or
+- **`[pending]`** — default for newly-detected mismatches. Real claim-vs-reality drift; awaiting human decision on which
+  side to update.
+- **`[flagged: <reason>]`** — used when the mismatch has a _specific_ judgment-call obstacle worth recording inline
+  (e.g., `[flagged: claim-may-be-aspirational-not-current-state]` or
   `[flagged: doc-references-renamed-API-but-version-pin-makes-old-name-still-valid]`).
-- **`[fixed: <SHA>]`** — when the underlying mismatch gets resolved later (by a sibling agent or human),
-  mutate the marker to record the resolving commit. zora's counter treats `[fixed:]` as closed; `[pending]`
-  and `[flagged:]` as open backlog.
+- **`[fixed: <SHA>]`** — when the underlying mismatch gets resolved later (by a sibling agent or human), mutate the
+  marker to record the resolving commit. zora's counter treats `[fixed:]` as closed; `[pending]` and `[flagged:]` as
+  open backlog.
 
 Format:
 
@@ -124,9 +124,9 @@ Format:
 Group findings by source file so a human reviewing knows where to look. Don't dedupe across scans — each new run appends
 a new section with today's date so the trail is honest.
 
-**Existing narrative-format entries** (from runs before 2026-05-07) stay as-is — don't re-mark retroactively.
-Only new sections written from this skill onward use the marker schema; zora's interim per-peer adapter handles
-the mixed state during the transition.
+**Existing narrative-format entries** (from runs before 2026-05-07) stay as-is — don't re-mark retroactively. Only new
+sections written from this skill onward use the marker schema; zora's interim per-peer adapter handles the mixed state
+during the transition.
 
 ### 6. Report
 

@@ -73,14 +73,14 @@ commits). If either has output, **stop and surface**:
 
 ### 3. Verify CI is green across every workflow on `main`
 
-Query the **latest run per workflow on `main`**, not just runs on this exact commit. Path-filtered workflows
-(e.g. `CI — ww CLI` only triggers when `clients/ww/**` changes) won't have a run on a release commit that
-doesn't touch those paths — and the workflow's last failing run on an earlier commit silently passes the
-on-this-commit-only check even though the code that workflow tests is still broken in the tree.
+Query the **latest run per workflow on `main`**, not just runs on this exact commit. Path-filtered workflows (e.g.
+`CI — ww CLI` only triggers when `clients/ww/**` changes) won't have a run on a release commit that doesn't touch those
+paths — and the workflow's last failing run on an earlier commit silently passes the on-this-commit-only check even
+though the code that workflow tests is still broken in the tree.
 
-This gap is exactly what let v0.17.0 cut on 2026-05-07 while `CI — ww CLI` had been failing for ~1h45m on
-three prior commits. The release commit (`a2fc8777`, a `docs(changelog):`-only commit) didn't itself run
-`CI — ww CLI`, the on-commit check found the runs that DID fire all green, and iris tagged.
+This gap is exactly what let v0.17.0 cut on 2026-05-07 while `CI — ww CLI` had been failing for ~1h45m on three prior
+commits. The release commit (`a2fc8777`, a `docs(changelog):`-only commit) didn't itself run `CI — ww CLI`, the
+on-commit check found the runs that DID fire all green, and iris tagged.
 
 Today's check covers the workflow surface:
 
@@ -96,11 +96,11 @@ gh run list --branch <branch> --limit 50 \
 Tabulate per-workflow status:
 
 - **Every workflow's latest run `conclusion = "success"`**: proceed to step 4.
-- **Any `status` in {`in_progress`, `queued`}**: STOP. Surface the list of still-running workflows and ask the
-  caller to re-invoke once they finish.
-- **Any `conclusion` in {`failure`, `cancelled`, `timed_out`}**: STOP. **Refuse to tag**, regardless of whether
-  that workflow's latest run was on the release commit or an earlier one. The failing workflow's tested code
-  lives in the tree we're about to release; the artifact built from this tree will inherit that breakage.
+- **Any `status` in {`in_progress`, `queued`}**: STOP. Surface the list of still-running workflows and ask the caller to
+  re-invoke once they finish.
+- **Any `conclusion` in {`failure`, `cancelled`, `timed_out`}**: STOP. **Refuse to tag**, regardless of whether that
+  workflow's latest run was on the release commit or an earlier one. The failing workflow's tested code lives in the
+  tree we're about to release; the artifact built from this tree will inherit that breakage.
 
 Surface the failure with both the failing commit and the release commit so the caller can see the gap:
 
@@ -110,13 +110,12 @@ Surface the failure with both the failing commit and the release commit so the c
 > - `CI — Charts` succeeded
 > - `CI — docs` succeeded (latest on HEAD `<short-sha>`)
 >
-> The `CI — ww CLI` failure is older than HEAD but tests code that's still in the tree. Fix or revert main,
-> wait for that workflow to re-run green, then re-invoke `release`."
+> The `CI — ww CLI` failure is older than HEAD but tests code that's still in the tree. Fix or revert main, wait for
+> that workflow to re-run green, then re-invoke `release`."
 
-The future build-fixer agent we'll eventually delegate to is **evan**, who already has the bug-class fix-bar
-machinery for exactly this kind of failure. For now this skill keeps the refuse-to-tag posture; zora's
-Priority 1 red-CI logic should already be dispatching evan against the failing commit independently of this
-release skill's gate.
+The future build-fixer agent we'll eventually delegate to is **evan**, who already has the bug-class fix-bar machinery
+for exactly this kind of failure. For now this skill keeps the refuse-to-tag posture; zora's Priority 1 red-CI logic
+should already be dispatching evan against the failing commit independently of this release skill's gate.
 
 #### Caveat: the changelog commit's own CI fires asynchronously
 
@@ -367,22 +366,22 @@ If any of these need adjustment, that's a workflow / goreleaser config edit (a c
 ### 11. Watch every release workflow to conclusion (mandatory)
 
 A pushed tag is the START of the release, not the end. The three workflows that fire on the tag (`Release`,
-`Release — ww CLI`, `Release — Helm charts`) publish the actual artifacts users pull — container images,
-ww binaries + Homebrew formula, OCI Helm charts. **If any of those workflows fail after the tag is out,
-the team has shipped a partial release.** Catastrophic failure modes:
+`Release — ww CLI`, `Release — Helm charts`) publish the actual artifacts users pull — container images, ww binaries +
+Homebrew formula, OCI Helm charts. **If any of those workflows fail after the tag is out, the team has shipped a partial
+release.** Catastrophic failure modes:
 
-- Container image push fails → `harness:vX.Y.Z` absent from ghcr.io. Any WitwaveAgent CR bumped to that
-  tag goes `ImagePullBackOff`. The team's own deploy chain is the first victim.
-- Homebrew formula push fails → `brew upgrade ww` says "no newer version available" silently, or pulls
-  a broken cask from a partial tap update.
-- Helm chart push fails → `helm upgrade` on that version errors with "chart not found." Existing
-  installs are stuck on the prior release.
+- Container image push fails → `harness:vX.Y.Z` absent from ghcr.io. Any WitwaveAgent CR bumped to that tag goes
+  `ImagePullBackOff`. The team's own deploy chain is the first victim.
+- Homebrew formula push fails → `brew upgrade ww` says "no newer version available" silently, or pulls a broken cask
+  from a partial tap update.
+- Helm chart push fails → `helm upgrade` on that version errors with "chart not found." Existing installs are stuck on
+  the prior release.
 
-Every one of these is silent today — `git tag` succeeds, the GitHub release page shows up, but the
-downstream artifact channel is broken. We've been bitten by this enough that the skill's posture is now:
+Every one of these is silent today — `git tag` succeeds, the GitHub release page shows up, but the downstream artifact
+channel is broken. We've been bitten by this enough that the skill's posture is now:
 
-**You DO NOT return success from the release skill until every release workflow has completed AND every
-conclusion is `success`.**
+**You DO NOT return success from the release skill until every release workflow has completed AND every conclusion is
+`success`.**
 
 ```sh
 # Resolve the run IDs of the workflows that fired on this tag.
@@ -398,11 +397,11 @@ done
 
 Three branches per workflow:
 
-- **All `success`** → release is complete. Surface the artifact URLs (container images on ghcr.io,
-  releases page on GitHub, brew tap commit). Return success to the caller.
+- **All `success`** → release is complete. Surface the artifact URLs (container images on ghcr.io, releases page on
+  GitHub, brew tap commit). Return success to the caller.
 - **Any `in_progress` / `queued` past the watch budget** (default 30 min per workflow) → surface as
-  `[release-workflow-pending]` with the still-running run URLs. Caller (zora) decides whether to keep
-  waiting or escalate.
+  `[release-workflow-pending]` with the still-running run URLs. Caller (zora) decides whether to keep waiting or
+  escalate.
 - **Any `failure` / `cancelled` / `timed_out`** → return failure to the caller with:
 
   ```
@@ -415,14 +414,14 @@ Three branches per workflow:
     next step: caller (zora) decides — re-run failed workflow, or cut vX.Y.Z+1 with a fix
   ```
 
-  Iris does NOT auto-retry the failed workflow, does NOT delete the tag, does NOT attempt to recover the
-  partial release. **Iris's job ends at surfacing.** Zora is the team's manager — she's the one who decides
-  what the team does in response. When she sees `[release-workflow-failed]` in iris's reply, her policy
-  (CLAUDE.md → "Never leave a broken build" + dispatch-team Priority 1) takes over: stop cadence-driven
-  dispatching, redirect the team to fix the underlying cause, surface to the user via `escalations.md`.
+  Iris does NOT auto-retry the failed workflow, does NOT delete the tag, does NOT attempt to recover the partial
+  release. **Iris's job ends at surfacing.** Zora is the team's manager — she's the one who decides what the team does
+  in response. When she sees `[release-workflow-failed]` in iris's reply, her policy (CLAUDE.md → "Never leave a broken
+  build" + dispatch-team Priority 1) takes over: stop cadence-driven dispatching, redirect the team to fix the
+  underlying cause, surface to the user via `escalations.md`.
 
-  **The contract is iris-reports / zora-decides.** Don't replicate zora's decision logic in this skill —
-  faithfully surfacing the conclusions is enough.
+  **The contract is iris-reports / zora-decides.** Don't replicate zora's decision logic in this skill — faithfully
+  surfacing the conclusions is enough.
 
 ## Failure handling
 

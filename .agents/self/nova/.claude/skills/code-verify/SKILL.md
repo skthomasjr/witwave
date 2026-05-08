@@ -137,19 +137,18 @@ when a comment makes a specific claim the YAML structure contradicts.
 
 ### 4. Log findings to memory
 
-Append to `/workspaces/witwave-self/memory/agents/<your-name>/project_code_findings.md` under a new dated section.
-Each finding ends with a **status marker** matching the team-wide schema (parallel to evan's `bug-work` format)
-so zora's backlog counter reads every peer's findings file uniformly:
+Append to `/workspaces/witwave-self/memory/agents/<your-name>/project_code_findings.md` under a new dated section. Each
+finding ends with a **status marker** matching the team-wide schema (parallel to evan's `bug-work` format) so zora's
+backlog counter reads every peer's findings file uniformly:
 
-- **`[pending]`** — default for newly-detected findings. The mismatch is real and worth a human's eyes; no
-  judgment yet on what to do about it.
-- **`[flagged: <reason>]`** — used when the finding has a *specific* judgment-call obstacle worth recording
-  inline (e.g., `[flagged: code-symbol-renamed-but-doc-may-be-architectural-aspiration]`). Most code-verify
-  findings stay `[pending]` since the skill is memory-log-only — human decides; reasons accrue as humans
-  triage.
-- **`[fixed: <SHA>]`** — when the underlying mismatch gets resolved later (by a sibling agent or human),
-  mutate the marker to record the resolving commit. zora's counter treats `[fixed:]` as closed; `[pending]`
-  and `[flagged:]` as open backlog.
+- **`[pending]`** — default for newly-detected findings. The mismatch is real and worth a human's eyes; no judgment yet
+  on what to do about it.
+- **`[flagged: <reason>]`** — used when the finding has a _specific_ judgment-call obstacle worth recording inline
+  (e.g., `[flagged: code-symbol-renamed-but-doc-may-be-architectural-aspiration]`). Most code-verify findings stay
+  `[pending]` since the skill is memory-log-only — human decides; reasons accrue as humans triage.
+- **`[fixed: <SHA>]`** — when the underlying mismatch gets resolved later (by a sibling agent or human), mutate the
+  marker to record the resolving commit. zora's counter treats `[fixed:]` as closed; `[pending]` and `[flagged:]` as
+  open backlog.
 
 Format:
 
@@ -183,9 +182,9 @@ Format:
 
 Group by language; one finding per line so a human reviewer can scan quickly.
 
-**Existing narrative-format entries** (from runs before 2026-05-07) stay as-is — don't re-mark retroactively.
-Only new sections written from this skill onward use the marker schema. Over time the new format dominates;
-zora's interim per-peer adapter handles the mixed state.
+**Existing narrative-format entries** (from runs before 2026-05-07) stay as-is — don't re-mark retroactively. Only new
+sections written from this skill onward use the marker schema. Over time the new format dominates; zora's interim
+per-peer adapter handles the mixed state.
 
 ### 5. Report
 

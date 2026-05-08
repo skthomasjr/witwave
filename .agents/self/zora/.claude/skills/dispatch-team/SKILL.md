@@ -49,11 +49,10 @@ LAST_COMMIT_TIME=$(git -C <checkout> log -1 --format=%cI origin/main 2>/dev/null
 
 #### 2b. CI state across every commit since latest tag
 
-A binary built from a *failing* commit is broken even if HEAD has moved past it — so checking only HEAD's CI
-runs the way the original v1 policy did silently masked multi-hour red windows (the 2026-05-07 ww-CLI gofmt
-incident: 3 consecutive `CI — ww CLI` failures spanning ~1h45m were invisible to zora because each subsequent
-commit's "CI — docs" run on the new HEAD was green, while the prior commits' ww-CLI failure aged out of the
-HEAD-only filter).
+A binary built from a _failing_ commit is broken even if HEAD has moved past it — so checking only HEAD's CI runs the
+way the original v1 policy did silently masked multi-hour red windows (the 2026-05-07 ww-CLI gofmt incident: 3
+consecutive `CI — ww CLI` failures spanning ~1h45m were invisible to zora because each subsequent commit's "CI — docs"
+run on the new HEAD was green, while the prior commits' ww-CLI failure aged out of the HEAD-only filter).
 
 Today's check covers **every commit between `v<latest-tag>` and `origin/main`**:
 
@@ -65,16 +64,16 @@ gh run list --branch main --limit 50 --json name,status,conclusion,headSha
 
 For each `(workflow_name, headSha)` pair where `headSha` ∈ COMMITS:
 
-- **Any concluded with `failure`** → mark CI as `[red on <commit_sha[0:8]>: <workflow>]` and feed this signal
-  into Priority 1 (red-CI auto-dispatch). Order doesn't matter — one failure on any commit since the tag
-  blocks the whole window from being considered "green."
+- **Any concluded with `failure`** → mark CI as `[red on <commit_sha[0:8]>: <workflow>]` and feed this signal into
+  Priority 1 (red-CI auto-dispatch). Order doesn't matter — one failure on any commit since the tag blocks the whole
+  window from being considered "green."
 - **Any still `in_progress`** → mark CI as `[settling]`. Don't fire release-warranted; do still proceed with
   cadence-floor dispatches because settling is normal post-push state.
 - **All concluded `success`** across every (workflow, commit) pair → mark CI as `[green]`.
 
-Your pod has `GITHUB_TOKEN` + `GITHUB_USER` injected from the `zora-claude` secret (added 2026-05-07 to close
-the previous "infer CI from indirect signals" gap). You're read-only on git/gh per your tool posture; iris
-remains the team's write authority for push, tag, and gh-API writes.
+Your pod has `GITHUB_TOKEN` + `GITHUB_USER` injected from the `zora-claude` secret (added 2026-05-07 to close the
+previous "infer CI from indirect signals" gap). You're read-only on git/gh per your tool posture; iris remains the
+team's write authority for push, tag, and gh-API writes.
 
 #### 2c. Peer memories
 
@@ -85,22 +84,21 @@ PEER_MEMORY=/workspaces/witwave-self/memory/agents/<peer>/MEMORY.md
 PEER_FINDINGS=/workspaces/witwave-self/memory/agents/<peer>/project_*_findings.md
 ```
 
-Read the index. As of 2026-05-07 all three findings-producing peers (evan / nova / kira) use the same status-
-marker schema — `[pending]`, `[flagged: <reason>]`, `[fixed: <SHA>]` — going forward. Sections written before
-that date are still in their original narrative format, so the **per-peer adapter** below combines a marker count
-on recent sections with a narrative-count fallback on older ones:
+Read the index. As of 2026-05-07 all three findings-producing peers (evan / nova / kira) use the same status- marker
+schema — `[pending]`, `[flagged: <reason>]`, `[fixed: <SHA>]` — going forward. Sections written before that date are
+still in their original narrative format, so the **per-peer adapter** below combines a marker count on recent sections
+with a narrative-count fallback on older ones:
 
-| Peer | Findings file | Adapter — count "open" entries |
-|------|--------------|---------------------------------|
-| evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema since day one). Look for `[CRITICAL]` severity markers in risk-work output. |
+| Peer | Findings file              | Adapter — count "open" entries                                                                                                                                                                                                                                                                                                                                           |
+| ---- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema since day one). Look for `[CRITICAL]` severity markers in risk-work output.                                                                                                                                                                                                                                 |
 | nova | `project_code_findings.md` | For sections dated **2026-05-07 onward**: count `[pending]` + `[flagged: …]` markers (same canonical schema). For sections dated **before 2026-05-07** (legacy narrative format): read the most recent dated narrative section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts nova recorded inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics"). |
-| kira | `project_doc_findings.md` | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones. |
-| iris | n/a (service peer) | No backlog count — iris is on-demand only. |
+| kira | `project_doc_findings.md`  | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones.                                                                                                                                                                                                                                                                 |
+| iris | n/a (service peer)         | No backlog count — iris is on-demand only.                                                                                                                                                                                                                                                                                                                               |
 
-The legacy-narrative branch is a transient compatibility shim — once the legacy sections age out (typically as
-peers run new sweeps that supersede the older entries' relevance), the adapter degenerates to a pure marker count
-and the schema is fully uniform team-wide. Until then, the adapter gets the count *right enough* — within ±5 —
-for backlog tiebreaking.
+The legacy-narrative branch is a transient compatibility shim — once the legacy sections age out (typically as peers run
+new sweeps that supersede the older entries' relevance), the adapter degenerates to a pure marker count and the schema
+is fully uniform team-wide. Until then, the adapter gets the count _right enough_ — within ±5 — for backlog tiebreaking.
 
 #### 2d. Peer health
 
@@ -120,75 +118,71 @@ Walk these in order. The first match wins; act and exit (after logging).
 
 - **Critical CVE in evan's deferred-findings** → dispatch `evan risk-work` with explicit instruction to fix that
   candidate now (preempt other risk-work work).
-- **Red CI on any commit since latest tag** → **dispatch evan to fix it**, regardless of who authored the
-  breaking commit. Author-agnostic: a binary built from a failing commit is broken whether the author was a
-  peer or a human; treating "human authored = wait for human" is what froze the team for ~1h45m on the
-  2026-05-07 ww-CLI gofmt incident. Procedure:
+- **Red CI on any commit since latest tag** → **dispatch evan to fix it**, regardless of who authored the breaking
+  commit. Author-agnostic: a binary built from a failing commit is broken whether the author was a peer or a human;
+  treating "human authored = wait for human" is what froze the team for ~1h45m on the 2026-05-07 ww-CLI gofmt incident.
+  Procedure:
 
   1. Fetch the failing job's logs:
      ```sh
      gh run view <run-id> --log-failed
      ```
   2. Extract the failing-step name + a tight context window (~30 lines around the first FAIL).
-  3. `call-peer evan` with prompt: `Run bug-work on <failing-workflow> failure on commit <sha[0:8]>. Failing
-     step: <step>. Context: <log excerpt>. Goal: produce a fix commit that turns this workflow green. Use
-     your existing fix-bar; if the fix is out of scope (config / infra / not bug-class), flag and report
-     back.` Mark this dispatch with `[priority-1: red-ci-recovery]` so it doesn't share the cadence-driven
-     dispatch budget.
-  4. If two consecutive evan attempts fail to clear the red CI → escalate harder per the time-bounded
-     escalation rules below; do NOT keep retrying evan indefinitely.
+  3. `call-peer evan` with prompt:
+     `Run bug-work on <failing-workflow> failure on commit <sha[0:8]>. Failing step: <step>. Context: <log excerpt>. Goal: produce a fix commit that turns this workflow green. Use your existing fix-bar; if the fix is out of scope (config / infra / not bug-class), flag and report back.`
+     Mark this dispatch with `[priority-1: red-ci-recovery]` so it doesn't share the cadence-driven dispatch budget.
+  4. If two consecutive evan attempts fail to clear the red CI → escalate harder per the time-bounded escalation rules
+     below; do NOT keep retrying evan indefinitely.
 
-- **Failed release workflow** (iris's release skill returned `[release-workflow-failed]`, OR a `Release*`
-  workflow on the latest tag concluded `failure` / `cancelled` / `timed_out`) → **stop cadence-driven
-  dispatching and redirect the team to recover.** A pushed tag is just the start of the release; the three
-  workflows that fire post-tag publish the actual artifacts users pull. One failed = partial release =
-  silent breakage downstream. Procedure:
+- **Failed release workflow** (iris's release skill returned `[release-workflow-failed]`, OR a `Release*` workflow on
+  the latest tag concluded `failure` / `cancelled` / `timed_out`) → **stop cadence-driven dispatching and redirect the
+  team to recover.** A pushed tag is just the start of the release; the three workflows that fire post-tag publish the
+  actual artifacts users pull. One failed = partial release = silent breakage downstream. Procedure:
 
-  1. **Freeze regular dispatching** for this tick and subsequent ticks until recovery. Peer cadence floors
-     keep counting (they'll fire on the recovery tick), but don't emit the dispatches now — every commit
-     a peer produces during a partial-release window risks tangling the recovery.
+  1. **Freeze regular dispatching** for this tick and subsequent ticks until recovery. Peer cadence floors keep counting
+     (they'll fire on the recovery tick), but don't emit the dispatches now — every commit a peer produces during a
+     partial-release window risks tangling the recovery.
   2. **Surface immediately**. Append `[escalation: release-workflow-failed]` to
-     `/workspaces/witwave-self/memory/escalations.md` with the tag, failing workflow name, run URL, and
-     recovery path. User sees this without trawling decision_log.
-  3. **Diagnose the failure mode** from iris's reply (or from `gh run view <run-id> --log-failed` if the
-     reply lacks detail):
+     `/workspaces/witwave-self/memory/escalations.md` with the tag, failing workflow name, run URL, and recovery path.
+     User sees this without trawling decision_log.
+  3. **Diagnose the failure mode** from iris's reply (or from `gh run view <run-id> --log-failed` if the reply lacks
+     detail):
 
      - **Transient infrastructure** (registry timeout, network blip, runner OOM, GitHub Actions outage) →
        `call-peer iris` with `gh run rerun --failed <run-id>`. If the re-run succeeds, surface
        `[release-workflow-recovered]` in `escalations.md` and resume normal cadence next tick.
      - **Real bug in the workflow's source target** (ww CLI build failed because a code regression got past
-       `CI — ww CLI`; Helm chart push failed because chart YAML is malformed; container build failed
-       because a Dockerfile regressed) → `call-peer evan` with the failing-job log + breaking commit,
-       same shape as red-CI dispatch. After evan lands a fix, two paths:
-       - If the workflow can re-target the same tag (re-run picks up the fixed source) → ask iris to
-         re-run.
-       - If the workflow's artifact for that tag is permanently published in a broken state → ask iris
-         to cut `vX.Y.Z+1` with the fix once ANY commit lands. Tag is poisoned; ship a clean follow-up.
-  4. **Two failed iris re-run attempts** OR evan can't fix → escalate hard. Append `[needs-human]` to
-     `escalations.md` with the failure log + recovery options for human decision. Enter pause-mode.
-  5. **Don't fire any new release-warranted dispatches** until this one is recovered. Otherwise the team
-     layers broken release on broken release.
+       `CI — ww CLI`; Helm chart push failed because chart YAML is malformed; container build failed because a
+       Dockerfile regressed) → `call-peer evan` with the failing-job log + breaking commit, same shape as red-CI
+       dispatch. After evan lands a fix, two paths:
+       - If the workflow can re-target the same tag (re-run picks up the fixed source) → ask iris to re-run.
+       - If the workflow's artifact for that tag is permanently published in a broken state → ask iris to cut `vX.Y.Z+1`
+         with the fix once ANY commit lands. Tag is poisoned; ship a clean follow-up.
 
-- **Stuck peer** (peer dispatch in flight >1h, OR peer's pod has dirty WIP blocking subsequent dispatches) →
-  follow the **time-bounded escalation** ladder below. Don't just stand down forever — past versions of this
-  policy held the team idle for 3+ hours waiting for human resolution while every cadence floor breached and
-  zero fix attempts ran. Today's policy attempts auto-recovery before paging the user.
+  4. **Two failed iris re-run attempts** OR evan can't fix → escalate hard. Append `[needs-human]` to `escalations.md`
+     with the failure log + recovery options for human decision. Enter pause-mode.
+  5. **Don't fire any new release-warranted dispatches** until this one is recovered. Otherwise the team layers broken
+     release on broken release.
+
+- **Stuck peer** (peer dispatch in flight >1h, OR peer's pod has dirty WIP blocking subsequent dispatches) → follow the
+  **time-bounded escalation** ladder below. Don't just stand down forever — past versions of this policy held the team
+  idle for 3+ hours waiting for human resolution while every cadence floor breached and zero fix attempts ran. Today's
+  policy attempts auto-recovery before paging the user.
 
   - **T+0** — file `[escalation: stuck-peer]` in `decision_log.md` AND in
     `/workspaces/witwave-self/memory/escalations.md` (team-visible surface). Stop dispatching the stuck peer.
-  - **T+30m** — dispatch iris with `git-investigate-and-restore` (or her general git-plumbing surface):
-    "peer <name>'s pod tree has dirty WIP `<file-list>`; investigate the diff, decide commit-or-discard
-    based on whether the change looks complete and safe, log decision in your memory, restore the tree to
-    clean either way." Iris is the team's git plumber — she's the right surface for "investigate, decide,
-    unblock."
-  - **T+1h** — if still stuck after iris's recovery attempt: **harder escalation** to user. Append a
-    one-line summary to `escalations.md` with `[needs-human]` prefix, including (peer, file-list, age).
-    The user should see this on their next `ww escalations` (or equivalent visibility surface).
-  - **T+2h** — automatic pause-mode entry. Touch `pause_mode.flag`; emit `[escalation: auto-paused]` log
-    entry. Continue ticking but log-only until the user clears the flag.
+  - **T+30m** — dispatch iris with `git-investigate-and-restore` (or her general git-plumbing surface): "peer <name>'s
+    pod tree has dirty WIP `<file-list>`; investigate the diff, decide commit-or-discard based on whether the change
+    looks complete and safe, log decision in your memory, restore the tree to clean either way." Iris is the team's git
+    plumber — she's the right surface for "investigate, decide, unblock."
+  - **T+1h** — if still stuck after iris's recovery attempt: **harder escalation** to user. Append a one-line summary to
+    `escalations.md` with `[needs-human]` prefix, including (peer, file-list, age). The user should see this on their
+    next `ww escalations` (or equivalent visibility surface).
+  - **T+2h** — automatic pause-mode entry. Touch `pause_mode.flag`; emit `[escalation: auto-paused]` log entry. Continue
+    ticking but log-only until the user clears the flag.
 
-  Cadence floors continue counting throughout — when the escalation resolves, breached cadences fire
-  immediately on the recovery tick.
+  Cadence floors continue counting throughout — when the escalation resolves, breached cadences fire immediately on the
+  recovery tick.
 
 #### Priority 2 — Cadence floor breached (peer dispatch)
 
