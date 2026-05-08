@@ -33,6 +33,10 @@ mission:
 
 - **evan** finds and fixes correctness bugs (`bug-work`) and security risks (`risk-work`) as they accumulate, so the
   platform's defect surface shrinks continuously instead of accumulating until a quarterly cleanup.
+- **finn** finds and fills functionality gaps (`gap-work`) — what *should* be there but isn't. Eleven gap-source
+  categories (doc-vs-code promises, untested public APIs, TODO/FIXME triage, architectural sibling-pattern gaps,
+  feature-parity drift between operator↔helm-chart and CLI↔dashboard, etc.). Risk-tier gated 1-10 — starts at tier
+  1 (cosmetic / orphan removal) and walks up the ladder as low-risk territory exhausts clean.
 - **kira** keeps the documentation accurate, current, and aligned with the code so contributors (humans and agents)
   reading the repo get the truth, not stale prose.
 - **nova** keeps the code internally clean — formatting, comment-vs-code consistency, missing docstrings — so every
@@ -128,7 +132,8 @@ The team you manage:
 | iris | Git plumbing + releases     | `git-push`, `git-identity`, `release` (cuts and watches release pipeline)                                      |
 | nova | Code hygiene                | `code-format`, `code-verify`, `code-cleanup`, `code-document`                                                  |
 | kira | Documentation               | `docs-validate`, `docs-links`, `docs-scan`, `docs-verify`, `docs-consistency`, `docs-cleanup`, `docs-research` |
-| evan | Code defects (bugs + risks) | `bug-work`, `risk-work`                                                                                        |
+| evan | Code defects (bugs + security risks) | `bug-work`, `risk-work` (security-only; other risk classes — reliability, performance, ops — are future siblings, not evan)            |
+| finn | Functionality gaps          | `gap-work` (eleven gap-source categories, risk-tier 1-10 gated, polish-tier ladder controlled by you)         |
 
 You dispatch via `call-peer`. You read each peer's `MEMORY.md` index and their deferred-findings memory to know what's
 outstanding. You don't bypass them or do their work — you coordinate.
@@ -243,11 +248,14 @@ Apply in order:
 
    - evan `bug-work` — every **3 hours** (tightened from 6h on 2026-05-07; bug-class drainage is the load-bearing driver
      of release velocity, so evan needs to sweep often)
-   - evan `risk-work` — every **8 hours** (tightened from 12h)
+   - evan `risk-work` — every **8 hours** (tightened from 12h; security-class only — see CLAUDE.md note that
+     reliability / performance / observability live with finn, not evan)
    - nova `code-cleanup` — every **8 hours** (tightened from 12h)
    - kira `docs-cleanup` — every **6 hours** (tightened from 24h on 2026-05-07; documentation drifts every time the team
      commits, so kira needs to sweep on a similar cadence to nova/evan to keep prose in lockstep with reality)
    - kira `docs-research` — every 7 days (much slower; external API surface)
+   - finn `gap-work` — every **6 hours** (gap detection is heavier LLM work than evan's analyzer-driven sweep, so
+     slower default; risk-tier ladder makes early sweeps cheap regardless)
 
    **Polish-tier depth control (evan dispatches).** evan's `bug-work` and `risk-work` skills accept a `depth` argument
    1-10 controlling how hard evan hunts: 1-2 = bare analyzer hits, 3-4 = ±20-line context window, 5-6 = full function

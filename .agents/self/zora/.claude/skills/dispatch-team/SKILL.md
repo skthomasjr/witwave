@@ -92,6 +92,7 @@ with a narrative-count fallback on older ones:
 | Peer | Findings file              | Adapter — count "open" entries                                                                                                                                                                                                                                                                                                                                           |
 | ---- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema since day one). Look for `[CRITICAL]` severity markers in risk-work output.                                                                                                                                                                                                                                 |
+| finn | `project_finn_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema). Look for `[CRITICAL]` markers — these are doc-promised features that don't exist (users hitting missing endpoints / unread env vars). `[CRITICAL]` blocks the medium-quality-bar release gate same as evan's CRITICAL CVEs. `[flagged: above-tier-N]` is the most common flag and is benign — re-attempted on the next higher-tier dispatch. |
 | nova | `project_code_findings.md` | For sections dated **2026-05-07 onward**: count `[pending]` + `[flagged: …]` markers (same canonical schema). For sections dated **before 2026-05-07** (legacy narrative format): read the most recent dated narrative section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts nova recorded inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics"). |
 | kira | `project_doc_findings.md`  | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones.                                                                                                                                                                                                                                                                 |
 | iris | n/a (service peer)         | No backlog count — iris is on-demand only.                                                                                                                                                                                                                                                                                                                               |
@@ -190,10 +191,11 @@ For each peer, compute `time-since-last-fire`. If it exceeds the floor in CLAUDE
 peer with a routine task in their domain. Floors:
 
 - evan `bug-work` — 3h (tightened from 6h on 2026-05-07; bug-class drainage drives release velocity)
-- evan `risk-work` — 8h (tightened from 12h)
+- evan `risk-work` — 8h (tightened from 12h; security-class only — reliability/performance/observability live with finn)
 - nova `code-cleanup` — 8h (tightened from 12h)
 - kira `docs-cleanup` — 6h (tightened from 24h on 2026-05-07; docs drift on every team commit)
 - kira `docs-research` — 7d
+- finn `gap-work` — 6h (gap-fixer; risk-tier ladder gates fix boldness — see polish-tier section below)
 
 If multiple peers have breached, pick the one with the largest current backlog.
 
@@ -243,6 +245,54 @@ Log the tier choice + reason in `decision_log.md` on each dispatch:
 
 This is how the team becomes _actually_ bug-free / risk-free rather than "0 found at the cheap depth." Treat each tier
 as its own ground to cover; only depth=9 across all-day-one with adversarial passes counts as "we've looked hard."
+
+**Choosing risk-tier for finn dispatches (polish-tier control).** Same shape as evan's depth ladder but the integer
+denotes **risk tolerance** for a fill, not analysis intensity. Tier 1 is purely cosmetic / orphan removal (zero
+behavior change); tier 9-10 is architectural cross-cutting work. The team starts at tier 1 and walks up the ladder
+`1 → 3 → 5 → 7 → 9` only as each tier's gap pool exhausts. **Cautious-by-default — the autonomous safety story for
+finn rests on this gate.** Bigger fills happen later, after low-tier territory is verified clean.
+
+Read the current tier from `team_state.md`:
+
+```
+polish_tier_finn_gap:               <int, default 1>
+polish_tier_finn_gap_zero_streak:   <int, default 0>
+polish_tier_finn_gap_last_run_sha:  <sha, default latest tag at first run>
+```
+
+Decide the tier for THIS dispatch:
+
+1. **Reset check.** If `git log <last_run_sha>..HEAD` returns any commits in finn's gap-source scope (which is
+   wider than evan's section scope — finn reads docs, charts, dashboard, AND code; effectively any commit on
+   main is a potential reset trigger) — set tier back to **1** and zero the streak. Fresh content surfaces new
+   low-risk gaps; restart from the cheap pass.
+2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the current tier — advance the tier along the
+   ladder (`1 → 3 → 5 → 7 → 9`; cap at 9) and zero the streak. The advance encodes "we've exhausted this risk
+   tier; raise the boldness floor."
+3. **Hold check.** Otherwise keep the tier as-is.
+
+Pass it to finn in the call-peer prompt: `Run your gap-work skill at tier=<N>, sections=all-day-one` (optionally
+`focus=operator-parity` etc. — see finn's CLAUDE.md priority subsystems).
+
+After the dispatch, when finn reports back, update `team_state.md`:
+
+- If finn's run returned 0/0/0 (0 candidates at-or-below tier / 0 filled / 0 newly-flagged) — increment
+  `zero_streak`. Update `last_run_sha` to current HEAD.
+- If finn returned anything substantive (≥1 fill OR ≥1 new flag) — zero the streak. Update `last_run_sha`.
+
+Log the tier choice + reason in `decision_log.md` on each dispatch:
+
+```
+- finn gap-work dispatched at tier=3 (advanced from 1 — last 2 runs 0/0/0 at tier=1, no fresh source since).
+- finn gap-work dispatched at tier=1 (reset from 5 — fresh commits in operator/ since last run; cheap-pass
+  first to catch any new low-risk gaps before climbing back).
+```
+
+**Critical-gap urgency.** finn's findings file may contain `[CRITICAL]` markers — typically a doc-promised
+feature that doesn't exist (users following the docs will hit a missing endpoint / unread env var / broken
+command). Treat these the same as evan's `[CRITICAL]` CVEs: they block the medium-quality-bar release gate
+until flipped to `[fixed: SHA]`. The recovery path for a critical gap is a fill, not a flag — dispatch finn
+with an explicit higher tier if needed.
 
 **Choosing the skill for nova / kira dispatches (polish-tier control).** Same advance/reset mechanism as evan, but
 instead of a depth integer the "tier" is a skill name. Cheap-pass = the default cleanup skill; deep-pass = the heavier

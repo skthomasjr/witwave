@@ -1,12 +1,13 @@
 # The witwave Team
 
-The `witwave-ai/witwave` repo is maintained by a team of five autonomous agents. They commit directly to `main`
+The `witwave-ai/witwave` repo is maintained by a team of six autonomous agents. They commit directly to `main`
 (trunk-based development), coordinate via A2A (agent-to-agent JSON-RPC), and ship continuously — many small high-quality
 releases per day rather than infrequent large ones.
 
 Each agent owns one substrate. **Zora** decides what work happens when. **Evan** finds and fixes correctness bugs and
 security risks. **Nova** keeps the code internally clean. **Kira** keeps the documentation accurate and current.
-**Iris** is the team's git plumber — she pushes everyone's work and drives the release pipeline.
+**Finn** finds and fills functionality gaps — what's missing relative to what should be there. **Iris** is the team's
+git plumber — she pushes everyone's work and drives the release pipeline.
 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
@@ -38,6 +39,16 @@ Maintains the documentation surface — root README, CHANGELOG, every per-subpro
 validates prose against current code state (`docs-verify`), refreshes forward-looking docs against industry reality
 (`docs-research`), and catches drift between what the project claims and what it does. (`.agents/self/kira/`)
 
+### Finn — functionality gaps
+
+Finds and fills what's _missing_ relative to what should be there. Fourteen gap-source categories per run —
+doc-vs-code promises, untested public APIs, TODO/FIXME triage, architectural sibling-pattern gaps, convention drift,
+operator↔helm-chart parity, CLI↔dashboard parity, plus reliability / performance / observability mitigations
+absorbed from the broader risk taxonomy that evan's security-only `risk-work` doesn't cover. Single skill `gap-work`,
+single-pass shape parallel to evan's. **Risk-tier 1-10 ladder** is the load-bearing autonomous-safety knob — starts
+at tier 1 (cosmetic / orphan removal, near-zero blast) and walks up `1 → 3 → 5 → 7 → 9` only as each tier's gap pool
+exhausts clean. Bolder fills happen later, after low-tier territory is verified safe. (`.agents/self/finn/`)
+
 ### Iris — git plumbing + releases
 
 The team's git plumber and release captain. She owns push posture (race handling, conflict surfacing, no-force rules),
@@ -54,21 +65,21 @@ other agent commits locally and delegates the push to iris via `call-peer`. (`.a
             └────────────────┬─────────────────┘
                              │
                              │ call-peer
-                ┌────────────┼────────────┐
-                │            │            │
-            ╭───▼───╮    ╭───▼───╮    ╭───▼───╮
-            │ EVAN  │    │ NOVA  │    │ KIRA  │
-            │defects│    │hygiene│    │ docs  │
-            ╰───┬───╯    ╰───┬───╯    ╰───┬───╯
-                │            │            │
-                │ commits locally — delegates push via call-peer
-                │            │            │
-                └────────────┼────────────┘
-                             │
-                         ╭───▼───╮
-                         │ IRIS  │
-                         │  git  │
-                         ╰───┬───╯
+              ┌──────────┬───┼───┬──────────┐
+              │          │   │   │          │
+          ╭───▼───╮  ╭───▼───╮  ╭───▼───╮  ╭───▼───╮
+          │ EVAN  │  │ NOVA  │  │ KIRA  │  │ FINN  │
+          │defects│  │hygiene│  │ docs  │  │ gaps  │
+          ╰───┬───╯  ╰───┬───╯  ╰───┬───╯  ╰───┬───╯
+              │          │          │          │
+              │ commits locally — delegates push via call-peer
+              │          │          │          │
+              └──────────┴────┬─────┴──────────┘
+                              │
+                          ╭───▼───╮
+                          │ IRIS  │
+                          │  git  │
+                          ╰───┬───╯
                              │ push + CI watch + release
                              ▼
                         origin/main
@@ -87,15 +98,9 @@ tentative and likely to be revisited before scaffolding. **Listed in recommended
 entries are closer to existing patterns (lower build risk, faster ROI); later entries are more speculative or depend on
 the team being more mature first.
 
-### 1. gap-fixer — likely **owen** or **finn**
+### ~~1. gap-fixer~~ — **shipped 2026-05-08 as Finn** (see "current team" above)
 
-Sibling to evan, but with a different lens: instead of finding _what's wrong_ in code, this agent finds _what's
-missing_. Architectural gaps, unimplemented spec promises, untested code paths, missing error handling that the existing
-analyzers don't flag because they don't know what _should_ be there. Skill: `gap-work`. Same single-pass shape as
-`bug-work`/`risk-work` — find, validate, fix-or-flag, commit, delegate push to iris. **First priority** because it
-reuses evan's proven shape almost line-for-line; the only new mass is the _what should exist_ heuristic.
-
-### 2. devops — likely **otto** or **dale**
+### 1. devops — likely **otto** or **dale**
 
 Owns the build, CI/CD, and observability infrastructure of the witwave platform itself. Improves Dockerfile build times,
 evolves GitHub Actions workflows, tunes Prometheus alerts, watches Grafana dashboards, fixes broken pipelines. Distinct
@@ -104,7 +109,7 @@ owns the **platform's own infra**: the build/deploy/monitor surface that ships w
 because the team's own velocity depends directly on a healthy build/release pipeline; every hour devops shaves off CI is
 multiplied across every other agent's work.
 
-### 3. agent-resources — likely **luna** or **dora**
+### 2. agent-resources — likely **luna** or **dora**
 
 Infra-level management of the agents themselves. Scales pods up/down (e.g., scales evan to zero overnight if no backlog;
 spins kira down on weekends if docs are quiet), watches resource budgets (LLM cost, CPU, memory), tunes configuration
@@ -113,7 +118,7 @@ operational lifecycle rather than substantive work. Coordinates with zora on tea
 (zora dispatches _work_ to agents; agent-resources keeps the agents _runnable_). **Third priority** because as the team
 grows past 5 agents the manual lifecycle tuning starts to dominate operator time.
 
-### 4. security — likely **vera** or **maya**
+### 3. security — likely **vera** or **maya**
 
 Higher-level security work that goes beyond evan's automated `risk-work` lens. Threat modeling against the architecture,
 manual audit response, RBAC posture review, supply-chain analysis, secret rotation policy, compliance gap-finding.
@@ -122,7 +127,7 @@ about the _system's overall threat posture_ — the work that requires architect
 output. **Fourth priority**: evan covers the high-volume automated surface today; the architectural-security gap is real
 but rarer-firing.
 
-### 5. testing — name + scope TBD
+### 4. testing — name + scope TBD
 
 At least one testing-focused agent is on the roadmap, but the scope needs a design discussion before scaffolding —
 possibilities span "writes new tests where evan's fix-bar flagged untested code paths," "runs existing suites and
@@ -130,7 +135,7 @@ surfaces flakiness/regressions," "mutation testing to evaluate test quality," "p
 test maintenance." Each is a different shape of work. **Fifth priority** because the value is high but the design
 discussion has to land first — until we pick a shape, scaffolding is premature.
 
-### 6. software-architecture — likely **theo** or **lyra**
+### 5. software-architecture — likely **theo** or **lyra**
 
 Watches the _shape_ of the system rather than individual files. Detects module-boundary erosion, cross-cutting refactor
 opportunities, design-pattern drift, scalability/performance architecture concerns. Distinct from nova (line-level
@@ -139,7 +144,7 @@ surfacing changes that no single file or function would reveal. Many of her find
 refactor proposals deserve human review before landing. **Sixth priority** because the findings are mostly
 flag-for-human (low autonomy yield) and overlap with what a CTO-level role can also surface.
 
-### 7. CTO — likely **rhea** or **aria**
+### 6. CTO — likely **rhea** or **aria**
 
 Picks big direction changes. Reads the team's accumulated state — open issues, recurring pain points, drift between what
 the platform claims and what users want, market/ecosystem shifts (new MCP servers, new model capabilities, adjacent OSS
@@ -151,7 +156,7 @@ then execute against. **Seventh priority** because direction-setting is highest-
 accumulated context — better once the team has months of state to reason over and the platform has real users with real
 friction points.
 
-### 8. public relations — likely **piper** or **nora**
+### 7. public relations — likely **piper** or **nora**
 
 The team's outbound voice. Maintains a deep working relationship with every other agent — reads their memory, their
 commits, their findings, their decisions — and turns the team's lived reality into _stories worth telling_. Cadence: a
@@ -163,7 +168,7 @@ proactive narrative, not reactive support. **Eighth priority** because the role 
 enough lived history to be interesting; spinning it up too early produces empty, hand-wavy content. Once the team's been
 running for a quarter or two, the material practically writes itself.
 
-### 9. community liaison — likely **sage** or **ezra**
+### 8. community liaison — likely **sage** or **ezra**
 
 Talks with humans on GitHub Discussions. Reads new threads, answers questions, negotiates feature scope with external
 requesters, surfaces actionable bugs/features back to the team. Coordinates with zora on prioritisation ("a discussion
@@ -171,7 +176,7 @@ thread is asking for X — when can we fit it?"). Adds a _human-facing voice_ th
 requests have no team-facing channel. **Ninth priority** because it depends on actually having a community generating
 threads — and that community is partly what PR exists to grow, so PR comes first.
 
-### 10. feature builder — likely **liam** or **felix**
+### 9. feature builder — likely **liam** or **felix**
 
 Builds new features end-to-end. Reads requirements (from issues, discussions, design docs), implements the change across
 code + tests + docs, commits in atomic pieces, delegates push to iris. Skill: `feature-work`. Distinct from the
