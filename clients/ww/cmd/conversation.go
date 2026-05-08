@@ -86,9 +86,10 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 		limit    int
 		token    string
 		quiet    bool
-		expand   bool
-		fullText bool
-		follow   bool
+		expand     bool
+		fullText   bool
+		follow     bool
+		maxStreams int
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -165,7 +166,7 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 			renderUnreachableFooter(os.Stderr, unreachable)
 
 			if follow {
-				return followAllSessions(ctx, cfg, summaries, results, tokenFn)
+				return followAllSessions(ctx, cfg, summaries, results, tokenFn, maxStreams)
 			}
 			return nil
 		},
@@ -186,6 +187,8 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 		"With --expand: don't truncate per-entry text at 500 chars")
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false,
 		"After printing the initial view, live-tail every session via SSE — appends new turns inline as they arrive (Ctrl-C exits cleanly)")
+	cmd.Flags().IntVar(&maxStreams, "max-streams", 8,
+		"With --follow: maximum number of session streams to keep open at once. Lower if you hit HTTP 429 'too many concurrent streams' errors. Sessions queue and start as slots free up.")
 	return cmd
 }
 
@@ -210,10 +213,14 @@ func followAllSessions(
 	summaries []conversation.SessionSummary,
 	results []conversation.FanOutResult,
 	tokenFn func(conversation.AgentTarget) string,
+	maxStreams int,
 ) error {
 	if len(summaries) == 0 {
 		fmt.Fprintln(os.Stderr, "(no sessions to follow)")
 		return nil
+	}
+	if maxStreams <= 0 {
+		maxStreams = 8
 	}
 
 	// Build session_id → AgentTarget so we know which port-forward
@@ -267,6 +274,15 @@ func followAllSessions(
 		renderLiveEnvelope(os.Stdout, s, env)
 	}
 
+	// Bound concurrent SSE opens. The harness enforces a per-caller
+	// stream-cap (default 5–10 depending on env); blowing past it
+	// turns half the sessions into HTTP 429 spam at startup. We keep
+	// at most `maxStreams` streams open at once and queue the rest;
+	// when one stream's session emits stream.overrun (or the SSE
+	// closes for any reason) the slot frees and the next queued
+	// session opens.
+	sem := make(chan struct{}, maxStreams)
+
 	var wg sync.WaitGroup
 	for _, s := range summaries {
 		target, ok := sessionToTarget[s.SessionID]
@@ -282,6 +298,16 @@ func followAllSessions(
 		token := tokenFn(target)
 		go func() {
 			defer wg.Done()
+			// Acquire a slot. Bail out cleanly on Ctrl-C if we
+			// haven't acquired yet — otherwise sessions stuck in
+			// the queue would block shutdown.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+
 			stream, err := conversation.StreamSession(ctx, fwd.BaseURL, token, s.SessionID, func(err error) {
 				fmt.Fprintf(os.Stderr, "stream %s/%s: %v\n", target.Agent, shortSessionID(s.SessionID), err)
 			})
