@@ -291,7 +291,6 @@ async def _post_once_to(url: str, body: dict[str, Any]) -> None:
     try:
         client = await _get_client()
         resp = None
-        last_exc: Exception | None = None
         for attempt in range(2):
             try:
                 resp = await client.post(
@@ -299,10 +298,8 @@ async def _post_once_to(url: str, body: dict[str, Any]) -> None:
                     json=body,
                     headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
                 )
-                last_exc = None
                 break
-            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
-                last_exc = exc
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError):
                 if attempt == 0 and HOOK_POST_RETRY_MAX_DELAY > 0:
                     await asyncio.sleep(random.uniform(0, HOOK_POST_RETRY_MAX_DELAY))
                     continue
