@@ -364,10 +364,65 @@ The release workflows handle several housekeeping tasks at build time. None of t
 
 If any of these need adjustment, that's a workflow / goreleaser config edit (a code change), not a release-skill change.
 
-### 11. Optional: watch workflows complete
+### 11. Watch every release workflow to conclusion (mandatory)
 
-If the caller asks (e.g. "watch the release"), invoke `gh run watch <run-id> --exit-status` for each release workflow's
-ID and surface the final conclusions. This is fire-and-forget by default — the caller has to ask explicitly.
+A pushed tag is the START of the release, not the end. The three workflows that fire on the tag (`Release`,
+`Release — ww CLI`, `Release — Helm charts`) publish the actual artifacts users pull — container images,
+ww binaries + Homebrew formula, OCI Helm charts. **If any of those workflows fail after the tag is out,
+the team has shipped a partial release.** Catastrophic failure modes:
+
+- Container image push fails → `harness:vX.Y.Z` absent from ghcr.io. Any WitwaveAgent CR bumped to that
+  tag goes `ImagePullBackOff`. The team's own deploy chain is the first victim.
+- Homebrew formula push fails → `brew upgrade ww` says "no newer version available" silently, or pulls
+  a broken cask from a partial tap update.
+- Helm chart push fails → `helm upgrade` on that version errors with "chart not found." Existing
+  installs are stuck on the prior release.
+
+Every one of these is silent today — `git tag` succeeds, the GitHub release page shows up, but the
+downstream artifact channel is broken. We've been bitten by this enough that the skill's posture is now:
+
+**You DO NOT return success from the release skill until every release workflow has completed AND every
+conclusion is `success`.**
+
+```sh
+# Resolve the run IDs of the workflows that fired on this tag.
+TAG_SHA=$(git -C <checkout> rev-list -n 1 v<version>)
+RUN_IDS=$(gh run list --branch <branch> --commit "$TAG_SHA" \
+  --json databaseId,name --jq '.[] | select(.name | startswith("Release")) | .databaseId')
+
+# Stream each to completion. --exit-status returns non-zero if the run failed.
+for RUN_ID in $RUN_IDS; do
+  gh run watch "$RUN_ID" --exit-status
+done
+```
+
+Three branches per workflow:
+
+- **All `success`** → release is complete. Surface the artifact URLs (container images on ghcr.io,
+  releases page on GitHub, brew tap commit). Return success to the caller.
+- **Any `in_progress` / `queued` past the watch budget** (default 30 min per workflow) → surface as
+  `[release-workflow-pending]` with the still-running run URLs. Caller (zora) decides whether to keep
+  waiting or escalate.
+- **Any `failure` / `cancelled` / `timed_out`** → return failure to the caller with:
+
+  ```
+  [release-workflow-failed]
+    tag: vX.Y.Z (commit <short-sha>)
+    failed: Release — ww CLI (<run-url>)
+    succeeded: Release, Release — Helm charts
+    artifacts published: ghcr.io/witwave-ai/images/{harness,claude,...}:vX.Y.Z, charts on OCI
+    artifacts MISSING: ww CLI binaries on releases page, brew tap update
+    next step: caller (zora) decides — re-run failed workflow, or cut vX.Y.Z+1 with a fix
+  ```
+
+  Iris does NOT auto-retry the failed workflow, does NOT delete the tag, does NOT attempt to recover the
+  partial release. **Iris's job ends at surfacing.** Zora is the team's manager — she's the one who decides
+  what the team does in response. When she sees `[release-workflow-failed]` in iris's reply, her policy
+  (CLAUDE.md → "Never leave a broken build" + dispatch-team Priority 1) takes over: stop cadence-driven
+  dispatching, redirect the team to fix the underlying cause, surface to the user via `escalations.md`.
+
+  **The contract is iris-reports / zora-decides.** Don't replicate zora's decision logic in this skill —
+  faithfully surfacing the conclusions is enough.
 
 ## Failure handling
 

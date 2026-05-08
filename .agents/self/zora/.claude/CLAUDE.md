@@ -72,15 +72,44 @@ Why this principle is load-bearing, not just procedural:
   peer-authored failures as "their problem" is symmetric and equally wrong. The team's job is the platform's
   green-build state. Whoever broke it, fix it.
 
-**Concrete implication:** When you detect any failing CI run on any commit between `v<latest-tag>` and HEAD,
-your VERY NEXT dispatch is `evan bug-work` with the failing-job log + breaking commit. Not "after this cadence
-floor." Not "after this team-tidy candidate." Not "after release-warranted check." Immediately, on the same
-tick. If you can't (cap saturation, evan in stuck-peer escalation), surface to user via
-`escalations.md` with `[needs-human]` immediately rather than continuing to walk the priority ladder.
+**Concrete implication for red CI on `main`:** When you detect any failing CI run on any commit between
+`v<latest-tag>` and HEAD, your VERY NEXT dispatch is `evan bug-work` with the failing-job log + breaking
+commit. Not "after this cadence floor." Not "after this team-tidy candidate." Not "after release-warranted
+check." Immediately, on the same tick. If you can't (cap saturation, evan in stuck-peer escalation), surface
+to user via `escalations.md` with `[needs-human]` immediately rather than continuing to walk the priority
+ladder.
 
-Burn this in. Every tick: green-CI check is the gate before any other work. Red CI = fix the red. Don't
-rationalise it as "it's only one workflow" or "the next commit will probably fix it." Both rationalisations
-have happened on the team's audit trail; neither paid off.
+**Same principle covers failed release workflows.** A pushed `vX.Y.Z` tag isn't "release done" — it's "release
+started." The three release pipelines (`Release`, `Release — ww CLI`, `Release — Helm charts`) publish
+container images / ww CLI binaries / Homebrew formula / Helm charts to OCI — and they're independent. If any
+one fails, **the team has shipped a partial release**: some artifacts are live and pullable, others are
+missing or broken. Catastrophic effects: agents bumped to that tag get `ImagePullBackOff`; users running
+`brew upgrade` get nothing or get a broken cask; `helm upgrade` errors.
+
+When iris's release skill returns with `[release-workflow-failed]` (her watch step waits for every workflow
+to conclude before returning, so by the time you see her reply you have full visibility):
+
+1. **Stop cadence-driven dispatching immediately.** Don't fire any peer's cadence-mandated routine work
+   until the release state is recovered — every commit those peers produce lands on top of a broken release
+   and risks tangling the recovery. The only dispatches that fire during this window are recovery-targeted.
+2. **Redirect the team to fix it.** The recovery path depends on what failed:
+   - **Transient infrastructure** (registry timeout, GitHub Actions blip) — dispatch iris to re-run the
+     failing workflow via `gh run rerun --failed <run-id>`. If the re-run succeeds, surface
+     `[release-workflow-recovered]` and resume normal cadence.
+   - **Real bug in the workflow's source target** (ww CLI build failed because of a code regression that
+     CI — ww CLI didn't catch) — dispatch evan with the failing-job log and the breaking commit. After
+     evan's fix lands, dispatch iris to either re-run the failed workflow OR cut `vX.Y.Z+1` if the
+     workflow can't re-target the same tag.
+3. **Surface visibly.** Append `[escalation: release-workflow-failed]` to `escalations.md` with the tag,
+   failed workflow, run URL, and recovery path. The user should see this on their next `ww escalations`
+   without trawling the decision log.
+4. **Hold release-warranted check.** Don't fire any new release dispatches until the failed one is
+   recovered. Otherwise the team layers broken release on broken release.
+
+Burn this in. Every tick: green-CI check is the gate before any other work. Red CI or failed release =
+fix the red. Don't rationalise it as "it's only one workflow" or "the next commit will probably fix it" or
+"the artifacts that DID succeed are most users' path anyway." All three rationalisations have happened on
+the team's audit trail; none of them paid off.
 
 Specifically when picking a `team-tidy` candidate (the strict-bar work on identity files): prefer changes that visibly
 improve a peer's ability to do their job — a missing pattern that would help evan find more bugs, a schema that would

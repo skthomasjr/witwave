@@ -138,6 +138,37 @@ Walk these in order. The first match wins; act and exit (after logging).
   4. If two consecutive evan attempts fail to clear the red CI → escalate harder per the time-bounded
      escalation rules below; do NOT keep retrying evan indefinitely.
 
+- **Failed release workflow** (iris's release skill returned `[release-workflow-failed]`, OR a `Release*`
+  workflow on the latest tag concluded `failure` / `cancelled` / `timed_out`) → **stop cadence-driven
+  dispatching and redirect the team to recover.** A pushed tag is just the start of the release; the three
+  workflows that fire post-tag publish the actual artifacts users pull. One failed = partial release =
+  silent breakage downstream. Procedure:
+
+  1. **Freeze regular dispatching** for this tick and subsequent ticks until recovery. Peer cadence floors
+     keep counting (they'll fire on the recovery tick), but don't emit the dispatches now — every commit
+     a peer produces during a partial-release window risks tangling the recovery.
+  2. **Surface immediately**. Append `[escalation: release-workflow-failed]` to
+     `/workspaces/witwave-self/memory/escalations.md` with the tag, failing workflow name, run URL, and
+     recovery path. User sees this without trawling decision_log.
+  3. **Diagnose the failure mode** from iris's reply (or from `gh run view <run-id> --log-failed` if the
+     reply lacks detail):
+
+     - **Transient infrastructure** (registry timeout, network blip, runner OOM, GitHub Actions outage) →
+       `call-peer iris` with `gh run rerun --failed <run-id>`. If the re-run succeeds, surface
+       `[release-workflow-recovered]` in `escalations.md` and resume normal cadence next tick.
+     - **Real bug in the workflow's source target** (ww CLI build failed because a code regression got past
+       `CI — ww CLI`; Helm chart push failed because chart YAML is malformed; container build failed
+       because a Dockerfile regressed) → `call-peer evan` with the failing-job log + breaking commit,
+       same shape as red-CI dispatch. After evan lands a fix, two paths:
+       - If the workflow can re-target the same tag (re-run picks up the fixed source) → ask iris to
+         re-run.
+       - If the workflow's artifact for that tag is permanently published in a broken state → ask iris
+         to cut `vX.Y.Z+1` with the fix once ANY commit lands. Tag is poisoned; ship a clean follow-up.
+  4. **Two failed iris re-run attempts** OR evan can't fix → escalate hard. Append `[needs-human]` to
+     `escalations.md` with the failure log + recovery options for human decision. Enter pause-mode.
+  5. **Don't fire any new release-warranted dispatches** until this one is recovered. Otherwise the team
+     layers broken release on broken release.
+
 - **Stuck peer** (peer dispatch in flight >1h, OR peer's pod has dirty WIP blocking subsequent dispatches) →
   follow the **time-bounded escalation** ladder below. Don't just stand down forever — past versions of this
   policy held the team idle for 3+ hours waiting for human resolution while every cadence floor breached and
