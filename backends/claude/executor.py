@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import pathlib
 import threading
 import time
 from collections import OrderedDict
@@ -145,7 +146,6 @@ def _session_file_path(session_id: str) -> "pathlib.Path | None":
     is the working directory with all non-alphanumeric characters replaced by
     hyphens (truncated to 200 characters with a hash suffix if longer).
     """
-    import pathlib
     import re
     import unicodedata
 
