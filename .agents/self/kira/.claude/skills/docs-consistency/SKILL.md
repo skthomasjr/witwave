@@ -6,15 +6,15 @@ description:
   per-subproject README claims about commands matching the actual CLI surface, and team-roster sync between
   `.agents/self/TEAM.md` and `docs/bootstrap.md` (the only Cat-A file pulled in, and only because it pairs canonically
   with the bootstrap walkthrough). Memory-log mismatches; never auto-fix (the right resolution is always a judgment
-  call). Trigger when the user says "check doc consistency", "are the docs in agreement?", "is the team in sync",
-  "are we missing agents in bootstrap", or as a step inside `docs-cleanup`.
+  call). Trigger when the user says "check doc consistency", "are the docs in agreement?", "is the team in sync", "are
+  we missing agents in bootstrap", or as a step inside `docs-cleanup`.
 version: 0.2.0
 ---
 
 # docs-consistency
 
-Find places where two or more documentation files disagree with each other. Primary scope is Category C (project /
-OSS docs); a single named exception covers Cat-A `TEAM.md` because it pairs with Cat-C `bootstrap.md` as the team's
+Find places where two or more documentation files disagree with each other. Primary scope is Category C (project / OSS
+docs); a single named exception covers Cat-A `TEAM.md` because it pairs with Cat-C `bootstrap.md` as the team's
 canonical roster narrative (Check E). General Cat-A consistency (per-agent CLAUDE.md / SKILL.md / agent-card.md
 agreement) and Category B (repo-root `CLAUDE.md`, `AGENTS.md`, `.claude/skills/**`) remain out of scope — those are
 agent prompts, not human-facing docs, and consistency among them is a different kind of concern handled separately.
@@ -98,45 +98,45 @@ correct.
 #### Check E — Team-roster consistency: TEAM.md ↔ bootstrap.md
 
 Two narrative-of-the-team files — Cat-A `.agents/self/TEAM.md` (the roster, topology, mission per agent) and Cat-C
-`docs/bootstrap.md` (the from-scratch deploy walkthrough) — must agree on which agents currently exist on the team
-and how each one is deployed. This is the **only** check in `docs-consistency` that reaches into Cat A; it does so
-read-only against `TEAM.md` specifically, not against per-agent CLAUDE.md / agent-card.md / SKILL.md (those stay
-out of scope under the doc-categories policy).
+`docs/bootstrap.md` (the from-scratch deploy walkthrough) — must agree on which agents currently exist on the team and
+how each one is deployed. This is the **only** check in `docs-consistency` that reaches into Cat A; it does so read-only
+against `TEAM.md` specifically, not against per-agent CLAUDE.md / agent-card.md / SKILL.md (those stay out of scope
+under the doc-categories policy).
 
 Why this check exists: when the human adds a new agent (or a manager dispatches one), `TEAM.md` updates immediately
-because it's the visible roster, but `bootstrap.md` lags — historically it has been 2-3 agents behind reality.
-Stale bootstrap means a new operator following the doc end-to-end ends up with a partial team. This check catches
-that drift so kira can flag the missing/extra steps.
+because it's the visible roster, but `bootstrap.md` lags — historically it has been 2-3 agents behind reality. Stale
+bootstrap means a new operator following the doc end-to-end ends up with a partial team. This check catches that drift
+so kira can flag the missing/extra steps.
 
-**Inputs.** Read both files fully. From `TEAM.md` extract the "current team" / active-roster section — the named
-agents, their one-line role descriptions, and the order they're presented. From `bootstrap.md` extract every
-"Step N — Deploy <name>" heading and the `ww agent create <name>` invocation under it.
+**Inputs.** Read both files fully. From `TEAM.md` extract the "current team" / active-roster section — the named agents,
+their one-line role descriptions, and the order they're presented. From `bootstrap.md` extract every "Step N — Deploy
+<name>" heading and the `ww agent create <name>` invocation under it.
 
 **Verifications.**
 
-1. **Roster membership match.** The set of agents in `TEAM.md`'s current-team list MUST equal the set of agents
-   with a "Deploy <name>" step in `bootstrap.md`. Mismatch directions:
+1. **Roster membership match.** The set of agents in `TEAM.md`'s current-team list MUST equal the set of agents with a
+   "Deploy <name>" step in `bootstrap.md`. Mismatch directions:
    - Agent in `TEAM.md` but missing in `bootstrap.md` → `[pending]`, action = "add Step N — Deploy <name>".
-   - Agent in `bootstrap.md` but missing in `TEAM.md` → `[pending]`, action = "either add to roster or remove
-     stale step". (Likely the agent was decommissioned but the step survived.)
+   - Agent in `bootstrap.md` but missing in `TEAM.md` → `[pending]`, action = "either add to roster or remove stale
+     step". (Likely the agent was decommissioned but the step survived.)
 2. **Deploy-shape uniformity.** Across all "Deploy <name>" steps in `bootstrap.md`, the `ww agent create` invocations
    should share the same skeleton — same `--namespace`, `--workspace`, `--with-persistence`, `--backend`,
    `--harness-env CONVERSATIONS_AUTH_DISABLED=true`, `--backend-env claude:CONVERSATIONS_AUTH_DISABLED=true`,
-   `--backend-secret-from-env CLAUDE_CODE_OAUTH_TOKEN`, and `--gitsync-bundle ...:.agents/self/<name>` patterns.
-   An agent step that omits one of these (or uses a divergent value, e.g. a different namespace) is a finding.
-   This catches half-pasted bootstrap steps before they bite a new operator.
+   `--backend-secret-from-env CLAUDE_CODE_OAUTH_TOKEN`, and `--gitsync-bundle ...:.agents/self/<name>` patterns. An
+   agent step that omits one of these (or uses a divergent value, e.g. a different namespace) is a finding. This catches
+   half-pasted bootstrap steps before they bite a new operator.
 3. **Verification step counts.** The "Verify the team" closing step at the end of `bootstrap.md` typically claims
-   "expect N rows in `ww agent list`" or similar — N must equal the active-roster count. Off-by-one here is a
-   common drift symptom when a new agent is added.
-4. **Topology diagram drift** (best-effort). If `TEAM.md` includes an ASCII team-topology diagram, every named
-   node in the diagram should appear in the current-team list. Nodes-not-in-roster is a finding; this is the
-   tail end of "we added someone and forgot to update the diagram."
+   "expect N rows in `ww agent list`" or similar — N must equal the active-roster count. Off-by-one here is a common
+   drift symptom when a new agent is added.
+4. **Topology diagram drift** (best-effort). If `TEAM.md` includes an ASCII team-topology diagram, every named node in
+   the diagram should appear in the current-team list. Nodes-not-in-roster is a finding; this is the tail end of "we
+   added someone and forgot to update the diagram."
 
 **Live-cluster cross-check** (optional / out-of-scope today). Eventually this check could call
 `kubectl get pods -n witwave-self -l app.kubernetes.io/managed-by=witwave-operator -o jsonpath='{.items[*].metadata.labels.app\.kubernetes\.io/name}'`
-to enumerate live agent names and compare against the roster. Today kira's runtime doesn't have cluster RBAC, so
-don't attempt it; record the finding as `[flagged: live-check-unavailable]` if you want to track the gap. The
-file-vs-file checks above are the primary signal.
+to enumerate live agent names and compare against the roster. Today kira's runtime doesn't have cluster RBAC, so don't
+attempt it; record the finding as `[flagged: live-check-unavailable]` if you want to track the gap. The file-vs-file
+checks above are the primary signal.
 
 ### 4. Log findings to memory
 
@@ -174,27 +174,26 @@ during the transition.
 Return a structured summary:
 
 - Total Cat C files scanned (plus `TEAM.md` for Check E)
-- Per-check counts: how many disagreements found in each (version, subproject↔root, prose-references,
-  command-surface, team-roster)
+- Per-check counts: how many disagreements found in each (version, subproject↔root, prose-references, command-surface,
+  team-roster)
 - Pointer to the deferred-findings memory entry just written
 
 ## When to invoke
 
 - Inside `docs-cleanup` (the orchestrator).
-- On demand: "are the docs in agreement?", "check doc consistency", "find conflicting claims",
-  "is the team in sync", "are we missing agents in bootstrap".
+- On demand: "are the docs in agreement?", "check doc consistency", "find conflicting claims", "is the team in sync",
+  "are we missing agents in bootstrap".
 - After a release or a CLI rename — that's when version drift and command-surface drift are most likely.
-- After adding or removing a self-agent (a `.agents/self/<name>/` checkout-in or removal) — that's
-  when team-roster drift between `TEAM.md` and `bootstrap.md` is most likely.
+- After adding or removing a self-agent (a `.agents/self/<name>/` checkout-in or removal) — that's when team-roster
+  drift between `TEAM.md` and `bootstrap.md` is most likely.
 
 ## Out of scope for this skill
 
-- **Per-agent identity files (Cat A)** — consistency between agent prompts (iris's `CLAUDE.md` vs kira's,
-  per-agent `agent-card.md` agreement, `SKILL.md` cross-agent uniformity) is off-limits per the doc-categories
-  policy and needs a different posture. The single named exception is `.agents/self/TEAM.md` in Check E because
-  it pairs canonically with `docs/bootstrap.md` as the team's roster narrative; nothing else under `.agents/`
-  is read.
-- **Cat B (repo-root `CLAUDE.md`, `AGENTS.md`, `.claude/skills/**`)** — explicitly off-limits; these are
+- **Per-agent identity files (Cat A)** — consistency between agent prompts (iris's `CLAUDE.md` vs kira's, per-agent
+  `agent-card.md` agreement, `SKILL.md` cross-agent uniformity) is off-limits per the doc-categories policy and needs a
+  different posture. The single named exception is `.agents/self/TEAM.md` in Check E because it pairs canonically with
+  `docs/bootstrap.md` as the team's roster narrative; nothing else under `.agents/` is read.
+- **Cat B (repo-root `CLAUDE.md`, `AGENTS.md`, `.claude/skills/**`)\*\* — explicitly off-limits; these are
   AI-coding-assistant prompts, not human-facing docs.
 - **Auto-fixing** — every disagreement is a judgment call. Findings land in memory; humans decide.
 - **External-resource consistency** (e.g. README claims about Discord channels, blog posts, third-party docs) — out of

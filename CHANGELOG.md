@@ -48,67 +48,67 @@ identity + backend wiring, completing the documented six-agent topology.
   routes through `brew upgrade --cask ww` instead of the binary/curl path. The detector also ignores any stale
   `~/.local/share/ww/install-method` Curl marker when the running binary lives inside Caskroom — earlier curl-script
   installs left that marker behind, and Cask installs that ran on top would inherit it and silently take the wrong
-  upgrade path. Bug surfaced when `ww update` shipped phantom binaries into `/usr/local/bin` for brew-cask users
-  instead of upgrading the cask in place.
+  upgrade path. Bug surfaced when `ww update` shipped phantom binaries into `/usr/local/bin` for brew-cask users instead
+  of upgrading the cask in place.
 
 ### Agent identity
 
-- **finn**: Sixth team member scaffolded as **gap-fixer** — the agent that fills what's missing across the team's
-  output (orphan TODOs, half-landed refactors, dangling references no one else has claimed). Companion
+- **finn**: Sixth team member scaffolded as **gap-fixer** — the agent that fills what's missing across the team's output
+  (orphan TODOs, half-landed refactors, dangling references no one else has claimed). Companion
   `agents/finn/backend.yaml` wires finn into the harness backend alongside the other five agents, and
-  `agents/bootstrap.md` is updated to cover all six (iris, kira, nova, evan, zora, finn) so onboarding documents
-  match the deployed topology.
+  `agents/bootstrap.md` is updated to cover all six (iris, kira, nova, evan, zora, finn) so onboarding documents match
+  the deployed topology.
 
 ## [0.21.0] — 2026-05-08
 
 `ww send` and `ww tail` gain auto port-forward parity with the rest of the CLI — agents addressed by name route over a
 transparent in-process tunnel instead of requiring a manually-prepared `kubectl port-forward`. Extends the v0.18.0 →
-v0.20.0 `ww conversation` port-forward-first posture across the remaining direct-to-agent commands so agents can talk
-by name everywhere.
+v0.20.0 `ww conversation` port-forward-first posture across the remaining direct-to-agent commands so agents can talk by
+name everywhere.
 
 ### Added
 
 - **ww**: `ww send` and `ww tail` automatically open a port-forward to the targeted agent's harness, matching the
-  auto-pf behaviour `ww conversation` already provides. Agents can now be addressed by name from these commands
-  without a pre-existing tunnel; `-n <ns>` / `-A` / `--agent <name>` scoping is unchanged.
+  auto-pf behaviour `ww conversation` already provides. Agents can now be addressed by name from these commands without
+  a pre-existing tunnel; `-n <ns>` / `-A` / `--agent <name>` scoping is unchanged.
 
 ## [0.20.0] — 2026-05-08
 
 Completes the `ww conversation` surface with `list --follow` (`-f`) — the multi-session counterpart to v0.19.0's
-`show --follow` single-session tail. The conversation triad (one-shot list / single-session live show /
-multi-session live tail) is now feature-complete on top of the v0.18.0 port-forward + harness HTTP infrastructure,
-with no new dependencies.
+`show --follow` single-session tail. The conversation triad (one-shot list / single-session live show / multi-session
+live tail) is now feature-complete on top of the v0.18.0 port-forward + harness HTTP infrastructure, with no new
+dependencies.
 
 ### Added
 
 - **ww**: `ww conversation list --follow` (`-f`) renders the current list (table or `--expand` cards) and then
-  live-tails every session in scope concurrently. One port-forward per agent — N sessions on an agent multiplex
-  over that agent's tunnel — and a single stdout mutex keeps multi-line envelope renders atomic across concurrent
-  streams. Each live envelope is prefixed with `↻ <short-id> · <agent> · [HH:MM:SS] role:` so the multiplexed
-  output stays legible. Composes with `--expand`, `--full-text`, `-A` (cluster-wide), and `--agent <name>`
-  (filtered). Flag named `--follow` to match `kubectl logs -f` / `docker logs -f` / `journalctl -f` and the
-  existing `show --follow`; Ctrl-C is the clean success exit.
+  live-tails every session in scope concurrently. One port-forward per agent — N sessions on an agent multiplex over
+  that agent's tunnel — and a single stdout mutex keeps multi-line envelope renders atomic across concurrent streams.
+  Each live envelope is prefixed with `↻ <short-id> · <agent> · [HH:MM:SS] role:` so the multiplexed output stays
+  legible. Composes with `--expand`, `--full-text`, `-A` (cluster-wide), and `--agent <name>` (filtered). Flag named
+  `--follow` to match `kubectl logs -f` / `docker logs -f` / `journalctl -f` and the existing `show --follow`; Ctrl-C is
+  the clean success exit.
 
 ## [0.19.0] — 2026-05-08
 
-`ww conversation` lands its v2 surface — live-tail (`show --follow`), expanded card-style listing
-(`list --expand`), compact timestamps, and short session ids — building on the v1 port-forward + harness HTTP
-infrastructure with no new dependencies. A CRITICAL grpc CVE bump (CVE-2026-33186, v1.72.2 → v1.79.3) closes the last
-open finding from evan's risk-work sweep, completing the recovery of evan's stashed auto-fix WIP from 2026-05-07. Two
-shared-harness `fix(shared):` items clear ruff F821/F841 latent bugs in `hook_events.py`.
+`ww conversation` lands its v2 surface — live-tail (`show --follow`), expanded card-style listing (`list --expand`),
+compact timestamps, and short session ids — building on the v1 port-forward + harness HTTP infrastructure with no new
+dependencies. A CRITICAL grpc CVE bump (CVE-2026-33186, v1.72.2 → v1.79.3) closes the last open finding from evan's
+risk-work sweep, completing the recovery of evan's stashed auto-fix WIP from 2026-05-07. Two shared-harness
+`fix(shared):` items clear ruff F821/F841 latent bugs in `hook_events.py`.
 
 ### Added
 
 - **ww**: `ww conversation show --follow` (`-f`) live-tails a session via the backend container's
   `/api/sessions/<id>/stream` SSE endpoint (port 8001, distinct from the harness 8000 used for one-shot list/show).
   After the historical transcript renders, the CLI prints `─── live ───` and streams new envelopes in the same
-  `[ts] role:` shape so the conversation reads continuously; Ctrl-C exits cleanly. Required infra: `portforward.OpenPort`
-  parameterised to target either harness or backend, and `conversation.StreamSession` parsing typed
-  `StreamEnvelope` frames (with keepalive + `stream.overrun` terminal handling).
-- **ww**: `ww conversation list --expand` renders each session as a box-drawn card (short-id, agent, turn count,
-  start → last, source) with per-entry text wrapped at ~76 cols and capped at 500 chars (`--full-text` disables the
-  cap). Default list output now shows the first 8 chars of the session UUID (git short-SHA convention); full id is
-  still available in `--expand` card headers and `show` output.
+  `[ts] role:` shape so the conversation reads continuously; Ctrl-C exits cleanly. Required infra:
+  `portforward.OpenPort` parameterised to target either harness or backend, and `conversation.StreamSession` parsing
+  typed `StreamEnvelope` frames (with keepalive + `stream.overrun` terminal handling).
+- **ww**: `ww conversation list --expand` renders each session as a box-drawn card (short-id, agent, turn count, start →
+  last, source) with per-entry text wrapped at ~76 cols and capped at 500 chars (`--full-text` disables the cap).
+  Default list output now shows the first 8 chars of the session UUID (git short-SHA convention); full id is still
+  available in `--expand` card headers and `show` output.
 - **ww**: Compact timestamp formatters strip the harness's `+00:00` / microseconds noise (UTC is the only timezone the
   harness emits): `FormatTS` → `YYYY-MM-DD HH:MM:SS` for `show` and the default list table, `FormatTSCompact` →
   `HH:MM:SS` for `--expand` where the date already lives in the card header. Parse failures pass through unchanged.
@@ -118,11 +118,12 @@ shared-harness `fix(shared):` items clear ruff F821/F841 latent bugs in `hook_ev
 - **security**: `google.golang.org/grpc` bumped v1.72.2 → v1.79.3 (clients/ww), closing CVE-2026-33186 (CRITICAL).
   Companion `go mod tidy` bumps for transitive consistency: `golang.org/x/oauth2` v0.30.0 → v0.34.0,
   `google.golang.org/genproto/googleapis/rpc` → 20251202230838-ff82c1b0f217, `google.golang.org/protobuf` v1.36.8 →
-  v1.36.10. Completes evan's risk-work WIP that stalled on 2026-05-07 mid-bump and was recovered locally where the
-  Go 1.26.2 toolchain is current.
-- **shared**: `_done_cb` annotation in `shared/hook_events.py` rebound from the never-bound bare `concurrent.futures.Future[Any]`
-  to the existing `_cf_mod.Future[Any]` alias — `from __future__ import annotations` had been masking a latent NameError
-  that any `typing.get_type_hints(_done_cb)` caller would have hit. Closes ruff F821.
+  v1.36.10. Completes evan's risk-work WIP that stalled on 2026-05-07 mid-bump and was recovered locally where the Go
+  1.26.2 toolchain is current.
+- **shared**: `_done_cb` annotation in `shared/hook_events.py` rebound from the never-bound bare
+  `concurrent.futures.Future[Any]` to the existing `_cf_mod.Future[Any]` alias — `from __future__ import annotations`
+  had been masking a latent NameError that any `typing.get_type_hints(_done_cb)` caller would have hit. Closes ruff
+  F821.
 - **shared**: Dead `last_exc` variable removed from `_post_once_to` in `shared/hook_events.py` (vestigial from an
   earlier retry-logging design that never landed). Retry control flow unchanged — the outer `except Exception as exc`
   remains the sole post-loop consumer. Closes ruff F841.

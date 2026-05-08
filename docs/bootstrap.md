@@ -308,9 +308,9 @@ cold containers. The headroom matters.
 
 Evan is the team's defect-finding agent — runs `bug-work` (correctness defects via static analyzers) and `risk-work`
 (security defects via CVE / secret / insecure-pattern scanners). Same shape as iris/kira/nova (one `claude` backend,
-bound to `witwave-self`, identity sourced from `.agents/self/evan/`); like nova/kira, evan commits locally and
-delegates pushes to iris via `call-peer`. Note the higher `TASK_TIMEOUT_SECONDS` — evan's depth-7+ wide passes can
-run for 30+ minutes, well past the team-default 2700s budget.
+bound to `witwave-self`, identity sourced from `.agents/self/evan/`); like nova/kira, evan commits locally and delegates
+pushes to iris via `call-peer`. Note the higher `TASK_TIMEOUT_SECONDS` — evan's depth-7+ wide passes can run for 30+
+minutes, well past the team-default 2700s budget.
 
 ```bash
 ww agent create evan \
@@ -330,14 +330,14 @@ ww agent create evan \
 ```
 
 `CONVERSATIONS_AUTH_DISABLED=true` is the local-dev escape hatch on the harness's bearer-token gate — it lets
-`ww conversation list / show / --follow` work without minting per-agent CONVERSATIONS_AUTH_TOKEN secrets.
-Production deployments should set a real token instead.
+`ww conversation list / show / --follow` work without minting per-agent CONVERSATIONS_AUTH_TOKEN secrets. Production
+deployments should set a real token instead.
 
 ## Step 7 — Deploy zora
 
 Zora is the team manager — coordinates work at the team level, decides which peer dispatches when, and gates
-release-warranted on the team's quality bar. She doesn't commit code; her only writes are to her own memory
-namespace. The `gh` token she carries is read-only — used by her every-tick CI-status check (`gh run list`) so the
+release-warranted on the team's quality bar. She doesn't commit code; her only writes are to her own memory namespace.
+The `gh` token she carries is read-only — used by her every-tick CI-status check (`gh run list`) so the
 never-leave-main-red policy can detect red CI directly rather than infer from indirect signals.
 
 ```bash
@@ -357,16 +357,15 @@ ww agent create zora \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
-After zora deploys, her 15-minute heartbeat starts firing the `dispatch-team` decision loop. She'll begin reading
-peer state from memory, applying the priority policy in her CLAUDE.md, and dispatching the appropriate peer
+After zora deploys, her 15-minute heartbeat starts firing the `dispatch-team` decision loop. She'll begin reading peer
+state from memory, applying the priority policy in her CLAUDE.md, and dispatching the appropriate peer
 (iris/kira/nova/evan/finn) via A2A. Until then, all peer dispatches are user-initiated.
 
 ## Step 8 — Deploy finn
 
-Finn is the team's gap-fixer — finds and fills functionality gaps via the `gap-work` skill. Risk-tier 1-10 gated
-(starts at tier 1 cosmetic; advances per zora's polish-tier control as low-risk territory exhausts clean). Same
-deployment shape as evan — one `claude` backend, identity from `.agents/self/finn/`, commits-locally /
-iris-pushes contract.
+Finn is the team's gap-fixer — finds and fills functionality gaps via the `gap-work` skill. Risk-tier 1-10 gated (starts
+at tier 1 cosmetic; advances per zora's polish-tier control as low-risk territory exhausts clean). Same deployment shape
+as evan — one `claude` backend, identity from `.agents/self/finn/`, commits-locally / iris-pushes contract.
 
 ```bash
 ww agent create finn \
@@ -395,8 +394,8 @@ ww agent list \
 ```
 
 `ww agent list` should now show six rows (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`) all in state `Ready`.
-`ww workspace status witwave-self` should report all six under the bound-agents section. zora's heartbeat
-fires every 15 minutes; her first tick will discover the team and start dispatching cadence-floor work.
+`ww workspace status witwave-self` should report all six under the bound-agents section. zora's heartbeat fires every 15
+minutes; her first tick will discover the team and start dispatching cadence-floor work.
 
 ## Tear it down
 
