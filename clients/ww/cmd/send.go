@@ -138,14 +138,22 @@ func newSendCmd() *cobra.Command {
 					return nil
 				}
 				// Deadline-exceeded → harness has the prompt, work
-				// continues server-side. Surface the contextId.
+				// continues server-side. Note: the A2A contextId we
+				// generated client-side is NOT the same as the
+				// backend's session_id (the backend assigns its own
+				// UUID when the prompt lands). `ww conversation show
+				// <contextId>` would 404 — so we point the user at
+				// `ww conversation list --agent <name> --follow`,
+				// which surfaces every session for that agent and
+				// live-tails new ones as they arrive (the newest
+				// session in the list will be this dispatch).
 				if errors.Is(err, context.DeadlineExceeded) {
 					tailNS := sf.namespace
 					if tailNS == "" {
 						tailNS = "<namespace>"
 					}
 					fmt.Fprintf(out.Out, "Dispatched to %s (contextId=%s, messageId=%s).\n", agent, ctxID, msgID)
-					fmt.Fprintf(out.Out, "Tail with: ww conversation show %s -n %s --follow\n", ctxID, tailNS)
+					fmt.Fprintf(out.Out, "Tail with: ww conversation list -n %s --agent %s --follow\n", tailNS, agent)
 					return nil
 				}
 				// Real transport error or server-side JSON-RPC error:
