@@ -6,6 +6,35 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-05-08
+
+Adds non-blocking send mode for `ww send` so callers can queue prompts without waiting on the LLM response, and caps
+concurrent SSE streams in `ww conversation list --follow` to keep multi-session tails stable when scope spans many
+active sessions. Companion agent-identity work broadens evan's `risk-work` skill from a security-only sweep to all five
+risk categories (pulling reliability / performance / observability out of finn so the gap-fixer stays focused on its
+orphan/half-landed scope), and lands kira's Check E so `docs-consistency` keeps `TEAM.md` ↔ `agents/bootstrap.md` in
+sync as the team topology evolves.
+
+### Added
+
+- **ww**: `ww send --async` returns immediately after the message is queued instead of blocking on the LLM response.
+  Useful for fire-and-forget prompts and scripted send-then-tail flows where the caller doesn't need the synchronous
+  reply.
+
+### Fixed
+
+- **ww**: `ww conversation list --follow` caps the number of concurrent SSE streams it opens, preventing the
+  multi-session tail from exhausting harness/backend connection budgets when scope includes many active sessions.
+
+### Agent identity
+
+- **evan, finn, zora**: `risk-work` broadens from a security-only sweep to all five risk categories — security,
+  reliability, performance, observability, supply-chain. Reliability / performance / observability move out of finn's
+  scope so the gap-fixer stays focused on orphan TODOs, half-landed refactors, and dangling references; zora's
+  `dispatch-team` is aligned to the broadened surface so dispatching reflects the new ownership.
+- **kira**: `docs-consistency` gains Check E — `TEAM.md` ↔ `agents/bootstrap.md` roster sync — so the documented team
+  topology stays aligned across both files. Companion frontmatter and scope polish reflects the new check.
+
 ## [0.22.0] — 2026-05-08
 
 Unbreaks `ww update` for macOS users who installed via Homebrew Cask — the cask path was being misclassified as the
