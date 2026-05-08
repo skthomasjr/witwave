@@ -6,8 +6,13 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from continuations import ContinuationRunner
+    from webhooks import WebhookRunner
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
