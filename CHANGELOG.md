@@ -6,6 +6,44 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-05-08
+
+`ww conversation` lands its v2 surface — live-tail (`show --follow`), expanded card-style listing
+(`list --expand`), compact timestamps, and short session ids — building on the v1 port-forward + harness HTTP
+infrastructure with no new dependencies. A CRITICAL grpc CVE bump (CVE-2026-33186, v1.72.2 → v1.79.3) closes the last
+open finding from evan's risk-work sweep, completing the recovery of evan's stashed auto-fix WIP from 2026-05-07. Two
+shared-harness `fix(shared):` items clear ruff F821/F841 latent bugs in `hook_events.py`.
+
+### Added
+
+- **ww**: `ww conversation show --follow` (`-f`) live-tails a session via the backend container's
+  `/api/sessions/<id>/stream` SSE endpoint (port 8001, distinct from the harness 8000 used for one-shot list/show).
+  After the historical transcript renders, the CLI prints `─── live ───` and streams new envelopes in the same
+  `[ts] role:` shape so the conversation reads continuously; Ctrl-C exits cleanly. Required infra: `portforward.OpenPort`
+  parameterised to target either harness or backend, and `conversation.StreamSession` parsing typed
+  `StreamEnvelope` frames (with keepalive + `stream.overrun` terminal handling).
+- **ww**: `ww conversation list --expand` renders each session as a box-drawn card (short-id, agent, turn count,
+  start → last, source) with per-entry text wrapped at ~76 cols and capped at 500 chars (`--full-text` disables the
+  cap). Default list output now shows the first 8 chars of the session UUID (git short-SHA convention); full id is
+  still available in `--expand` card headers and `show` output.
+- **ww**: Compact timestamp formatters strip the harness's `+00:00` / microseconds noise (UTC is the only timezone the
+  harness emits): `FormatTS` → `YYYY-MM-DD HH:MM:SS` for `show` and the default list table, `FormatTSCompact` →
+  `HH:MM:SS` for `--expand` where the date already lives in the card header. Parse failures pass through unchanged.
+
+### Fixed
+
+- **security**: `google.golang.org/grpc` bumped v1.72.2 → v1.79.3 (clients/ww), closing CVE-2026-33186 (CRITICAL).
+  Companion `go mod tidy` bumps for transitive consistency: `golang.org/x/oauth2` v0.30.0 → v0.34.0,
+  `google.golang.org/genproto/googleapis/rpc` → 20251202230838-ff82c1b0f217, `google.golang.org/protobuf` v1.36.8 →
+  v1.36.10. Completes evan's risk-work WIP that stalled on 2026-05-07 mid-bump and was recovered locally where the
+  Go 1.26.2 toolchain is current.
+- **shared**: `_done_cb` annotation in `shared/hook_events.py` rebound from the never-bound bare `concurrent.futures.Future[Any]`
+  to the existing `_cf_mod.Future[Any]` alias — `from __future__ import annotations` had been masking a latent NameError
+  that any `typing.get_type_hints(_done_cb)` caller would have hit. Closes ruff F821.
+- **shared**: Dead `last_exc` variable removed from `_post_once_to` in `shared/hook_events.py` (vestigial from an
+  earlier retry-logging design that never landed). Retry control flow unchanged — the outer `except Exception as exc`
+  remains the sole post-loop consumer. Closes ruff F841.
+
 ## [0.18.0] — 2026-05-08
 
 `ww` gains a `conversation` subcommand for cross-agent transcript inspection. Two `fix:` items close the v0.17.0
