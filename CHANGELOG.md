@@ -6,6 +6,23 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-05-08
+
+Completes the `ww conversation` surface with `list --follow` (`-f`) — the multi-session counterpart to v0.19.0's
+`show --follow` single-session tail. The conversation triad (one-shot list / single-session live show /
+multi-session live tail) is now feature-complete on top of the v0.18.0 port-forward + harness HTTP infrastructure,
+with no new dependencies.
+
+### Added
+
+- **ww**: `ww conversation list --follow` (`-f`) renders the current list (table or `--expand` cards) and then
+  live-tails every session in scope concurrently. One port-forward per agent — N sessions on an agent multiplex
+  over that agent's tunnel — and a single stdout mutex keeps multi-line envelope renders atomic across concurrent
+  streams. Each live envelope is prefixed with `↻ <short-id> · <agent> · [HH:MM:SS] role:` so the multiplexed
+  output stays legible. Composes with `--expand`, `--full-text`, `-A` (cluster-wide), and `--agent <name>`
+  (filtered). Flag named `--follow` to match `kubectl logs -f` / `docker logs -f` / `journalctl -f` and the
+  existing `show --follow`; Ctrl-C is the clean success exit.
+
 ## [0.19.0] — 2026-05-08
 
 `ww conversation` lands its v2 surface — live-tail (`show --follow`), expanded card-style listing
