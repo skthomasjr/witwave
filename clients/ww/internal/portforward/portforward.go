@@ -35,6 +35,14 @@ import (
 // are scraped, not browsed.
 const HarnessHTTPPort = 8000
 
+// BackendHTTPPort is the claude/codex/gemini backend container's app
+// listener — same pod as the harness, different port. Serves the
+// per-session SSE endpoint /api/sessions/{id}/stream that backs
+// `ww conversation show --follow` (the harness only fans out aggregate
+// /conversations reads, so live-tail of one session has to hit the
+// backend directly).
+const BackendHTTPPort = 8001
+
 // readyTimeout bounds how long we wait for the SPDY tunnel to declare
 // itself ready before giving up on this agent. Most tunnels come up in
 // ~100-300ms; 10s leaves ample slack for slow networks without making a
@@ -72,21 +80,30 @@ func (f *Forward) Close() {
 	f.stopCh = nil
 }
 
-// Open starts a port-forward to the harness container of the agent
-// matching `app.kubernetes.io/name=<agent>` in `namespace`. Picks an
-// ephemeral local port (`:0`) so concurrent fan-outs across many agents
-// don't fight over a fixed-port range.
+// Open is shorthand for OpenPort(ctx, cfg, namespace, agent, HarnessHTTPPort)
+// — the most common case. Use OpenPort when you need to target a
+// different container's port (e.g. the backend's BackendHTTPPort for
+// `/api/sessions/<id>/stream`).
+func Open(ctx context.Context, cfg *rest.Config, namespace, agent string) (*Forward, error) {
+	return OpenPort(ctx, cfg, namespace, agent, HarnessHTTPPort)
+}
+
+// OpenPort starts a port-forward to the agent's pod targeting `podPort`.
+// Same SPDY-tunnel mechanics as Open, but parameterized so callers can
+// reach either the harness (8000) or the backend (8001) container — both
+// containers share the pod's network namespace, so port-forward sees
+// whichever port a container is bound to. Picks an ephemeral local port
+// (`:0`) so concurrent fan-outs don't fight over a fixed-port range.
 //
 // The returned Forward is ready to receive HTTP traffic by the time
-// Open returns (the underlying SPDY tunnel has emitted its "ready"
-// signal). If the tunnel can't be established before readyTimeout,
-// Open returns an error and the caller should treat that agent as
-// unreachable.
+// OpenPort returns. If the tunnel can't be established before
+// readyTimeout, returns an error and the caller should treat that agent
+// as unreachable on that port.
 //
 // Caller MUST invoke Forward.Close (typically via defer) when done, or
 // pass a cancellable context — the goroutine driving the forward
 // observes ctx and shuts down when it cancels.
-func Open(ctx context.Context, cfg *rest.Config, namespace, agent string) (*Forward, error) {
+func OpenPort(ctx context.Context, cfg *rest.Config, namespace, agent string, podPort int) (*Forward, error) {
 	k8s, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("build kubernetes client: %w", err)
@@ -131,7 +148,7 @@ func Open(ctx context.Context, cfg *rest.Config, namespace, agent string) (*Forw
 	pf, err := portforward.NewOnAddresses(
 		dialer,
 		[]string{"127.0.0.1"},
-		[]string{fmt.Sprintf("%d:%d", localPort, HarnessHTTPPort)},
+		[]string{fmt.Sprintf("%d:%d", localPort, podPort)},
 		stopCh,
 		readyCh,
 		&outBuf,

@@ -80,11 +80,13 @@ func (f *conversationFlags) resolveTarget(ctx context.Context) (*k8s.Target, *k8
 
 func newConversationListCmd(f *conversationFlags) *cobra.Command {
 	var (
-		agent string
-		since time.Duration
-		limit int
-		token string
-		quiet bool
+		agent    string
+		since    time.Duration
+		limit    int
+		token    string
+		quiet    bool
+		expand   bool
+		fullText bool
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -137,7 +139,27 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 			tokenFn := makeTokenLookup(ctx, cfg, token)
 			results := conversation.FanOutList(ctx, cfg, targets, opts, tokenFn)
 			summaries, unreachable := conversation.MergeAndSummarize(results)
-			renderListTable(os.Stdout, summaries, f.allNamespaces)
+			if expand {
+				// Build the per-session entry map so renderListExpanded
+				// can attach the inline transcript under each summary
+				// header. Each FanOutResult's Entries cover ALL sessions
+				// for that agent; group by SessionID.
+				bySession := make(map[string][]conversation.Entry)
+				for _, r := range results {
+					if r.Err != nil {
+						continue
+					}
+					for _, e := range r.Entries {
+						if e.SessionID == "" {
+							continue
+						}
+						bySession[e.SessionID] = append(bySession[e.SessionID], e)
+					}
+				}
+				renderListExpanded(os.Stdout, summaries, bySession, fullText)
+			} else {
+				renderListTable(os.Stdout, summaries, f.allNamespaces)
+			}
 			renderUnreachableFooter(os.Stderr, unreachable)
 			return nil
 		},
@@ -152,6 +174,10 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 		"Override the per-agent bearer token (default: read from each agent's credentials Secret)")
 	cmd.Flags().BoolVar(&quiet, "quiet", false,
 		"Suppress informational stderr output (scope banner, unreachable footer)")
+	cmd.Flags().BoolVar(&expand, "expand", false,
+		"Render each session as a boxed card with the transcript inline (Option-A combined view)")
+	cmd.Flags().BoolVar(&fullText, "full-text", false,
+		"With --expand: don't truncate per-entry text at 500 chars")
 	return cmd
 }
 
@@ -177,15 +203,107 @@ func renderListTable(w *os.File, summaries []conversation.SessionSummary, showNa
 		fmt.Fprintln(tw, "SESSION ID\tAGENT\tSTARTED\tLAST ACTIVITY\tTURNS\tSOURCE")
 	}
 	for _, s := range summaries {
+		started := conversation.FormatTS(s.Started)
+		last := conversation.FormatTS(s.LastActivity)
 		if showNamespace {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-				s.Namespace, s.SessionID, s.Agent, s.Started, s.LastActivity, s.Turns, s.Source)
+				s.Namespace, shortSessionID(s.SessionID), s.Agent, started, last, s.Turns, s.Source)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\n",
-				s.SessionID, s.Agent, s.Started, s.LastActivity, s.Turns, s.Source)
+				shortSessionID(s.SessionID), s.Agent, started, last, s.Turns, s.Source)
 		}
 	}
 	_ = tw.Flush()
+}
+
+// shortSessionID returns the first 8 chars of a UUID-shaped session id
+// — same convention git uses for short SHAs. Full id is still printed
+// in the boxed transcript header (--expand) and in `ww conversation
+// show` output, so users can copy-paste the full thing when they need it.
+func shortSessionID(id string) string {
+	if len(id) < 8 {
+		return id
+	}
+	return id[:8]
+}
+
+// renderListExpanded renders each session as an Option-A box-drawn card:
+//
+//	┌─ <short-id> — <agent> · <turns> turns · <start> → <last> · <source>
+//	│
+//	│  HH:MM:SS  role (model):
+//	│    ...wrapped text...
+//	│
+//	└─────────────────────────────────────────────────────────────
+//
+// Per-entry text wraps at ~80 cols with continuation lines indented
+// under the role label. Each entry caps at 500 chars + ellipsis unless
+// fullText is set.
+func renderListExpanded(
+	w *os.File,
+	summaries []conversation.SessionSummary,
+	allEntries map[string][]conversation.Entry, // keyed by SessionID
+	fullText bool,
+) {
+	if len(summaries) == 0 {
+		fmt.Fprintln(w, "No conversation sessions found.")
+		return
+	}
+	for i, s := range summaries {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		started := conversation.FormatTSCompact(s.Started)
+		last := conversation.FormatTSCompact(s.LastActivity)
+		header := fmt.Sprintf("┌─ %s — %s · %d turns · %s → %s · %s",
+			shortSessionID(s.SessionID), s.Agent, s.Turns, started, last, s.Source)
+		fmt.Fprintln(w, header)
+		fmt.Fprintln(w, "│")
+		entries := allEntries[s.SessionID]
+		for _, e := range entries {
+			ts := conversation.FormatTSCompact(e.TS)
+			label := e.Role
+			if e.Model != nil && *e.Model != "" {
+				label = fmt.Sprintf("%s (%s)", e.Role, *e.Model)
+			}
+			fmt.Fprintf(w, "│  %s  %s:\n", ts, label)
+			if e.Text != nil {
+				text := *e.Text
+				const cap = 500
+				if !fullText && len(text) > cap {
+					text = text[:cap] + fmt.Sprintf(" […+%d chars]", len(*e.Text)-cap)
+				}
+				for _, ln := range wrapLines(text, 76) {
+					fmt.Fprintf(w, "│    %s\n", ln)
+				}
+			}
+			fmt.Fprintln(w, "│")
+		}
+		fmt.Fprintln(w, "└─────────────────────────────────────────────────────────────────────────────")
+	}
+}
+
+// wrapLines splits text at width-col boundaries on word boundaries
+// (best-effort — falls back to mid-word splits when a single word
+// exceeds width). Preserves explicit newlines from the source.
+func wrapLines(text string, width int) []string {
+	var out []string
+	for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+		if line == "" {
+			out = append(out, "")
+			continue
+		}
+		for len(line) > width {
+			brk := width
+			if i := strings.LastIndex(line[:brk], " "); i > 0 {
+				brk = i
+			}
+			out = append(out, line[:brk])
+			line = strings.TrimLeft(line[brk:], " ")
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 func renderUnreachableFooter(w *os.File, unreachable []conversation.FanOutResult) {
@@ -211,6 +329,7 @@ func newConversationShowCmd(f *conversationFlags) *cobra.Command {
 	var (
 		format string
 		token  string
+		follow bool
 	)
 	cmd := &cobra.Command{
 		Use:   "show <session-id>",
@@ -219,7 +338,10 @@ func newConversationShowCmd(f *conversationFlags) *cobra.Command {
 			"it and prints the conversation. Session ids are globally unique UUIDs;\n" +
 			"the CLI walks each agent in the namespace (or cluster, with -A) to find\n" +
 			"the owning agent so you don't have to specify it.\n\n" +
-			"Format options:\n" +
+			"With --follow / -f, prints the existing transcript and then live-tails\n" +
+			"new entries as they arrive (Server-Sent Events from the backend's\n" +
+			"/api/sessions/<id>/stream endpoint, mirroring `kubectl logs -f` shape).\n\n" +
+			"Format options (one-shot only; --follow is text-only):\n" +
 			"  text   — human-readable (default)\n" +
 			"  json   — single JSON document with the entries array\n" +
 			"  jsonl  — line-delimited JSON, one entry per line (script-friendly)",
@@ -261,7 +383,16 @@ func newConversationShowCmd(f *conversationFlags) *cobra.Command {
 				if len(match) == 0 {
 					continue
 				}
-				return renderSession(os.Stdout, match, format, r.Target, sessionID)
+				if err := renderSession(os.Stdout, match, format, r.Target, sessionID); err != nil {
+					return err
+				}
+				if follow {
+					if format != "text" && format != "" {
+						return fmt.Errorf("--follow requires --format=text (got %q)", format)
+					}
+					return followSession(ctx, cfg, r.Target, sessionID, tokenFn(r.Target))
+				}
+				return nil
 			}
 			return fmt.Errorf("session %s not found in any agent's conversation log within the current scope", sessionID)
 		},
@@ -270,7 +401,79 @@ func newConversationShowCmd(f *conversationFlags) *cobra.Command {
 		"Output format: text | json | jsonl")
 	cmd.Flags().StringVar(&token, "token", "",
 		"Override the per-agent bearer token (default: read from each agent's credentials Secret)")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false,
+		"After printing the transcript, live-tail new entries via SSE (mirrors `kubectl logs -f`)")
 	return cmd
+}
+
+// followSession opens an SSE stream against the OWNING agent's backend
+// container (port 8001 — different from harness's 8000 used by list/
+// show one-shots) and prints each envelope as it arrives. Returns when
+// the stream closes (server overrun event, connection drop) or ctx
+// cancels (Ctrl-C). Treats Ctrl-C as success — the user said done.
+func followSession(
+	ctx context.Context,
+	cfg *rest.Config,
+	target conversation.AgentTarget,
+	sessionID, token string,
+) error {
+	fwd, err := portforward.OpenPort(ctx, cfg, target.Namespace, target.Agent, portforward.BackendHTTPPort)
+	if err != nil {
+		return fmt.Errorf("port-forward to backend for SSE: %w", err)
+	}
+	defer fwd.Close()
+
+	stream, err := conversation.StreamSession(ctx, fwd.BaseURL, token, sessionID, func(err error) {
+		fmt.Fprintf(os.Stderr, "ww conversation watch: %v\n", err)
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(os.Stdout, "─── live ───")
+	for env := range stream {
+		renderEnvelope(os.Stdout, env)
+		if env.Type == "stream.overrun" {
+			fmt.Fprintln(os.Stderr, "ww conversation watch: server reported stream.overrun — disconnecting")
+			break
+		}
+	}
+	if ctx.Err() != nil {
+		// Ctrl-C is the normal exit; don't surface it as failure.
+		return nil
+	}
+	return nil
+}
+
+// renderEnvelope prints one streamed SSE envelope in the same compact
+// shape the one-shot show output uses (timestamp + role + indented
+// text), so a `--follow` run reads continuously with the prior history.
+//
+// Different envelope.Type values represent different things in the
+// session-stream protocol; the v1 implementation handles
+// `session.message` (the conversation entry shape) and falls back to a
+// generic dump for anything else so the user can see what's happening.
+func renderEnvelope(w *os.File, env conversation.StreamEnvelope) {
+	ts := conversation.FormatTSCompact(env.TS)
+	switch env.Type {
+	case "session.message":
+		role, _ := env.Payload["role"].(string)
+		text, _ := env.Payload["text"].(string)
+		model, _ := env.Payload["model"].(string)
+		label := role
+		if model != "" {
+			label = fmt.Sprintf("%s (%s)", role, model)
+		}
+		fmt.Fprintf(w, "[%s] %s:\n", ts, label)
+		for _, ln := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+			fmt.Fprintf(w, "  %s\n", ln)
+		}
+		fmt.Fprintln(w)
+	default:
+		// Surface non-message envelopes as a one-line annotation —
+		// useful for debugging stream contents but not noisy.
+		fmt.Fprintf(w, "[%s] (%s)\n", ts, env.Type)
+	}
 }
 
 func renderSession(w *os.File, entries []conversation.Entry, format string, target conversation.AgentTarget, sessionID string) error {
@@ -295,7 +498,9 @@ func renderSession(w *os.File, entries []conversation.Entry, format string, targ
 	case "text", "":
 		fmt.Fprintf(w, "Session %s — %s/%s — %d entries\n", sessionID, target.Namespace, target.Agent, len(entries))
 		if len(entries) > 0 {
-			fmt.Fprintf(w, "Range: %s → %s\n\n", entries[0].TS, entries[len(entries)-1].TS)
+			fmt.Fprintf(w, "Range: %s → %s\n\n",
+				conversation.FormatTS(entries[0].TS),
+				conversation.FormatTS(entries[len(entries)-1].TS))
 		}
 		for i := range entries {
 			e := &entries[i]
@@ -303,7 +508,7 @@ func renderSession(w *os.File, entries []conversation.Entry, format string, targ
 			if e.Model != nil && *e.Model != "" {
 				label = fmt.Sprintf("%s (%s)", e.Role, *e.Model)
 			}
-			fmt.Fprintf(w, "[%s] %s:\n", e.TS, label)
+			fmt.Fprintf(w, "[%s] %s:\n", conversation.FormatTS(e.TS), label)
 			if e.Text != nil {
 				lines := strings.Split(strings.TrimRight(*e.Text, "\n"), "\n")
 				for _, ln := range lines {
