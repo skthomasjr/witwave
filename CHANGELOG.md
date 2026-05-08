@@ -6,6 +6,19 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-05-08
+
+`ww send` and `ww tail` gain auto port-forward parity with the rest of the CLI — agents addressed by name route over a
+transparent in-process tunnel instead of requiring a manually-prepared `kubectl port-forward`. Extends the v0.18.0 →
+v0.20.0 `ww conversation` port-forward-first posture across the remaining direct-to-agent commands so agents can talk
+by name everywhere.
+
+### Added
+
+- **ww**: `ww send` and `ww tail` automatically open a port-forward to the targeted agent's harness, matching the
+  auto-pf behaviour `ww conversation` already provides. Agents can now be addressed by name from these commands
+  without a pre-existing tunnel; `-n <ns>` / `-A` / `--agent <name>` scoping is unchanged.
+
 ## [0.20.0] — 2026-05-08
 
 Completes the `ww conversation` surface with `list --follow` (`-f`) — the multi-session counterpart to v0.19.0's
