@@ -62,10 +62,8 @@ export interface ToolUseEvent {
   payload: Record<string, unknown>;
 }
 
-export interface UseConversationStreamOptions extends Pick<
-  UseEventStreamOptions,
-  "token" | "autoConnect" | "fetchImpl" | "initialDelayMs" | "maxDelayMs"
-> {
+export interface UseConversationStreamOptions
+  extends Pick<UseEventStreamOptions, "token" | "autoConnect" | "fetchImpl" | "initialDelayMs" | "maxDelayMs"> {
   // Maximum number of turns to retain. The backlog call owns history;
   // the stream only supplies live tail, so a modest cap is fine.
   maxTurns?: number;
