@@ -20,6 +20,8 @@ type sendFlags struct {
 	promptFile string
 	backendID  string
 	contextID  string
+	namespace  string
+	token      string
 }
 
 func newSendCmd() *cobra.Command {
@@ -33,7 +35,6 @@ func newSendCmd() *cobra.Command {
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cc *cobra.Command, args []string) error {
 			ctx := cc.Context()
-			c := ClientFromCtx(ctx)
 			out := OutFromCtx(ctx)
 
 			agent := args[0]
@@ -46,15 +47,33 @@ func newSendCmd() *cobra.Command {
 				return logicalErr(fmt.Errorf("empty prompt"))
 			}
 
-			// Resolve agent target: look up harness /agents directory,
-			// but also accept a direct agent name used as a path segment
-			// for harnesses that proxy /agents/<name>/ (dashboard does).
-			// For a pure harness we POST to "/" and include a metadata
-			// field so the harness can route; since /agents gives us the
-			// harness card too, default to POST to base.
-			targetURL, err := resolveSendURL(ctx, c, agent)
-			if err != nil {
-				return handleErr(out, err)
+			// Pick the HTTP client. If the user passed --base-url
+			// (overriding the root default), respect that — they're
+			// pointing at a manual port-forward or in-cluster URL.
+			// Otherwise auto-port-forward to the named agent's harness
+			// using the same helper `ww conversation` uses.
+			c := ClientFromCtx(ctx)
+			if !explicitBaseURLSet(cc) {
+				ac, cleanup, err := openAgentClient(ctx, K8sFromCtx(ctx), sf.namespace, agent, sf.token)
+				if err != nil {
+					return handleErr(out, err)
+				}
+				defer cleanup()
+				c = ac
+			}
+
+			// When auto-port-forwarded the harness IS the agent — POST
+			// directly to "/". When --base-url points at a directory-
+			// style harness (e.g. dashboard proxy), look up /agents and
+			// route to the per-agent path.
+			var targetURL string
+			if !explicitBaseURLSet(cc) {
+				targetURL = "/"
+			} else {
+				targetURL, err = resolveSendURL(ctx, c, agent)
+				if err != nil {
+					return handleErr(out, err)
+				}
 			}
 
 			msgID := randomHex(8)
@@ -112,7 +131,23 @@ func newSendCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sf.promptFile, "prompt-file", "", "read prompt text from this file (- for stdin)")
 	cmd.Flags().StringVar(&sf.backendID, "backend", "", "route to a specific backend (claude|codex|gemini)")
 	cmd.Flags().StringVar(&sf.contextID, "context", "", "reuse this A2A contextId (default: random)")
+	cmd.Flags().StringVarP(&sf.namespace, "namespace", "n", "",
+		"Agent's namespace (default: kubeconfig context's namespace, falling back to 'witwave')")
+	cmd.Flags().StringVar(&sf.token, "send-token", "",
+		"Override the agent's CONVERSATIONS_AUTH_TOKEN (default: read from <agent>-claude Secret)")
 	return cmd
+}
+
+// explicitBaseURLSet reports whether the user passed --base-url on
+// this invocation (as opposed to inheriting it from config / leaving
+// it unset). When true we keep the existing manual-port-forward flow;
+// when false we auto-port-forward via openAgentClient.
+func explicitBaseURLSet(cmd *cobra.Command) bool {
+	f := cmd.Root().PersistentFlags().Lookup("base-url")
+	if f == nil {
+		f = cmd.InheritedFlags().Lookup("base-url")
+	}
+	return f != nil && f.Changed
 }
 
 func resolveSendURL(ctx context.Context, c any, agent string) (string, error) {

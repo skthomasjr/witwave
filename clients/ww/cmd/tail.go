@@ -25,6 +25,8 @@ type tailFlags struct {
 	pretty      bool
 	lastEventID string
 	types       []string
+	namespace   string
+	token       string
 }
 
 func newTailCmd() *cobra.Command {
@@ -40,10 +42,26 @@ func newTailCmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(cc.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			c := ClientFromCtx(ctx)
 			out := OutFromCtx(ctx)
 			if tf.session != "" && tf.agent == "" {
 				return logicalErr(fmt.Errorf("--session requires --agent"))
+			}
+
+			// Pick the HTTP client. If --base-url is explicitly set,
+			// honour it (manual port-forward / in-cluster URL). When
+			// --agent is set without --base-url, auto-port-forward to
+			// that agent's harness — same shape as `ww send` and
+			// `ww conversation`. With neither, fall back to the root's
+			// pre-built client (talks to whatever default base URL
+			// config has).
+			c := ClientFromCtx(ctx)
+			if tf.agent != "" && !explicitBaseURLSet(cc) {
+				ac, cleanup, err := openAgentClient(ctx, K8sFromCtx(ctx), tf.namespace, tf.agent, tf.token)
+				if err != nil {
+					return handleErr(out, err)
+				}
+				defer cleanup()
+				c = ac
 			}
 			typeFilter := make(map[string]struct{})
 			for _, t := range tf.types {
@@ -101,11 +119,15 @@ func newTailCmd() *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVar(&tf.agent, "agent", "", "target a specific agent by name (from /agents)")
+	cmd.Flags().StringVar(&tf.agent, "agent", "", "target a specific agent by name (auto-port-forwards when --base-url isn't set)")
 	cmd.Flags().StringVar(&tf.session, "session", "", "session id for per-session drill-down (requires --agent)")
 	cmd.Flags().BoolVar(&tf.pretty, "pretty", false, "human-readable event lines (default: JSON lines)")
 	cmd.Flags().StringVar(&tf.lastEventID, "last-event-id", "", "resume from this event id")
 	cmd.Flags().StringSliceVar(&tf.types, "types", nil, "comma-separated list of event types to emit")
+	cmd.Flags().StringVarP(&tf.namespace, "namespace", "n", "",
+		"Agent's namespace (default: kubeconfig context's namespace, falling back to 'witwave')")
+	cmd.Flags().StringVar(&tf.token, "tail-token", "",
+		"Override the agent's CONVERSATIONS_AUTH_TOKEN (default: read from <agent>-claude Secret)")
 	return cmd
 }
 
