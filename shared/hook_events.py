@@ -534,7 +534,7 @@ def schedule_event_post(
                     # keyed by id; cleaned up via add_done_callback.
                     _INFLIGHT_CF.add(cf)
 
-                    def _done_cb(_fut: concurrent.futures.Future[Any]) -> None:
+                    def _done_cb(_fut: _cf_mod.Future[Any]) -> None:
                         # #1580: mutate _INFLIGHT_CF under _inflight_lock so
                         # the cap check (which reads len() under the same
                         # lock) can't race the discard and over-admit or
