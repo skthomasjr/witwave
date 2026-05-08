@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -159,6 +160,17 @@ func newConversationListCmd(f *conversationFlags) *cobra.Command {
 						bySession[e.SessionID] = append(bySession[e.SessionID], e)
 					}
 				}
+				// Flip session order to oldest-first for --expand. The
+				// default newest-first ordering from MergeAndSummarize
+				// gives glance value in the table view, but pairs badly
+				// with the chronological-within-session entry order in
+				// the boxed transcripts: scrolling down moves time
+				// backwards across sessions but forwards within each
+				// one. Reversing the session list here makes scroll-down
+				// uniformly advance time. Plays well with --follow (new
+				// turns append at the bottom) and matches kubectl-logs /
+				// journalctl mental model.
+				slices.Reverse(summaries)
 				renderListExpanded(os.Stdout, summaries, bySession, fullText)
 			} else {
 				renderListTable(os.Stdout, summaries, f.allNamespaces)
