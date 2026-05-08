@@ -81,11 +81,11 @@ func (f *conversationFlags) resolveTarget(ctx context.Context) (*k8s.Target, *k8
 
 func newConversationListCmd(f *conversationFlags) *cobra.Command {
 	var (
-		agent    string
-		since    time.Duration
-		limit    int
-		token    string
-		quiet    bool
+		agent      string
+		since      time.Duration
+		limit      int
+		token      string
+		quiet      bool
 		expand     bool
 		fullText   bool
 		follow     bool
