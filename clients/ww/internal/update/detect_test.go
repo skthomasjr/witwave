@@ -25,14 +25,35 @@ func TestDetectInstallMethod(t *testing.T) {
 			want: InstallMethodBrew,
 		},
 		{
+			name: "homebrew apple silicon caskroom",
+			exe:  "/opt/homebrew/Caskroom/ww/0.18.0/ww",
+			want: InstallMethodBrew,
+		},
+		{
 			name: "homebrew intel cellar",
 			exe:  "/usr/local/Cellar/ww/0.4.0-beta.5/bin/ww",
+			want: InstallMethodBrew,
+		},
+		{
+			name: "homebrew intel caskroom",
+			exe:  "/usr/local/Caskroom/ww/0.18.0/ww",
 			want: InstallMethodBrew,
 		},
 		{
 			name: "linuxbrew default location",
 			exe:  "/home/linuxbrew/.linuxbrew/Cellar/ww/0.4.0-beta.5/bin/ww",
 			want: InstallMethodBrew,
+		},
+		{
+			name: "linuxbrew caskroom",
+			exe:  "/home/linuxbrew/.linuxbrew/Caskroom/ww/0.18.0/ww",
+			want: InstallMethodBrew,
+		},
+		{
+			name:   "stale curl marker inside brew caskroom is overridden",
+			exe:    "/opt/homebrew/Caskroom/ww/0.18.0/ww",
+			marker: "installer=curl\nversion=v0.19.0\nchannel=stable\n",
+			want:   InstallMethodBrew, // brew prefix wins over the marker
 		},
 		{
 			name: "go install with default GOPATH",

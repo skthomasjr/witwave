@@ -280,20 +280,48 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		return nil
 
 	case InstallMethodCurl:
-		// Re-run the canonical install pipeline. The script is
-		// idempotent and self-contained — it'll pick up the latest
-		// stable, verify the SHA256, and atomically replace the
-		// running binary at the same install location.
+		// Re-run the canonical install pipeline into the SAME directory
+		// as the running binary. The script is idempotent and
+		// self-contained — it picks up the latest stable, verifies the
+		// SHA256, and atomically replaces the binary in place.
 		//
-		// No --install-dir override here: a curl-installed binary lives
-		// where install.sh's default put it (or where the user passed
-		// --prefix originally; not currently captured in the marker file).
-		// Re-running with no override matches that original choice for
-		// default installs.
-		if err := runCurlInstallScript(ctx, "", stdout, stderr); err != nil {
+		// We resolve os.Executable() + EvalSymlinks here (same as the
+		// Binary path below) and pass --install-dir explicitly. Without
+		// this override install.sh defaults to /usr/local/bin, which
+		// can deposit a phantom binary that's not on PATH while leaving
+		// the running ww (e.g. one in $HOME/.local/bin) untouched.
+		// Resolving from os.Executable means "upgrade what's actually
+		// running" instead of "drop a copy in the script's default
+		// location".
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(stderr,
+				"ww update: couldn't resolve the running binary path (%v) — "+
+					"falling back to install.sh's default install location:\n", err)
+		}
+		installDir := ""
+		if err == nil {
+			if real, errEv := filepath.EvalSymlinks(exe); errEv == nil {
+				exe = real
+			}
+			installDir = filepath.Dir(filepath.Clean(exe))
+			if errPerm := dirWritable(installDir); errPerm != nil {
+				fmt.Fprintf(stderr,
+					"ww update: install directory %q is not writable by this user (%v).\n",
+					installDir, errPerm)
+				fmt.Fprintln(stderr, "  Re-run with sudo: `sudo ww update`,")
+				fmt.Fprintln(stderr, "  or move the binary to a directory you own and run `ww update` again.")
+				return nil
+			}
+		}
+		if err := runCurlInstallScript(ctx, installDir, stdout, stderr); err != nil {
 			return err
 		}
-		fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
+		if installDir != "" {
+			fmt.Fprintf(stderr, "Upgraded in place at %s. Run your ww command again to use the new version.\n", installDir)
+		} else {
+			fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
+		}
 		return nil
 
 	case InstallMethodBinary:

@@ -102,12 +102,14 @@ func (m InstallMethod) UpgradeCommand() string {
 // fallback path is always "tell the user to download from the releases
 // page."
 //
-// Detection order: curl-installer marker (most specific — explicit
-// per-binary metadata) → Homebrew prefix → Go install location → Binary
-// fallback. The curl marker wins over directory heuristics because a
-// user might `--prefix=/usr/local` via the script, which would
-// otherwise look indistinguishable from a hand-extracted tarball
-// dropped into /usr/local/bin.
+// Detection order: Homebrew prefix (matched against BOTH the symlink
+// path and the resolved real path) → curl-installer marker → Go install
+// location → Binary fallback. Brew wins over the marker because a prior
+// buggy `ww update` may have dropped a `.ww.install-info` file inside a
+// Caskroom or Cellar directory; the brew-managed location is the
+// authoritative classification, and the marker in that case is a stale
+// remnant we should ignore on subsequent runs so `brew upgrade ww` is
+// what runs.
 func DetectInstallMethod(
 	getexec func() (string, error),
 	getenv func(string) string,
@@ -126,46 +128,87 @@ func DetectInstallMethod(
 	if err != nil {
 		return InstallMethodBinary
 	}
-	// EvalSymlinks so /opt/homebrew/bin/ww (symlink) resolves to
-	// /opt/homebrew/Cellar/ww/<version>/bin/ww. We want to classify
-	// based on the real location, not the symlink, because users may
-	// have their own symlinks for the Go install path too.
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = real
-	}
 	exe = filepath.Clean(exe)
+	// EvalSymlinks so /opt/homebrew/bin/ww (symlink) resolves to
+	// /opt/homebrew/Caskroom/ww/<version>/ww (cask) or
+	// /opt/homebrew/Cellar/ww/<version>/bin/ww (formula). We want to
+	// classify based on the real location, not the symlink, because
+	// users may have their own symlinks for the Go install path too.
+	// We keep BOTH paths around because either one matching a brew
+	// prefix is sufficient — a broken Cellar/Caskroom symlink
+	// shouldn't make us miss the obvious /opt/homebrew/bin/ entry.
+	resolved := exe
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		resolved = filepath.Clean(real)
+	}
+
+	// Brew classification has two tiers:
+	//
+	//   1. UNAMBIGUOUS brew dirs — Caskroom and Cellar live under brew
+	//      prefixes that nothing else writes into. A binary resolved
+	//      into one of these is brew, full stop. Checked BEFORE the
+	//      curl marker because a prior buggy `ww update` may have
+	//      dropped `.ww.install-info` inside one of these dirs; the
+	//      brew-managed location is authoritative and the stale marker
+	//      should be ignored.
+	//
+	//   2. AMBIGUOUS bin dirs — /opt/homebrew/bin, /usr/local/bin, and
+	//      $HOME/.linuxbrew/bin can hold either brew-managed symlinks
+	//      OR install.sh-deposited binaries. Checked AFTER the curl
+	//      marker so a real curl install (which drops the marker) is
+	//      classified correctly. With no marker, default to brew —
+	//      these dirs are most commonly populated by brew.
+	unambiguousBrew := []string{
+		"/opt/homebrew/Caskroom/",
+		"/opt/homebrew/Cellar/",
+		"/usr/local/Caskroom/",
+		"/usr/local/Cellar/",
+		filepath.Join(getenv("HOME"), ".linuxbrew/Caskroom") + string(filepath.Separator),
+		filepath.Join(getenv("HOME"), ".linuxbrew/Cellar") + string(filepath.Separator),
+		"/home/linuxbrew/.linuxbrew/Caskroom/",
+		"/home/linuxbrew/.linuxbrew/Cellar/",
+	}
+	for _, p := range unambiguousBrew {
+		if p == "" || p == string(filepath.Separator) {
+			continue
+		}
+		if strings.HasPrefix(exe, p) || strings.HasPrefix(resolved, p) {
+			return InstallMethodBrew
+		}
+	}
 
 	// Curl-installer marker: a sibling .ww.install-info file with
-	// `installer=curl`. Checked before any directory heuristic — the
-	// marker is explicit metadata, every other branch is inference.
-	if data, err := readfile(filepath.Join(filepath.Dir(exe), markerFilename)); err == nil {
+	// `installer=curl`. Checked against the resolved path so a marker
+	// next to the real binary is found even when invoked through a
+	// symlink. Doesn't shadow Caskroom/Cellar (already handled above).
+	if data, err := readfile(filepath.Join(filepath.Dir(resolved), markerFilename)); err == nil {
 		if markerInstaller(data) == "curl" {
 			return InstallMethodCurl
 		}
 	}
 
-	// Brew prefixes — ordered most-specific-first so /opt/homebrew/bin
-	// doesn't match before /opt/homebrew/Cellar. Both pre- and
-	// post-symlink-eval paths are checked because EvalSymlinks can fail
-	// on some filesystems.
-	brewPrefixes := []string{
-		"/opt/homebrew/Cellar/",
+	// Ambiguous brew bin dirs. Hit only when the marker check above
+	// didn't classify as curl — preserves the marker-wins-in-/usr/local/bin
+	// behaviour for genuine curl installs while keeping the
+	// brew-symlink-with-broken-Cellar case classified as brew.
+	ambiguousBrew := []string{
 		"/opt/homebrew/bin/",
-		"/usr/local/Cellar/",
 		"/usr/local/bin/",
-		filepath.Join(getenv("HOME"), ".linuxbrew/Cellar") + string(filepath.Separator),
 		filepath.Join(getenv("HOME"), ".linuxbrew/bin") + string(filepath.Separator),
-		"/home/linuxbrew/.linuxbrew/Cellar/",
 		"/home/linuxbrew/.linuxbrew/bin/",
 	}
-	for _, p := range brewPrefixes {
+	for _, p := range ambiguousBrew {
 		if p == "" || p == string(filepath.Separator) {
 			continue
 		}
-		if strings.HasPrefix(exe, p) {
+		if strings.HasPrefix(exe, p) || strings.HasPrefix(resolved, p) {
 			return InstallMethodBrew
 		}
 	}
+
+	// From here on we classify based on the resolved real path —
+	// matches the original behaviour for the go-install heuristic.
+	exe = resolved
 
 	// `go install` locations. GOBIN wins if set; otherwise GOPATH/bin;
 	// otherwise the default $HOME/go/bin.
