@@ -6,6 +6,36 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.1] — 2026-05-08
+
+Patch release unifying the `/health` endpoint surface across the harness, claude/codex/gemini backends, and MCP servers
+so callers can rely on one `/health/live` + `/health/ready` contract. Companion `ww` CLI fixes catch up with the new
+endpoint shape, three latent F821 ruff errors in `harness`, `shared`, and `backends/claude` are resolved by promoting
+late-imports to module scope, and zora's `dispatch-team` active-liveness probe is wired through to a working
+`/.well-known/agent.json` endpoint (the initial `/health` target 404'd on agents that don't expose the harness endpoint
+directly).
+
+### Fixed
+
+- **harness, backends, mcp**: Unify the `/health` surface across the harness, the claude/codex/gemini backends, and the
+  MCP servers (kubernetes, helm, prometheus). Replaces ad-hoc per-tier endpoints with a consistent `/health/live` +
+  `/health/ready` shape so callers (ww, zora's active probe) can rely on one contract.
+- **harness, shared, backends/claude**: Resolve F821 ruff errors by promoting late/conditional imports
+  (`threading`, `pathlib`, executor forward-ref types) to module scope. Latent in all three modules — the imports were
+  reachable at runtime but broke type-hint resolution and tripped CI's ruff gate.
+- **ww**: `ww status` probe targets `/health/live` (the bare `/health` returned 404 after the unification above).
+- **ww**: `ww send --async` tail hint points at `ww conversation list`, not `show` — `show` is single-session whereas
+  the async-send flow wants the multi-session list.
+
+### Agent identity
+
+- **zora**: `dispatch-team` Step 2d uses an active `/.well-known/agent.json` liveness probe instead of `/health` (the
+  latter 404'd on agents that don't surface the harness endpoint directly). The probe itself was added in this same
+  release window. Companion tweak: kira's `docs-research` cadence floor tightened from 7d → 3d so documentation drift
+  gets caught more frequently.
+- **finn**: Add the missing `.claude/settings.json` so finn's Claude Code harness boots with a real config instead of
+  silently no-opping.
+
 ## [0.23.0] — 2026-05-08
 
 Adds non-blocking send mode for `ww send` so callers can queue prompts without waiting on the LLM response, and caps
