@@ -6,6 +6,61 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-05-08
+
+`ww` gains a `conversation` subcommand for cross-agent transcript inspection. Two `fix:` items close the v0.17.0
+fallout: a Go 1.26 gofmt regression that had `CI — ww CLI` red across three commits, and the `go-git/v5` CVE bump
+evan flagged on his risk-work sweep. The release-pipeline gate itself hardens — iris's pre-flight CI check now
+covers every workflow's latest run on `main` (not just runs on the release commit), and the post-tag watch is
+mandatory with a structured `[release-workflow-failed]` reply zora's Priority 1 handler can act on.
+
+### Added
+
+- **ww**: `ww conversation list` and `ww conversation show <session-id>` read agent LLM-exchange transcripts
+  (prompt, reply, tool calls, model, tokens, trace ids) from each agent's harness `/conversations` endpoint.
+  CLI handles port-forward + auth plumbing automatically — one command fans out across every agent in scope.
+  `-n <ns>`/`-A` follow the DESIGN.md NS-1/NS-2/NS-3 convention; `--agent <name>` filters within scope; `--since`
+  and `--limit` for `list`, `--format=text|json|jsonl` for `show`. Per-agent bearer comes from the
+  `<agent>-claude` Secret's `CONVERSATIONS_AUTH_TOKEN` key with `--token` override. Partial-failure UX: an
+  unreachable agent doesn't kill the list — what's reachable renders, with a footer naming the unreachable
+  ones and why. Three new internal packages back this: `internal/portforward/` (generic SPDY port-forward
+  helper, ephemeral local port via `:0`), `internal/conversation/` (typed client over `/conversations`,
+  fan-out, `DiscoverAgents` via `dynamic.NewForConfig`), and `cmd/conversation.go` (cobra wiring). Live-tail
+  via SSE deferred to v2 (lives on backend port 8001, not harness 8000; second port-forward shape required).
+
+### Fixed
+
+- **ww**: `shellQuoteSingle`'s doc comment rewritten to describe the POSIX escape sequence in prose rather
+  than embed the backtick-wrapped `'\''` literal, which Go 1.26's gofmt was silently normalising to a Unicode
+  smart-quote on every run. Closes the recurring `CI — ww CLI` failure that had been red since `e1e97efe`
+  (2026-05-07's `ww update` self-upgrade landing). Function body, behaviour, and tests unchanged.
+- **security**: `github.com/go-git/go-git/v5` bumped 5.13.2 → 5.18.0 (clients/ww), closing the three Medium
+  CVEs evan flagged on his risk-work sweep. Completes evan's auto-fix WIP that stalled mid-bump on 2026-05-08
+  before `go mod tidy` ran.
+
+### Agent identity
+
+- **iris**: release skill's pre-flight CI gate switches from "runs on this commit" to "latest run per
+  workflow on `main`" — path-filtered workflows (e.g. `CI — ww CLI` only fires on `clients/ww/**` changes)
+  no longer slip past the gate when the release commit doesn't trigger them. Closes the exact gap that let
+  v0.17.0 cut on 2026-05-07 while `CI — ww CLI` had been red for ~1h45m on three earlier commits. Step 11
+  watch-to-conclusion is now mandatory: the skill DOES NOT return success until every release workflow
+  concludes; failures surface as a structured `[release-workflow-failed]` reply listing what published and
+  what didn't. Iris does not auto-retry the failed workflow, doesn't delete the tag, doesn't try to recover
+  — the contract is iris-reports / zora-decides.
+- **zora**: "Never leave a broken build" load-bearing principle added right after Team Mission. Frames red
+  CI as the team's fire alarm, outranking every other priority including critical CVEs. Author-agnostic;
+  human commits and peer commits get the same treatment. Especially after a release: red CI on the next
+  commit poisons every subsequent release until fixed. Extended to cover post-tag release-workflow failures
+  with the same fire-alarm framing — freeze cadence, redirect to fix, surface visibly via `escalations.md`,
+  hold release-warranted. `dispatch-team` Priority 1 grows two new handlers: red-CI auto-dispatches evan
+  with the failing-job log + breaking commit (capped at 2 attempts before hard escalation), and failed-
+  release-workflow branches into transient-infra (ask iris to `gh run rerun --failed`) vs real-bug-in-source
+  (dispatch evan, then either iris re-run or cut vX.Y.Z+1). Stuck-peer escalation becomes time-bounded
+  (T+30m iris auto-recovery, T+1h `[needs-human]` surface, T+2h pause-mode) so a single stalled peer can't
+  freeze the team for hours waiting on human resolution. CI check now iterates `git rev-list v<latest>..origin/main`
+  so failures on any commit since the latest tag count as red, regardless of how many commits later HEAD is.
+
 ## [0.17.0] — 2026-05-07
 
 `ww` gains a working self-upgrade path for standalone-binary installs and an "all containers, prefixed" default for
