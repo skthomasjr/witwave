@@ -191,7 +191,7 @@ For each peer, compute `time-since-last-fire`. If it exceeds the floor in CLAUDE
 peer with a routine task in their domain. Floors:
 
 - evan `bug-work` — 3h (tightened from 6h on 2026-05-07; bug-class drainage drives release velocity)
-- evan `risk-work` — 8h (tightened from 12h; security-class only — reliability/performance/observability live with finn)
+- evan `risk-work` — 8h (all five risk categories: security, reliability, performance, observability, maintainability — last is flag-only)
 - nova `code-cleanup` — 8h (tightened from 12h)
 - kira `docs-cleanup` — 6h (tightened from 24h on 2026-05-07; docs drift on every team commit)
 - kira `docs-research` — 7d

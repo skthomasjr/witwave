@@ -153,30 +153,23 @@ Gap sources you care about (the find phase enumerates each):
       JSON output shape) that the dashboard doesn't surface is a gap on the dashboard side.
       Dashboard is currently lower-priority (relatively unused), so dashboard-parity gaps stay at
       `[pending]` longer than operator-parity gaps — they accrue but don't urgent-fire.
-12. **Reliability mitigations missing.** From the team's broader risk taxonomy (root-level
-    `.claude/skills/risk-discover.md` defines five risk categories — security, reliability,
-    maintainability, performance, observability — but evan's deployed `risk-work` covers ONLY security).
-    Reliability gaps surface as: external calls missing timeouts / retries / circuit-breaking; resource
-    open without `defer Close()`; silent degradation paths with no fallback. **These are gaps because the
-    mitigation that should be there isn't.** The fill is to add the missing protection.
-13. **Performance mitigations missing.** Unbounded growth (queues, caches, in-memory stores with no cap
-    or eviction); operations that scale linearly with N where O(1) is feasible from sibling
-    implementations; blocking calls in async paths. The fill is to add the bound / index / async wrap.
-14. **Observability mitigations missing.** Silent failures (errors caught and dropped without log); error
-    paths that swallow context (no structured fields); critical control-flow with no metric counter.
-    The fill is to add the log / metric / context-bearing error wrap.
 
-These fourteen categories cover the wide-scope mandate. The `gap-work` skill enumerates each as a separate
+These eleven categories cover finn's mandate. The `gap-work` skill enumerates each as a separate
 candidate-source pass within one run.
 
-**Why categories 12-14 are finn's, not evan's.** evan's `risk-work` is narrowly scoped to security
-(CVE / secrets / insecure-pattern analyzers — `govulncheck`, `pip-audit`, `gitleaks`, `trivy`, `bandit`,
-`gosec`). The other four categories from the root risk taxonomy (reliability, maintainability,
-performance, observability) historically had no deployed-agent home. Reliability / performance /
-observability are naturally "missing mitigation" framings — fits finn's lens. **Maintainability** stays
-out: "deeply coupled" / "duplicated logic" is structural-debt territory, closer to a future architecture
-agent or a refactor pass than to a single per-call-site fill. Don't auto-fill maintainability findings;
-log them at most.
+**What's NOT a gap — risk vs. gap distinction.** Reliability mitigations (missing timeouts / retries /
+circuit-breakers / `defer Close()`), performance mitigations (unbounded growth / blocking-in-async /
+poor-scaling ops), and observability mitigations (silent failures / swallowed error context / missing
+metric counters) look superficially like "missing functionality" but they're **risks**, not gaps —
+the code works correctly today; it's fragile under foreseeable conditions. Those four categories
+(reliability, performance, observability, plus security) live in evan's broadened `risk-work`. The
+fifth risk category (maintainability) is also evan's lane but stays flag-only — structural refactors
+exceed per-call-site fix scope and will eventually move to a future architecture agent.
+
+The clean line: **finn fills what's missing per existing claims** (a doc says X exists, a sibling has X,
+a test refs X-but-X-isn't-there). **evan addresses what's wrong or fragile** (bugs that break on input,
+risks that break under load). Don't reach into evan's lane — if you spot a missing-timeout / unbounded-cache /
+silent-failure, log it to memory and let evan / zora handle the dispatch. Same for finding a CVE in a dep.
 
 ## Priority subsystems
 

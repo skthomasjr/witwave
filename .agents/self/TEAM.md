@@ -4,10 +4,11 @@ The `witwave-ai/witwave` repo is maintained by a team of six autonomous agents. 
 (trunk-based development), coordinate via A2A (agent-to-agent JSON-RPC), and ship continuously — many small high-quality
 releases per day rather than infrequent large ones.
 
-Each agent owns one substrate. **Zora** decides what work happens when. **Evan** finds and fixes correctness bugs and
-security risks. **Nova** keeps the code internally clean. **Kira** keeps the documentation accurate and current.
-**Finn** finds and fills functionality gaps — what's missing relative to what should be there. **Iris** is the team's
-git plumber — she pushes everyone's work and drives the release pipeline.
+Each agent owns one substrate. **Zora** decides what work happens when. **Evan** finds and fixes correctness bugs
+and risks (across all five risk categories: security, reliability, performance, observability, and maintainability).
+**Nova** keeps the code internally clean. **Kira** keeps the documentation accurate and current. **Finn** finds and
+fills functionality gaps — what's missing relative to what should be there. **Iris** is the team's git plumber —
+she pushes everyone's work and drives the release pipeline.
 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
@@ -20,11 +21,14 @@ The team's coordinator. She runs a continuous decision loop driven by a 30-minut
 who works on what next via call-peer, and decides when accumulated commits + green CI warrant a release. She doesn't
 write code — she dispatches the right peer at the right time. (`.agents/self/zora/`)
 
-### Evan — code defects
+### Evan — code defects + risks
 
-Finds and fixes code defects. Two skills: `bug-work` (correctness defects — unchecked errors, null derefs, race smells,
-format-string mismatches) and `risk-work` (security defects — CVEs in dependencies, secrets in source, insecure
-patterns). His fixes pass through a strict fix-bar; risky candidates flag for human review instead of auto-fixing.
+Finds and fixes code defects and risks. Two skills: `bug-work` (correctness defects — unchecked errors, null derefs,
+format-string mismatches, idempotency gaps) and `risk-work` (code that works today but is fragile under foreseeable
+conditions — five categories: security CVEs / secrets / insecure patterns, reliability missing-timeouts /
+no-retries / silent-degradation, performance unbounded-growth / blocking-in-async, observability silent-failures /
+swallowed-error-context, plus maintainability deep-coupling / undocumented-invariants which is flag-only).
+His fixes pass through a strict fix-bar; risky candidates flag for human review instead of auto-fixing.
 (`.agents/self/evan/`)
 
 ### Nova — code hygiene
@@ -41,13 +45,17 @@ validates prose against current code state (`docs-verify`), refreshes forward-lo
 
 ### Finn — functionality gaps
 
-Finds and fills what's _missing_ relative to what should be there. Fourteen gap-source categories per run —
+Finds and fills what's _missing_ relative to what should be there. Eleven gap-source categories per run —
 doc-vs-code promises, untested public APIs, TODO/FIXME triage, architectural sibling-pattern gaps, convention drift,
-operator↔helm-chart parity, CLI↔dashboard parity, plus reliability / performance / observability mitigations
-absorbed from the broader risk taxonomy that evan's security-only `risk-work` doesn't cover. Single skill `gap-work`,
-single-pass shape parallel to evan's. **Risk-tier 1-10 ladder** is the load-bearing autonomous-safety knob — starts
-at tier 1 (cosmetic / orphan removal, near-zero blast) and walks up `1 → 3 → 5 → 7 → 9` only as each tier's gap pool
-exhausts clean. Bolder fills happen later, after low-tier territory is verified safe. (`.agents/self/finn/`)
+operator↔helm-chart parity, CLI↔dashboard parity, environment-variable claims, helper-module unfinished surface,
+configuration claims vs operator behavior, missing error handling. Single skill `gap-work`, single-pass shape
+parallel to evan's. **Risk-tier 1-10 ladder** is the load-bearing autonomous-safety knob — starts at tier 1
+(cosmetic / orphan removal, near-zero blast) and walks up `1 → 3 → 5 → 7 → 9` only as each tier's gap pool
+exhausts clean. Bolder fills happen later, after low-tier territory is verified safe.
+
+Reliability / performance / observability mitigations are NOT finn's lane — those are **risks**, not gaps,
+and live in evan's broadened `risk-work`. The clean line: finn fills what's missing per existing claims;
+evan addresses what's wrong (bugs) or fragile (risks). (`.agents/self/finn/`)
 
 ### Iris — git plumbing + releases
 
@@ -97,8 +105,6 @@ The team is designed to grow. These roles aren't built yet but are queued in the
 tentative and likely to be revisited before scaffolding. **Listed in recommended implementation order** — earlier
 entries are closer to existing patterns (lower build risk, faster ROI); later entries are more speculative or depend on
 the team being more mature first.
-
-### ~~1. gap-fixer~~ — **shipped 2026-05-08 as Finn** (see "current team" above)
 
 ### 1. devops — likely **otto** or **dale**
 
