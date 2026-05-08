@@ -50,8 +50,7 @@ dashboard:
   # Non-secret values only. The harness bearer token goes through the
   # separate harnessBearerTokenSecret block below — a plain
   # `kubectl get cm` must not leak it.
-  runtimeConfig:
-    {}
+  runtimeConfig: {}
     # # External trace backend URL (Jaeger / Tempo / Grafana). Empty
     # # disables the OTelTraces view. Must be same-origin OR operators
     # # must set traceApiAllowCrossOrigin=true AND widen the dashboard
