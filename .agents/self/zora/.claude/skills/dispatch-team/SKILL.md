@@ -195,7 +195,7 @@ peer with a routine task in their domain. Floors:
   last is flag-only)
 - nova `code-cleanup` — 8h (tightened from 12h)
 - kira `docs-cleanup` — 6h (tightened from 24h on 2026-05-07; docs drift on every team commit)
-- kira `docs-research` — 7d
+- kira `docs-research` — 3d (tightened from 7d on 2026-05-08; AI/ML space moves fast enough to warrant)
 - finn `gap-work` — 6h (gap-fixer; risk-tier ladder gates fix boldness — see polish-tier section below)
 
 If multiple peers have breached, pick the one with the largest current backlog.

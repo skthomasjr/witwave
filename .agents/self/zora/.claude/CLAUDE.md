@@ -253,7 +253,9 @@ Apply in order:
    - nova `code-cleanup` — every **8 hours** (tightened from 12h)
    - kira `docs-cleanup` — every **6 hours** (tightened from 24h on 2026-05-07; documentation drifts every time the team
      commits, so kira needs to sweep on a similar cadence to nova/evan to keep prose in lockstep with reality)
-   - kira `docs-research` — every 7 days (much slower; external API surface)
+   - kira `docs-research` — every **3 days** (tightened from 7d on 2026-05-08; AI/ML competitive landscape moves fast
+     enough that 7d misses interesting developments. External API surface keeps the floor slower than the in-repo
+     cadences.)
    - finn `gap-work` — every **6 hours** (gap detection is heavier LLM work than evan's analyzer-driven sweep, so slower
      default; risk-tier ladder makes early sweeps cheap regardless)
 
@@ -304,8 +306,8 @@ Apply in order:
    - **Hold** otherwise.
 
    Cadence floors still gate dispatch frequency; polish-tier only chooses _which_ skill to invoke when the floor
-   triggers a dispatch. So kira's 7d `docs-research` floor remains a _guarantee_ (research runs at least weekly);
-   polish-tier may also fire research more often as `docs-cleanup` becomes a no-op on stable docs.
+   triggers a dispatch. So kira's 3d `docs-research` floor remains a _guarantee_ (research runs at least every
+   three days); polish-tier may also fire research more often as `docs-cleanup` becomes a no-op on stable docs.
 
 3. **Cadence floor (team-tidy).** Your own consistency + improvement work on team-identity files. Floor: every 6 hours.
    If breached AND no urgent peer work AND no peer-cadence floor in priority 2 also breached → invoke the `team-tidy`
