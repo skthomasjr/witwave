@@ -98,18 +98,21 @@ GITHUB_USER_KIRA=kira-agent-witwave
 GITHUB_TOKEN_NOVA=github_pat_replace_me
 GITHUB_USER_NOVA=nova-agent-witwave
 
-# Evan's GitHub credentials — placeholder. The agent itself is a
-# scaffold-only stub right now; leave these set to replace_me until
-# the design is finalised and Step 6 is added below.
 GITHUB_TOKEN_EVAN=github_pat_replace_me
 GITHUB_USER_EVAN=evan-agent-witwave
 
-# Zora's GitHub credentials — placeholder. Zora doesn't commit code
-# (she dispatches peers; iris pushes). PAT is fully optional. Leave
-# replace_me unless the evan-agent-witwave GitHub account exists and
-# you want commits authored by zora-agent to link to a GitHub user.
+# Zora doesn't commit code (she dispatches peers; iris pushes). PAT is
+# read-only — used by zora's `gh run list` calls for CI status reads.
+# Required for the never-leave-main-red policy to detect red CI directly
+# rather than infer from indirect signals.
 GITHUB_TOKEN_ZORA=github_pat_replace_me
 GITHUB_USER_ZORA=zora-agent-witwave
+
+# Finn (gap-fixer) — same shape as evan. Finn commits per-gap fills
+# locally; iris pushes them. PAT needs the same write scope as the
+# other commit-authoring agents (iris/kira/nova/evan).
+GITHUB_TOKEN_FINN=github_pat_replace_me
+GITHUB_USER_FINN=finn-agent-witwave
 
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar
@@ -301,15 +304,99 @@ formatters across the entire source surface and her `code-document` Tier 3 pass 
 to ground each authored comment — both are within the default 5-minute budget when she's warm but can hit the ceiling on
 cold containers. The headroom matters.
 
-Verify all three agents are now bound to the workspace:
+## Step 6 — Deploy evan
+
+Evan is the team's defect-finding agent — runs `bug-work` (correctness defects via static analyzers) and `risk-work`
+(security defects via CVE / secret / insecure-pattern scanners). Same shape as iris/kira/nova (one `claude` backend,
+bound to `witwave-self`, identity sourced from `.agents/self/evan/`); like nova/kira, evan commits locally and
+delegates pushes to iris via `call-peer`. Note the higher `TASK_TIMEOUT_SECONDS` — evan's depth-7+ wide passes can
+run for 30+ minutes, well past the team-default 2700s budget.
+
+```bash
+ww agent create evan \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=7200 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_EVAN:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_EVAN:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/evan \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+`CONVERSATIONS_AUTH_DISABLED=true` is the local-dev escape hatch on the harness's bearer-token gate — it lets
+`ww conversation list / show / --follow` work without minting per-agent CONVERSATIONS_AUTH_TOKEN secrets.
+Production deployments should set a real token instead.
+
+## Step 7 — Deploy zora
+
+Zora is the team manager — coordinates work at the team level, decides which peer dispatches when, and gates
+release-warranted on the team's quality bar. She doesn't commit code; her only writes are to her own memory
+namespace. The `gh` token she carries is read-only — used by her every-tick CI-status check (`gh run list`) so the
+never-leave-main-red policy can detect red CI directly rather than infer from indirect signals.
+
+```bash
+ww agent create zora \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=7200 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_ZORA:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_ZORA:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/zora \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+After zora deploys, her 15-minute heartbeat starts firing the `dispatch-team` decision loop. She'll begin reading
+peer state from memory, applying the priority policy in her CLAUDE.md, and dispatching the appropriate peer
+(iris/kira/nova/evan/finn) via A2A. Until then, all peer dispatches are user-initiated.
+
+## Step 8 — Deploy finn
+
+Finn is the team's gap-fixer — finds and fills functionality gaps via the `gap-work` skill. Risk-tier 1-10 gated
+(starts at tier 1 cosmetic; advances per zora's polish-tier control as low-risk territory exhausts clean). Same
+deployment shape as evan — one `claude` backend, identity from `.agents/self/finn/`, commits-locally /
+iris-pushes contract.
+
+```bash
+ww agent create finn \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=7200 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_FINN:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_FINN:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/finn \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+## Verify the team
+
+After all six agents deploy, verify the workspace binding:
 
 ```bash
 ww agent list \
   --namespace witwave-self
 ```
 
-`ww agent list` should now show three rows (`iris`, `kira`, `nova`) all in state `Ready`.
-`ww workspace status witwave-self` should report all three under the bound-agents section.
+`ww agent list` should now show six rows (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`) all in state `Ready`.
+`ww workspace status witwave-self` should report all six under the bound-agents section. zora's heartbeat
+fires every 15 minutes; her first tick will discover the team and start dispatching cadence-floor work.
 
 ## Tear it down
 
