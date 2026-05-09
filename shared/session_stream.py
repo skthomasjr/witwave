@@ -33,9 +33,10 @@ import logging
 import os
 import time
 from collections import deque
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator
+from typing import Any
 
 try:  # pragma: no cover — validator import guard
     from event_schema import validate_envelope  # type: ignore[import-not-found]

@@ -26,9 +26,10 @@ import logging
 import os
 import threading
 from collections import deque
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Iterable
+from typing import Any
 
 try:  # pragma: no cover — validator import guard
     from event_schema import KNOWN_TYPES, validate_envelope  # type: ignore[import-not-found]

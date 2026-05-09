@@ -28,7 +28,7 @@ import asyncio
 import logging
 import os
 import threading
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from starlette.applications import Starlette
 from starlette.requests import Request

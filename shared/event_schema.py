@@ -24,7 +24,8 @@ it does not know about.  Rename / retype / remove bumps the per-type
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 _OUTCOMES = {"success", "error", "timeout", "skipped"}
 

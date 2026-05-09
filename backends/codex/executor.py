@@ -9,9 +9,9 @@ import subprocess
 import time
 import uuid
 from collections import OrderedDict, deque
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
 
 # Per-task session context (#937). The LocalShellTool baseline deny path fires
 # before the Agents SDK exposes session_id to the tool, so hook.decision events

@@ -38,8 +38,9 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from log_utils import _append_log  # type: ignore
 

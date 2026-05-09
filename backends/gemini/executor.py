@@ -5,9 +5,10 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext

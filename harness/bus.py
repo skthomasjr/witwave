@@ -29,8 +29,9 @@ import hashlib
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from metrics import (
     harness_bus_dedup_total,
