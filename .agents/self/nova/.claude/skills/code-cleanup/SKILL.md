@@ -106,8 +106,25 @@ The prompt to iris should be unambiguous and self-contained:
 Capture iris's reply:
 
 - **Success** — extract the pushed commit range from her message; carry forward to the report in step 8.
-- **Failure** (auth, conflict on rebase retry, branch protection, etc.) — surface the failure verbatim. Do NOT try to
-  push yourself; iris's domain handles git posture.
+- **Failure** (auth, conflict on rebase retry, branch protection, stuck-commits state, etc.) — surface the failure
+  verbatim. Do NOT try to push yourself; iris's domain handles git posture.
+- **Iris unreachable / call-peer error / timeout** — treat as a failure equivalent to iris reporting failure;
+  surface the call-peer error verbatim and do NOT silently mark this run as successful.
+
+**Caller-return semantics — load-bearing.** Whatever your overall orchestrator status is, it MUST reflect iris's
+outcome:
+
+- **`completed-and-pushed`** — code-format + code-verify ran; commits made; iris confirmed the push landed.
+- **`completed-locally-push-failed`** — code-format + code-verify ran; commits made; iris reported failure of any
+  kind (stuck-commits, conflict, auth, network, branch protection, unreachable). Embed iris's verbatim error or
+  the call-peer error.
+- **`completed-no-commits`** — orchestrator ran clean; nothing to push.
+- **`stood-down`** — pre-flight gate failed (source tree missing, etc.).
+
+Zora's stuck-commits triage flow in `dispatch-team` Step 2c reads iris's `stuck_commits.md` directly on every
+tick — so even if your orchestrator returned `completed-locally-push-failed`, zora has the diagnostic data
+without you having to relay it. But your status field still must NOT lie about whether the push landed; she
+uses it to decide whether to fire the next cadence dispatch.
 
 ### 8. Report
 
