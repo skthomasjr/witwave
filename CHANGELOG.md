@@ -28,8 +28,8 @@ tweaks for the cross-agent push and dispatch loops.
 
 ### Fixed
 
-- **ww**: `ww conversation list --expand` returns sessions in chronological order (oldest → newest) so the rendered
-  tail matches the natural reading order.
+- **ww**: `ww conversation list --expand` returns sessions in chronological order (oldest → newest) so the rendered tail
+  matches the natural reading order.
 - **backends (Go toolchain)**: Bump `GO_VERSION` 1.23.4 → 1.26.2 to unblock `staticcheck` + `errcheck` on the analyzer
   surface — the older Go was rejecting type inference patterns the analyzers needed.
 - **backends/codex, backends/gemini**: Test-suite stabilisation — codex switches to the stable

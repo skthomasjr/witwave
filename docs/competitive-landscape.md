@@ -455,8 +455,8 @@ hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
 1.0 shipped 2026-04-02** (Python + .NET both tagged `1.0.0` the same day); on the v1 line the cadence has been brisk —
 Python `1.3.0` (2026-05-08), .NET `dotnet-1.5.0` (2026-05-08), with both lines now shipping minor releases on
 near-weekly cadence — exiting the "public preview" framing the doc previously used (source:
-<https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-09). First-class A2A, MCP, and
-OpenTelemetry — exactly the same tripod we ship.
+<https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-09). First-class A2A, MCP, and OpenTelemetry —
+exactly the same tripod we ship.
 
 **Foundry Agent Service:** GA announced March 2026. OpenAI Responses-compatible API; hosts DeepSeek, xAI, Meta,
 LangChain, LangGraph models (in addition to Azure OpenAI). Directly overlaps this project's cross-backend orchestration.

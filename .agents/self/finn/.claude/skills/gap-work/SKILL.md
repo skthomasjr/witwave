@@ -22,11 +22,11 @@ multi-session funnel. The pass IS supposed to fill what it can — discovery-onl
 
 Parse from the caller's prompt:
 
-- **`tier`** — integer 1-10. Default `3` if unspecified (the team's chosen floor — see zora's polish-tier control
-  in `dispatch-team` Step 3). Refuse cleanly if outside 1-10. Tier controls which gaps are eligible for auto-fill;
-  gaps above the tier ceiling get logged as `[flagged: above-tier]` for the next higher-tier run (or human
-  review). The default-3 floor was chosen because tier 1-2 gaps (renames, dead-code removal) are also reachable at
-  tier=3 — the gauntlet + fix-bar at tier=3 clears anything 1-2 would, so the floor doesn't shrink your pool.
+- **`tier`** — integer 1-10. Default `3` if unspecified (the team's chosen floor — see zora's polish-tier control in
+  `dispatch-team` Step 3). Refuse cleanly if outside 1-10. Tier controls which gaps are eligible for auto-fill; gaps
+  above the tier ceiling get logged as `[flagged: above-tier]` for the next higher-tier run (or human review). The
+  default-3 floor was chosen because tier 1-2 gaps (renames, dead-code removal) are also reachable at tier=3 — the
+  gauntlet + fix-bar at tier=3 clears anything 1-2 would, so the floor doesn't shrink your pool.
 - **`sections`** — comma-separated list of section names or aliases. Default `all-day-one` if unspecified. Refuse
   cleanly on unknown sections.
 - **`focus`** _(optional)_ — one of `operator-parity`, `e2e-tests`, `cli-ux`, `dashboard-catchup`, or empty. Biases the

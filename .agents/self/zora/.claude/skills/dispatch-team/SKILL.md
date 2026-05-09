@@ -93,12 +93,12 @@ schema — `[pending]`, `[flagged: <reason>]`, `[fixed: <SHA>]` — going forwar
 still in their original narrative format, so the **per-peer adapter** below combines a marker count on recent sections
 with a narrative-count fallback on older ones:
 
-| Peer | Findings file              | Adapter — count "open" entries                                                                                                                                                                                                                                                                                                                                                                              |
-| ---- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| evan | `project_evan_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema since day one). Look for `[CRITICAL]` severity markers in risk-work output.                                                                                                                                                                                                                                                                    |
-| finn | `project_finn_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema). Look for `[CRITICAL]` markers — these are doc-promised features that don't exist (users hitting missing endpoints / unread env vars). `[CRITICAL]` blocks the medium-quality-bar release gate same as evan's CRITICAL CVEs. `[flagged: above-tier-N]` is the most common flag and is benign — re-attempted on the next higher-tier dispatch. |
-| nova | `project_code_findings.md` | For sections dated **2026-05-07 onward**: count `[pending]` + `[flagged: …]` markers (same canonical schema). For sections dated **before 2026-05-07** (legacy narrative format): read the most recent dated narrative section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts nova recorded inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics").                                    |
-| kira | `project_doc_findings.md`  | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones.                                                                                                                                                                                                                                                                                                    |
+| Peer | Findings file                           | Adapter — count "open" entries                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| evan | `project_evan_findings.md`              | Count `[pending]` + `[flagged: …]` markers (canonical schema since day one). Look for `[CRITICAL]` severity markers in risk-work output.                                                                                                                                                                                                                                                                                                                                                  |
+| finn | `project_finn_findings.md`              | Count `[pending]` + `[flagged: …]` markers (canonical schema). Look for `[CRITICAL]` markers — these are doc-promised features that don't exist (users hitting missing endpoints / unread env vars). `[CRITICAL]` blocks the medium-quality-bar release gate same as evan's CRITICAL CVEs. `[flagged: above-tier-N]` is the most common flag and is benign — re-attempted on the next higher-tier dispatch.                                                                               |
+| nova | `project_code_findings.md`              | For sections dated **2026-05-07 onward**: count `[pending]` + `[flagged: …]` markers (same canonical schema). For sections dated **before 2026-05-07** (legacy narrative format): read the most recent dated narrative section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts nova recorded inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics").                                                                                                                  |
+| kira | `project_doc_findings.md`               | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones.                                                                                                                                                                                                                                                                                                                                                                                  |
 | iris | n/a (service peer) + `stuck_commits.md` | No backlog count, but ALWAYS read `agents/iris/stuck_commits.md` if present. Each `[open]` entry there is a stuck-push state: a peer asked iris to push, iris hit a rebase conflict or second-push rejection on retry-once, and N commits are sitting ahead of `origin/main` on her local checkout with no path forward. Treat as P1 escalation (see "Priority 1 — Urgent" walk). Pause cadence dispatches to the blocked caller-peer until iris flips the entry to `[resolved: HH:MMZ]`. |
 
 The legacy-narrative branch is a transient compatibility shim — once the legacy sections age out (typically as peers run
@@ -108,21 +108,19 @@ is fully uniform team-wide. Until then, the adapter gets the count _right enough
 **Stuck-commits triage flow (when iris's `stuck_commits.md` has any `[open]` entry):**
 
 1. **First action this tick:** mirror the entry to `escalations.md` as
-   `[escalation: stuck-commits-iris-blocked: <caller-peer>]` so it shows up in `ww escalations` for the user.
-   Include iris's verbatim git stderr excerpt and her recovery hint so the human can diagnose without trawling
-   memory. New escalation OR existing-but-still-open both count — keep it surfaced on every tick until
-   resolved.
-2. **Pause cadence dispatches to the blocked caller-peer.** Don't fire `<caller>'s` cadence-mandated work
-   while their commits are stuck — every new commit they produce widens the stuck pile. The skip is silent in
-   `decision_log.md` ("evan bug-work cadence breach DEFERRED — iris stuck-commits open since HH:MMZ"). Other
-   peers continue normally if their commits aren't entangled.
-3. **Don't auto-retry iris.** Stuck-commits state is iris's signal that retry-once already exhausted; firing
-   another `git-push` dispatch just produces another `[open]` entry. The retry path runs through the human:
-   they resolve the conflict, then ask iris to push again, and iris flips the entry to `[resolved]` on
-   success.
+   `[escalation: stuck-commits-iris-blocked: <caller-peer>]` so it shows up in `ww escalations` for the user. Include
+   iris's verbatim git stderr excerpt and her recovery hint so the human can diagnose without trawling memory. New
+   escalation OR existing-but-still-open both count — keep it surfaced on every tick until resolved.
+2. **Pause cadence dispatches to the blocked caller-peer.** Don't fire `<caller>'s` cadence-mandated work while their
+   commits are stuck — every new commit they produce widens the stuck pile. The skip is silent in `decision_log.md`
+   ("evan bug-work cadence breach DEFERRED — iris stuck-commits open since HH:MMZ"). Other peers continue normally if
+   their commits aren't entangled.
+3. **Don't auto-retry iris.** Stuck-commits state is iris's signal that retry-once already exhausted; firing another
+   `git-push` dispatch just produces another `[open]` entry. The retry path runs through the human: they resolve the
+   conflict, then ask iris to push again, and iris flips the entry to `[resolved]` on success.
 4. **Watch for resolution.** Once the entry flips to `[resolved: HH:MMZ]`, log
-   `[escalation: stuck-commits-iris-blocked: <caller-peer>] CLOSED` in `decision_log.md`, mirror the closure
-   to `escalations.md`, and resume `<caller>'s` cadence dispatching from the next tick.
+   `[escalation: stuck-commits-iris-blocked: <caller-peer>] CLOSED` in `decision_log.md`, mirror the closure to
+   `escalations.md`, and resume `<caller>'s` cadence dispatching from the next tick.
 
 #### 2d. Peer health (active probe + heartbeat history)
 
@@ -189,10 +187,10 @@ Walk these in order. The first match wins; act and exit (after logging).
 #### Priority 1 — Urgent
 
 - **Stuck-commits in iris's `stuck_commits.md`** (any `[open]` entry) → **DO NOT auto-retry iris.** Mirror to
-  `escalations.md`, pause the blocked caller-peer's cadence dispatches, log the deferral in `decision_log.md`,
-  and continue the priority walk (stuck commits don't preempt CI fires or cadence on unaffected peers). See
-  full triage flow under "Stuck-commits triage flow" in Step 2c. Treat this BEFORE the cadence-floor walk so
-  the affected peer is excluded from the candidate pool naturally.
+  `escalations.md`, pause the blocked caller-peer's cadence dispatches, log the deferral in `decision_log.md`, and
+  continue the priority walk (stuck commits don't preempt CI fires or cadence on unaffected peers). See full triage flow
+  under "Stuck-commits triage flow" in Step 2c. Treat this BEFORE the cadence-floor walk so the affected peer is
+  excluded from the candidate pool naturally.
 
 - **Critical CVE in evan's deferred-findings** → dispatch `evan risk-work` with explicit instruction to fix that
   candidate now (preempt other risk-work work).
@@ -242,32 +240,31 @@ Walk these in order. The first match wins; act and exit (after logging).
   5. **Don't fire any new release-warranted dispatches** until this one is recovered. Otherwise the team layers broken
      release on broken release.
 
-- **Pending release workflow** (iris's release skill returned `[release-workflow-pending]` because her watch step
-  hit its 30-min-per-workflow timeout while one or more `Release*` workflows were still running, OR a `Release*`
-  workflow on the latest tag is currently `in_progress` / `queued` / `requested` / `waiting`) → **HOLD cadence
-  dispatches but don't escalate.** Pending is not failure — the workflow is still doing real work; concurrent
-  cadence-driven commits during this window can tangle the in-flight release artifacts (a dashboard image build
-  racing with a code-cleanup commit on dashboard source, a Helm chart re-render racing with a chart-touching
-  commit, etc.). Procedure:
+- **Pending release workflow** (iris's release skill returned `[release-workflow-pending]` because her watch step hit
+  its 30-min-per-workflow timeout while one or more `Release*` workflows were still running, OR a `Release*` workflow on
+  the latest tag is currently `in_progress` / `queued` / `requested` / `waiting`) → **HOLD cadence dispatches but don't
+  escalate.** Pending is not failure — the workflow is still doing real work; concurrent cadence-driven commits during
+  this window can tangle the in-flight release artifacts (a dashboard image build racing with a code-cleanup commit on
+  dashboard source, a Helm chart re-render racing with a chart-touching commit, etc.). Procedure:
 
   1. **Stand down on cadence-mandated dispatches this tick.** Skip the P2 cadence-floor walk entirely; the breaches
      accumulate but don't fire while the release is in flight. Note in `decision_log.md`:
      `cadence dispatches DEFERRED — release pipeline pending: <run-ids still in-progress>, oldest started HH:MMZ`.
-  2. **Continue P1 work** — red-CI recovery, stuck-commits, critical CVEs, peer-offline-extended escalations.
-     Those are higher priority than the pending release; the team can fix red CI even with a release in flight
-     (and arguably MUST — a red CI mid-release means the next tag is poisoned too).
+  2. **Continue P1 work** — red-CI recovery, stuck-commits, critical CVEs, peer-offline-extended escalations. Those are
+     higher priority than the pending release; the team can fix red CI even with a release in flight (and arguably MUST
+     — a red CI mid-release means the next tag is poisoned too).
   3. **Re-check on the next tick.** Use the same gh run list query that detected the pending state initially:
      ```sh
      gh run list --branch main --workflow="Release*" --limit 10 --json status,conclusion,name,databaseId
      ```
      If all release workflows have concluded (any combination of success/failure) — flow into either the "fully
-     successful" path (resume cadence) or the `[release-workflow-failed]` path above. If still pending — repeat
-     the hold for one more tick.
+     successful" path (resume cadence) or the `[release-workflow-failed]` path above. If still pending — repeat the hold
+     for one more tick.
   4. **Pending-too-long escalation.** If a release workflow has been pending >45 minutes (3 consecutive ticks of
-     `[release-workflow-pending]`), append `[escalation: release-workflow-stuck]` to `escalations.md` with the
-     workflow name + run-id + initial-fire timestamp. Most release pipelines complete in ≤30min; >45min usually
-     means GitHub Actions queueing issue or a hung step worth a human eye. Keep cadence held until either the
-     workflow concludes or the user intervenes.
+     `[release-workflow-pending]`), append `[escalation: release-workflow-stuck]` to `escalations.md` with the workflow
+     name + run-id + initial-fire timestamp. Most release pipelines complete in ≤30min; >45min usually means GitHub
+     Actions queueing issue or a hung step worth a human eye. Keep cadence held until either the workflow concludes or
+     the user intervenes.
 
 - **Stuck peer** (peer dispatch in flight >1h, OR peer's pod has dirty WIP blocking subsequent dispatches) → follow the
   **time-bounded escalation** ladder below. Don't just stand down forever — past versions of this policy held the team
@@ -351,25 +348,25 @@ Log the tier choice + reason in `decision_log.md` on each dispatch:
 This is how the team becomes _actually_ bug-free / risk-free rather than "0 found at the cheap depth." Treat each tier
 as its own ground to cover; only depth=9 across all-day-one with adversarial passes counts as "we've looked hard."
 
-**Substitute the literal integer in evan's call-peer prompt** (e.g. `Run your bug-work skill at depth=5,
-sections=all-day-one`). Same paranoid guard as the finn dispatches: if your dispatch prompt contains the literal
-string `depth=<N>` or `depth=<n>` or `depth=` followed by a non-digit, abort the dispatch and log the error in
-`decision_log.md`. An unsubstituted placeholder makes evan fall back to his SKILL parser default — which is now
-`5` for risk-work (matches the cadence floor) and `3` for bug-work (the cheap-pass anchor); either way, sending
-the literal placeholder undermines the polish-tier ladder you just decided.
+**Substitute the literal integer in evan's call-peer prompt** (e.g.
+`Run your bug-work skill at depth=5, sections=all-day-one`). Same paranoid guard as the finn dispatches: if your
+dispatch prompt contains the literal string `depth=<N>` or `depth=<n>` or `depth=` followed by a non-digit, abort the
+dispatch and log the error in `decision_log.md`. An unsubstituted placeholder makes evan fall back to his SKILL parser
+default — which is now `5` for risk-work (matches the cadence floor) and `3` for bug-work (the cheap-pass anchor);
+either way, sending the literal placeholder undermines the polish-tier ladder you just decided.
 
 **Choosing risk-tier for finn dispatches (polish-tier control).** Same shape as evan's depth ladder but the integer
 denotes **risk tolerance** for a fill, not analysis intensity. Tier 1 is purely cosmetic / orphan removal (zero behavior
-change); tier 9-10 is architectural cross-cutting work. The team works UP the ladder `3 → 5 → 7 → 9` as each tier's
-gap pool exhausts. **Cautious-by-default — the autonomous safety story for finn rests on this gate.** Bigger fills
-happen later, after low-tier territory is verified clean.
+change); tier 9-10 is architectural cross-cutting work. The team works UP the ladder `3 → 5 → 7 → 9` as each tier's gap
+pool exhausts. **Cautious-by-default — the autonomous safety story for finn rests on this gate.** Bigger fills happen
+later, after low-tier territory is verified clean.
 
 **Floor: tier=3, not tier=1.** The ladder used to reset to 1 on every fresh commit. With main receiving commits
-constantly, that pinned finn at tier=1 (purely cosmetic) forever — every advance was preempted by another reset.
-Tier 3 is the safer floor: "bounded scope, sibling-pattern available" (add a missing test mirroring an existing
-test; add `defer resp.Body.Close()`; fill an explicit TODO with the sibling validator's pattern). Tier 1-2 work
-is still reachable — tier-3 fills include those candidates because the gauntlet + fix-bar at tier=3 trivially
-clears anything tier 1-2 would.
+constantly, that pinned finn at tier=1 (purely cosmetic) forever — every advance was preempted by another reset. Tier 3
+is the safer floor: "bounded scope, sibling-pattern available" (add a missing test mirroring an existing test; add
+`defer resp.Body.Close()`; fill an explicit TODO with the sibling validator's pattern). Tier 1-2 work is still reachable
+— tier-3 fills include those candidates because the gauntlet + fix-bar at tier=3 trivially clears anything tier 1-2
+would.
 
 Read the current tier from `team_state.md`:
 
@@ -390,12 +387,12 @@ Decide the tier for THIS dispatch:
    boldness floor."
 3. **Hold check.** Otherwise keep the tier as-is.
 
-Pass it to finn in the call-peer prompt with the literal integer substituted (NOT the placeholder
-`<N>`): `Run your gap-work skill at tier=3, sections=all-day-one` (or `tier=5`, etc.). **If your dispatch prompt
-contains the literal string `tier=<N>` or `tier=<n>` or `tier=` followed by a non-digit, abort the dispatch and
-log the error in `decision_log.md` — sending an unsubstituted placeholder makes finn fall back to her own
-default-1 path, which silently undermines the polish-tier ladder.** Optionally include
-`focus=operator-parity` etc. — see finn's CLAUDE.md priority subsystems.
+Pass it to finn in the call-peer prompt with the literal integer substituted (NOT the placeholder `<N>`):
+`Run your gap-work skill at tier=3, sections=all-day-one` (or `tier=5`, etc.). **If your dispatch prompt contains the
+literal string `tier=<N>` or `tier=<n>` or `tier=` followed by a non-digit, abort the dispatch and log the error in
+`decision_log.md` — sending an unsubstituted placeholder makes finn fall back to her own default-1 path, which silently
+undermines the polish-tier ladder.** Optionally include `focus=operator-parity` etc. — see finn's CLAUDE.md priority
+subsystems.
 
 After the dispatch, when finn reports back, update `team_state.md`:
 
