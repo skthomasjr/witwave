@@ -1,0 +1,107 @@
+name: CI — Python
+
+# Gates Python source under harness/, shared/, backends/, and the MCP tools
+# that don't already have CI elsewhere (tools/helm has its pytest job in
+# ci-charts.yml; tools/kubernetes + tools/prometheus do not). Surfaced as a
+# real gap by evan's bug-work runs on 2026-05-08 — code can land in those
+# directories without their pytest suites running on CI, so test regressions
+# are invisible until somebody runs the suite locally. With this workflow
+# every change to those paths runs ruff + pytest before merge.
+
+on:
+  pull_request:
+    paths:
+      - "harness/**"
+      - "shared/**"
+      - "backends/**"
+      - "tools/kubernetes/**"
+      - "tools/prometheus/**"
+      - ".github/workflows/ci-python.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "harness/**"
+      - "shared/**"
+      - "backends/**"
+      - "tools/kubernetes/**"
+      - "tools/prometheus/**"
+      - ".github/workflows/ci-python.yml"
+
+# Read-only by default. Defensive against org permission-defaults drift.
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    # Single ruff invocation across every Python source dir in scope.
+    # Matches the rule selection evan's bug-work uses (B,F bug-class) plus
+    # the team-wide style baseline already configured in pyproject.toml.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: python -m pip install --upgrade pip && pip install ruff
+      - name: ruff check
+        run: |
+          ruff check harness/ shared/ backends/ tools/kubernetes/ tools/prometheus/
+      - name: ruff format --check
+        run: |
+          ruff format --check harness/ shared/ backends/ tools/kubernetes/ tools/prometheus/
+
+  pytest:
+    # Per-section pytest matrix. Each section's deps install in isolation
+    # so a missing import in (say) backends/codex doesn't block harness or
+    # shared from running. fail-fast=false so we get the full picture on
+    # every push, not just the first failure.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        section:
+          - harness
+          - shared
+          - backends/claude
+          - backends/codex
+          - backends/gemini
+          - backends/echo
+          - tools/kubernetes
+          - tools/prometheus
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        # Each section's runtime deps live in <section>/requirements.txt;
+        # install those plus pytest. Sections without requirements.txt
+        # (echo, shared) get just pytest + the common shared deps.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pyyaml httpx prometheus_client
+          if [ -f "${{ matrix.section }}/requirements.txt" ]; then
+            pip install -r "${{ matrix.section }}/requirements.txt"
+          fi
+          # Tool sections need the MCP SDK and kubernetes client too;
+          # backends need the agent SDKs but those install via their own
+          # requirements.txt so the conditional above covers them.
+          case "${{ matrix.section }}" in
+            tools/kubernetes) pip install mcp kubernetes ;;
+            tools/prometheus) pip install mcp ;;
+          esac
+
+      - name: pytest
+        # PYTHONPATH=shared mirrors the runtime layout — shared/ is mounted
+        # alongside each backend/tool's source in the deployed image, so
+        # tests that import from shared.* work the same way locally and
+        # in CI without per-section sys.path tweaks.
+        run: |
+          if find "${{ matrix.section }}" -maxdepth 2 -name 'test_*.py' | read; then
+            pytest -q "${{ matrix.section }}/"
+          else
+            echo "no test files under ${{ matrix.section }}; skipping"
+          fi
+        env:
+          PYTHONPATH: shared
