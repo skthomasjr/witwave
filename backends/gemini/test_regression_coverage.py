@@ -429,10 +429,26 @@ class WriterDoneEventRaceTests(unittest.TestCase):
         def _always_raise(*a, **kw):
             raise OSError("synthetic disk failure")
 
+        # NB: patch `_write_history_tmp_blocking`, NOT
+        # `_write_history_respecting_epoch`. After the #1504 refactor
+        # (commit 2a166c83), `_save_history` no longer calls
+        # `_write_history_respecting_epoch`; instead it inlines the work
+        # and dispatches the tmp-file write via
+        # `await asyncio.to_thread(_write_history_tmp_blocking, ...)`
+        # so the cleanup-epoch read + os.replace stay on the event-loop
+        # thread. `_write_history_respecting_epoch` is now a backwards-
+        # compat wrapper retained as a stable API for out-of-tree callers
+        # (see executor.py L1345-1364) — patching it has no effect on
+        # `_save_history`'s actual code path. We patch the real call site
+        # so the synthetic OSError raises inside `asyncio.to_thread`,
+        # propagates back into the retry loop's `except Exception`, gets
+        # logged at WARN, sleeps for the (zeroed) backoff, and after the
+        # final attempt the `raise RuntimeError(...) from last_exc` at
+        # executor.py L1610-1612 fires — which is what the test pins.
         with (
             patch.object(executor, "_SAVE_HISTORY_MAX_RETRIES", 2),
             patch.object(executor, "_SAVE_HISTORY_BACKOFF_BASE", 0.0),
-            patch.object(executor, "_write_history_respecting_epoch", _always_raise),
+            patch.object(executor, "_write_history_tmp_blocking", _always_raise),
         ):
             with self.assertRaises(RuntimeError):
                 asyncio.run(executor._save_history(sid, history))
