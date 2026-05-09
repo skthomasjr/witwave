@@ -183,7 +183,7 @@ Every command supports `--help`. Summary:
 | `ww validate <file>`       | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.                                                                                         |
 | `ww version`               | Print the version, commit, and build date. `--short` prints just the semver.                                                                                        |
 | `ww operator [cmd]`        | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster; plus `logs` and `events` for diagnostics. See below.             |
-| `ww workspace [cmd]`       | Manage `WitwaveWorkspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [WitwaveWorkspace management](#workspace-management).             |
+| `ww workspace [cmd]`       | Manage `WitwaveWorkspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [WitwaveWorkspace management](#witwaveworkspace-management).      |
 | `ww config [cmd]`          | Read, write, and inspect `ww` configuration values — `get`, `set`, `unset`, `list-keys`, `path`. See [Managing config from the CLI](#managing-config-from-the-cli). |
 | `ww update`                | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date).                                                                          |
 

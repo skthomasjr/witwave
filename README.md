@@ -113,8 +113,8 @@ spec:
 
 Mount paths default to `/workspaces/<workspace>/<volume.name>` so cross-agent paths line up without operator-supplied
 glue. Manage workspaces from the CLI with `ww workspace { create, list, get, status, delete, bind, unbind }` — see
-[`clients/ww/README.md`](clients/ww/README.md#workspace-management). Full CRD schema and reconciler details live in
-[`operator/README.md`](operator/README.md#the-witwaveworkspace-resource).
+[`clients/ww/README.md`](clients/ww/README.md#witwaveworkspace-management). Full CRD schema and reconciler details live
+in [`operator/README.md`](operator/README.md#the-witwaveworkspace-resource).
 
 ## How It Works
 

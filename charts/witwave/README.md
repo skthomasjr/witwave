@@ -94,7 +94,7 @@ overlapping agent names in the same namespace produces doubled resources split-b
 one.
 
 Full migration procedure (PVC preservation, CR authoring, rollback notes) lives in
-[`operator/README.md#migrating-from-the-agent-chart-charts-witwave`](../../operator/README.md#migrating-from-the-agent-chart-charts-witwave).
+[`operator/README.md#migrating-from-the-agent-chart-chartswitwave`](../../operator/README.md#migrating-from-the-agent-chart-chartswitwave).
 
 ## Values
 
