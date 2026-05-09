@@ -26,8 +26,8 @@ maintenance — three broken internal anchors fixed and a twelfth-pass refresh o
 - **research**: Twelfth-pass refresh of `competitive-landscape.md` — pinned three drifted upstream entries (OpenClaw
   v2026.5.7, Microsoft Agent Framework python-1.3.0 / dotnet-1.5.0, OpenHands canonical URL post-rename to
   `OpenHands/OpenHands`). No new competitors added.
-- **READMEs**: Three Cat C anchor mismatches fixed in `README.md`, `clients/ww/README.md`, and `charts/witwave/README.md`
-  so cross-document links resolve.
+- **READMEs**: Three Cat C anchor mismatches fixed in `README.md`, `clients/ww/README.md`, and
+  `charts/witwave/README.md` so cross-document links resolve.
 
 ## [0.23.3] — 2026-05-09
 
