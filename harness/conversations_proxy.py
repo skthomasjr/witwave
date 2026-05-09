@@ -53,7 +53,7 @@ async def _capped_get_json(
             total += len(chunk)
             if total > _PROXY_MAX_RESPONSE_BYTES:
                 logger.warning(
-                    "harness proxy response from %s exceeds " "HARNESS_PROXY_MAX_RESPONSE_BYTES=%d; truncating",
+                    "harness proxy response from %s exceeds HARNESS_PROXY_MAX_RESPONSE_BYTES=%d; truncating",
                     url,
                     _PROXY_MAX_RESPONSE_BYTES,
                 )

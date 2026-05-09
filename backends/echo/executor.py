@@ -49,10 +49,10 @@ _CANNED_RESPONSE_TEMPLATE = (
     "in a real backend (claude, codex, or gemini), see `ww agent backend set --help`."
 )
 
-_EMPTY_PROMPT_RESPONSE = "echo backend — received an empty prompt. " "Send text and I'll echo it back."
+_EMPTY_PROMPT_RESPONSE = "echo backend — received an empty prompt. Send text and I'll echo it back."
 
 _PROMPT_TOO_LARGE_RESPONSE = (
-    "echo backend — prompt of {size} bytes exceeds MAX_PROMPT_BYTES limit " "of {limit} bytes. Send a smaller prompt."
+    "echo backend — prompt of {size} bytes exceeds MAX_PROMPT_BYTES limit of {limit} bytes. Send a smaller prompt."
 )
 
 

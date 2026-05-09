@@ -81,8 +81,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
         # the dashboard instead of being silently dropped.
         if not _is_disabled_placeholder and not _ENDPOINT_RE.match(endpoint):
             logger.warning(
-                f"Trigger file {path}: 'endpoint' {endpoint!r} is invalid — "
-                "must match ^[a-z0-9][a-z0-9-]*$, skipping."
+                f"Trigger file {path}: 'endpoint' {endpoint!r} is invalid — must match ^[a-z0-9][a-z0-9-]*$, skipping."
             )
             return None
 

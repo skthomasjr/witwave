@@ -45,7 +45,7 @@ def _extract_factory_source() -> str:
     )
     if m is None:
         raise AssertionError(
-            "Could not locate _make_watcher_done_cb in main.py — has the " "factory been renamed or restructured?"
+            "Could not locate _make_watcher_done_cb in main.py — has the factory been renamed or restructured?"
         )
     block = m.group(0)
     indent = m.group(1)

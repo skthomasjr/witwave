@@ -1065,9 +1065,11 @@ async def main():
     for _w in executor._mcp_watchers():
         _mcp_task = asyncio.create_task(_guarded(_w, critical=True))
         _mcp_task.add_done_callback(
-            lambda t, _wn=_w.__name__: logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
-            if not t.cancelled() and t.exception() is not None
-            else None
+            lambda t, _wn=_w.__name__: (
+                logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
         )
         executor._mcp_watcher_tasks.append(_mcp_task)
 

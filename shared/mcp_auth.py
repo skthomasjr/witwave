@@ -249,7 +249,7 @@ async def _send_400_invalid_bearer_encoding(
     rest of the tool surface speaks, so MCP clients surface a parseable
     error rather than a free-form string.
     """
-    body = b'{"jsonrpc":"2.0","error":{"code":-32600,' b'"message":"invalid bearer token encoding (must be UTF-8)"}}'
+    body = b'{"jsonrpc":"2.0","error":{"code":-32600,"message":"invalid bearer token encoding (must be UTF-8)"}}'
     await send(
         {
             "type": "http.response.start",

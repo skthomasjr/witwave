@@ -229,7 +229,7 @@ def _cb_record(failed: bool) -> None:
                 _cb_open_until = time.monotonic() + HOOK_POST_CB_COOLDOWN_SECONDS
                 _cb_recent.clear()
                 logger.warning(
-                    "hook.decision circuit breaker OPEN: %.2f failure ratio " "over %d posts; shedding for %.1fs",
+                    "hook.decision circuit breaker OPEN: %.2f failure ratio over %d posts; shedding for %.1fs",
                     ratio,
                     HOOK_POST_CB_WINDOW,
                     HOOK_POST_CB_COOLDOWN_SECONDS,
@@ -385,7 +385,7 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
             if not _shed_warned:
                 _shed_warned = True
                 logger.warning(
-                    "hook.decision POST shed: %d in-flight at cap=%d " "(further shed suppressed until drain)",
+                    "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
                     len(_INFLIGHT),
                     HOOK_POST_MAX_INFLIGHT,
                 )
@@ -572,7 +572,7 @@ def schedule_event_post(
             if not _shed_warned:
                 _shed_warned = True
                 logger.warning(
-                    "harness-events POST shed: %d in-flight at cap=%d " "(further shed suppressed until drain)",
+                    "harness-events POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
                     len(_INFLIGHT),
                     HOOK_POST_MAX_INFLIGHT,
                 )

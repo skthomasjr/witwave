@@ -214,7 +214,7 @@ def _pre_tool_use_gate(
         from hooks_engine import evaluate_pre_tool_use  # type: ignore
     except Exception as _imp_exc:
         logger.warning(
-            "_pre_tool_use_gate: hooks_engine import failed (%r); " "fail-open for %s.",
+            "_pre_tool_use_gate: hooks_engine import failed (%r); fail-open for %s.",
             _imp_exc,
             tool_name,
         )
@@ -530,8 +530,7 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
         return None
     if "command" not in cfg:
         logger.warning(
-            "MCP server %r: missing 'command' (gemini only supports stdio transport "
-            "via google-genai AFC); skipping.",
+            "MCP server %r: missing 'command' (gemini only supports stdio transport via google-genai AFC); skipping.",
             name,
         )
         return None
@@ -1609,7 +1608,7 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
             _history_write_done.pop(session_id, None)
     # All retries exhausted — raise so the caller can log at ERROR level.
     raise RuntimeError(
-        f"Permanently failed to save session history for {session_id!r} " f"after {_SAVE_HISTORY_MAX_RETRIES} attempts"
+        f"Permanently failed to save session history for {session_id!r} after {_SAVE_HISTORY_MAX_RETRIES} attempts"
     ) from last_exc
 
 
@@ -1824,7 +1823,7 @@ def _track_session(
                                 pass
                             except OSError as _bp_err:
                                 logger.warning(
-                                    "Could not remove evicted session file " "%s (backpressure path): %s",
+                                    "Could not remove evicted session file %s (backpressure path): %s",
                                     _ev_path,
                                     _bp_err,
                                 )
@@ -1843,8 +1842,7 @@ def _track_session(
                             pass
                         except OSError as e:
                             logger.warning(
-                                "Could not remove evicted session file %s "
-                                "(deferred cap reached, no pending save): %s",
+                                "Could not remove evicted session file %s (deferred cap reached, no pending save): %s",
                                 _evicted_path,
                                 e,
                             )
@@ -3108,7 +3106,7 @@ class AgentExecutor(A2AAgentExecutor):
                                     _request_client_rotation()
                                 except Exception as _rot_exc:
                                     logger.warning(
-                                        "api_key_file_watcher: " "_request_client_rotation raised %r",
+                                        "api_key_file_watcher: _request_client_rotation raised %r",
                                         _rot_exc,
                                     )
                             break
@@ -3252,8 +3250,7 @@ class AgentExecutor(A2AAgentExecutor):
                         logger.warning("Previous MCP stack aclose error: %s", _close_exc)
                 else:
                     logger.info(
-                        "MCP hot-reload: deferring aclose of previous stack "
-                        "until %d in-flight request(s) release it.",
+                        "MCP hot-reload: deferring aclose of previous stack until %d in-flight request(s) release it.",
                         _prev_refcount,
                     )
                     self._mcp_old_stacks.append(
@@ -3977,7 +3974,7 @@ class AgentExecutor(A2AAgentExecutor):
                     )
                 except Exception as _ef_exc:  # pragma: no cover
                     logger.warning(
-                        "session_stream: final chunk publish on error " "path failed: %r",
+                        "session_stream: final chunk publish on error path failed: %r",
                         _ef_exc,
                     )
             raise
@@ -4063,8 +4060,7 @@ class AgentExecutor(A2AAgentExecutor):
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    "Deferred session-evict removal did not drain within 10s — "
-                    "%d task(s) still pending; cancelling.",
+                    "Deferred session-evict removal did not drain within 10s — %d task(s) still pending; cancelling.",
                     len(_pending),
                 )
                 for _t in _pending:

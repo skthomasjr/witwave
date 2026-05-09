@@ -268,9 +268,11 @@ class RunQueryPassesToolsTests(unittest.TestCase):
         fake_session = MagicMock(name="ClientSession-live")
 
         # Patch _get_client so run_query uses the fake.
-        with patch.object(executor, "_get_client", return_value=fake_client), patch.object(
-            executor, "_load_history", return_value=[]
-        ), patch.object(executor, "_save_history", new=AsyncMock(return_value=None)):
+        with (
+            patch.object(executor, "_get_client", return_value=fake_client),
+            patch.object(executor, "_load_history", return_value=[]),
+            patch.object(executor, "_save_history", new=AsyncMock(return_value=None)),
+        ):
             session_locks: dict = {}
             _run(
                 run_query(

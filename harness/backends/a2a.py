@@ -122,7 +122,7 @@ def _resolve_retry_policy() -> str:
     if _raw in {"fast-only", "always", "never"}:
         return _raw
     _log.warning(
-        "A2A_RETRY_POLICY=%r is not one of fast-only|always|never — " "falling back to fast-only",
+        "A2A_RETRY_POLICY=%r is not one of fast-only|always|never — falling back to fast-only",
         _raw,
     )
     return "fast-only"
@@ -539,7 +539,7 @@ class A2ABackend:
                 # reproduce. Keys only — values may contain secrets.
                 _shape = sorted(result.keys())[:20] if isinstance(result, dict) else type(result).__name__
                 logger.warning(
-                    "A2A backend '%s' returned no extractable text for session=%s; " "top-level result keys=%s",
+                    "A2A backend '%s' returned no extractable text for session=%s; top-level result keys=%s",
                     self.id,
                     session_id,
                     _shape,

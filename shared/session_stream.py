@@ -591,7 +591,7 @@ def _sse_serialise(envelope: SessionStreamEnvelope) -> bytes:
     import json as _json
 
     body = _json.dumps(envelope.to_dict(), separators=(",", ":"))
-    return (f"event: {envelope.type}\n" f"id: {envelope.id}\n" f"data: {body}\n\n").encode()
+    return (f"event: {envelope.type}\nid: {envelope.id}\ndata: {body}\n\n").encode()
 
 
 def make_session_stream_handler(

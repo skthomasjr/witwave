@@ -551,9 +551,9 @@ def _validate_url(url: str) -> str | None:
     # so an allow-listed service name like "smoke.internal" isn't mistaken
     # for a raw loopback alias.
     if not _allowlisted and host in _LOOPBACK_HOST_ALIASES:
-        return f"host {host!r} is a loopback alias and is not in " "WEBHOOK_URL_ALLOWED_HOSTS"
+        return f"host {host!r} is a loopback alias and is not in WEBHOOK_URL_ALLOWED_HOSTS"
     if not _allowlisted and _host_is_private(host):
-        return f"host {host!r} is a loopback/link-local/private/reserved IP " "and is not in WEBHOOK_URL_ALLOWED_HOSTS"
+        return f"host {host!r} is a loopback/link-local/private/reserved IP and is not in WEBHOOK_URL_ALLOWED_HOSTS"
     # Resolve the hostname and apply _host_is_private to each resolved
     # address. Closes the SSRF gap where a DNS name (e.g. "localhost",
     # "metadata.google.internal") mapped to a loopback/link-local/private
@@ -1154,7 +1154,7 @@ async def deliver(
         _prev = getattr(sub, "_truncation_warned", False)
         if not _prev:
             logger.warning(
-                "Webhook '%s': body truncated from %d to 262144 bytes — " "receiver may see malformed JSON. (#1389)",
+                "Webhook '%s': body truncated from %d to 262144 bytes — receiver may see malformed JSON. (#1389)",
                 sub.name,
                 len(body_bytes),
             )

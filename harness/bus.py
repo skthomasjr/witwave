@@ -399,13 +399,13 @@ def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
         # backend's own OTel span event still captures the decision.
         if event.agent not in ("claude", "codex", "gemini"):
             logger.warning(
-                "hook.decision SSE drop: unknown agent %r (expected one of " "claude/codex/gemini) (#1149)",
+                "hook.decision SSE drop: unknown agent %r (expected one of claude/codex/gemini) (#1149)",
                 event.agent,
             )
             return
         if event.decision not in ("allow", "deny", "warn"):
             logger.warning(
-                "hook.decision SSE drop: unknown decision %r (expected one " "of allow/deny/warn) (#1149)",
+                "hook.decision SSE drop: unknown decision %r (expected one of allow/deny/warn) (#1149)",
                 event.decision,
             )
             return

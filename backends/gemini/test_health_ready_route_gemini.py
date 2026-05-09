@@ -226,8 +226,8 @@ _stub_sibling(
     "conversations",
     {
         "auth_disabled_escape_hatch": lambda *a, **kw: False,
-        "make_conversations_handler": lambda *a, **kw: (lambda r: None),
-        "make_trace_handler": lambda *a, **kw: (lambda r: None),
+        "make_conversations_handler": lambda *a, **kw: lambda r: None,
+        "make_trace_handler": lambda *a, **kw: lambda r: None,
     },
 )
 _stub_sibling("sqlite_task_store", {"SqliteTaskStore": type("SqliteTaskStore", (), {})})

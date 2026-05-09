@@ -985,11 +985,13 @@ class AgentExecutor(A2AAgentExecutor):
                             for watcher in self._mcp_watchers():
                                 task = asyncio.create_task(_guarded(watcher))
                                 task.add_done_callback(
-                                    lambda t, _w=watcher: logger.error(
-                                        f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}"
+                                    lambda t, _w=watcher: (
+                                        logger.error(
+                                            f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}"
+                                        )
+                                        if not t.cancelled() and t.exception() is not None
+                                        else None
                                     )
-                                    if not t.cancelled() and t.exception() is not None
-                                    else None
                                 )
                                 self._mcp_watcher_tasks.append(task)
                             # Reload succeeded — clear the stale gauge + counter (#702).

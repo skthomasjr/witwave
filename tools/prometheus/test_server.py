@@ -36,7 +36,7 @@ import server  # type: ignore  # noqa: E402
 # infrastructure. The redaction guarantee under test is: no substring of
 # this string appears in any captured log record.
 _SENSITIVE_BODY = (
-    "PrometheusInternalError: tenant=acme-corp shard=42 " "trace=abc123def456 stack: at promql.eval (line 9001)"
+    "PrometheusInternalError: tenant=acme-corp shard=42 trace=abc123def456 stack: at promql.eval (line 9001)"
 )
 
 
@@ -100,8 +100,8 @@ def test_non_200_log_excludes_body_content(monkeypatch, caplog):
         # Also stringify the raw args tuple in case the formatter never ran.
         args_repr = repr(record.args) if record.args else ""
         for needle in sensitive_substrings:
-            assert needle not in rendered, f"sensitive substring {needle!r} leaked into log message: " f"{rendered!r}"
-            assert needle not in args_repr, f"sensitive substring {needle!r} leaked into log args: " f"{args_repr!r}"
+            assert needle not in rendered, f"sensitive substring {needle!r} leaked into log message: {rendered!r}"
+            assert needle not in args_repr, f"sensitive substring {needle!r} leaked into log args: {args_repr!r}"
 
 
 def test_non_200_log_keeps_diagnostic_fields(monkeypatch, caplog):
@@ -149,9 +149,9 @@ def test_bearer_to_cloud_metadata_endpoint_refuses_to_start_even_with_plaintext_
 
     msg = str(excinfo.value)
     assert "1652" in msg, f"error message must cite #1652: {msg!r}"
-    assert (
-        "metadata" in msg.lower() or "169.254.169.254" in msg
-    ), f"error message must identify the metadata endpoint: {msg!r}"
+    assert "metadata" in msg.lower() or "169.254.169.254" in msg, (
+        f"error message must identify the metadata endpoint: {msg!r}"
+    )
 
     # Restore a healthy server module for any subsequent tests in the
     # session, so test isolation is preserved.

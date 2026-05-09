@@ -270,8 +270,9 @@ class SaveHistoryCutPointTests(unittest.TestCase):
         # Cap small enough that the force-split must drop entries and
         # large enough that a single AFC pair (~4 KiB serialised) fits.
         cap = 16 * 1024
-        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 0), patch.object(
-            executor, "_SAVE_HISTORY_MAX_BYTES", cap
+        with (
+            patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 0),
+            patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", cap),
         ):
             asyncio.run(executor._save_history(sid, history))
 
@@ -386,8 +387,9 @@ class EmitAfcHistoryTests(unittest.TestCase):
             def inc(self):
                 observed_calls.append(1)
 
-        with patch.object(executor, "backend_sdk_tool_duration_seconds", _DurFake()), patch.object(
-            executor, "backend_sdk_tool_calls_total", _CallsFake()
+        with (
+            patch.object(executor, "backend_sdk_tool_duration_seconds", _DurFake()),
+            patch.object(executor, "backend_sdk_tool_calls_total", _CallsFake()),
         ):
             asyncio.run(
                 executor._emit_afc_history(
@@ -427,9 +429,11 @@ class WriterDoneEventRaceTests(unittest.TestCase):
         def _always_raise(*a, **kw):
             raise OSError("synthetic disk failure")
 
-        with patch.object(executor, "_SAVE_HISTORY_MAX_RETRIES", 2), patch.object(
-            executor, "_SAVE_HISTORY_BACKOFF_BASE", 0.0
-        ), patch.object(executor, "_write_history_respecting_epoch", _always_raise):
+        with (
+            patch.object(executor, "_SAVE_HISTORY_MAX_RETRIES", 2),
+            patch.object(executor, "_SAVE_HISTORY_BACKOFF_BASE", 0.0),
+            patch.object(executor, "_write_history_respecting_epoch", _always_raise),
+        ):
             with self.assertRaises(RuntimeError):
                 asyncio.run(executor._save_history(sid, history))
 
@@ -558,8 +562,9 @@ class McpConfigPathPrefixTests(unittest.TestCase):
     def test_mcp_config_path_outside_prefix_is_rejected(self):
         # /etc/passwd exists on every POSIX host, so os.path.exists short-
         # circuit doesn't hide the prefix check we're trying to assert.
-        with patch.object(executor, "MCP_CONFIG_PATH", "/etc/passwd"), patch.object(
-            executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/"
+        with (
+            patch.object(executor, "MCP_CONFIG_PATH", "/etc/passwd"),
+            patch.object(executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/"),
         ):
             result = executor._load_mcp_config()
         self.assertEqual(result, {})
@@ -574,8 +579,9 @@ class McpConfigPathPrefixTests(unittest.TestCase):
             # the production default of /home/agent/ is exercised by the
             # rejection test above.
             allowed = os.path.realpath(tmp) + os.sep
-            with patch.object(executor, "MCP_CONFIG_PATH", cfg_path), patch.object(
-                executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", allowed
+            with (
+                patch.object(executor, "MCP_CONFIG_PATH", cfg_path),
+                patch.object(executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", allowed),
             ):
                 result = executor._load_mcp_config()
         self.assertEqual(result, {"k8s": {"url": "http://example/"}})

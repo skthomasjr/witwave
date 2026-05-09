@@ -162,7 +162,7 @@ class YamlExtensionLoaderTests(unittest.TestCase):
         return path
 
     def test_valid_extension_rule_parses(self):
-        path = self._write("extensions:\n" "  - name: deny-foo\n" "    deny_if_match: foo\n")
+        path = self._write("extensions:\n  - name: deny-foo\n    deny_if_match: foo\n")
         try:
             rules = he.load_extension_rules(path)
         finally:
@@ -199,7 +199,7 @@ class YamlExtensionLoaderTests(unittest.TestCase):
         self.assertIn("non_list_extensions", self._observed)
 
     def test_missing_name_reported(self):
-        path = self._write("extensions:\n" "  - deny_if_match: foo\n")
+        path = self._write("extensions:\n  - deny_if_match: foo\n")
         try:
             rules = he.load_extension_rules(path)
         finally:
@@ -208,7 +208,7 @@ class YamlExtensionLoaderTests(unittest.TestCase):
         self.assertIn("missing_name", self._observed)
 
     def test_invalid_regex_reported(self):
-        path = self._write("extensions:\n" "  - name: bad-rx\n" "    deny_if_match: '['\n")
+        path = self._write("extensions:\n  - name: bad-rx\n    deny_if_match: '['\n")
         try:
             rules = he.load_extension_rules(path)
         finally:
@@ -217,7 +217,7 @@ class YamlExtensionLoaderTests(unittest.TestCase):
         self.assertIn("invalid_regex", self._observed)
 
     def test_both_patterns_reported(self):
-        path = self._write("extensions:\n" "  - name: both\n" "    deny_if_match: x\n" "    warn_if_match: y\n")
+        path = self._write("extensions:\n  - name: both\n    deny_if_match: x\n    warn_if_match: y\n")
         try:
             rules = he.load_extension_rules(path)
         finally:

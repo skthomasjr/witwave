@@ -191,9 +191,10 @@ class GetClientRotationFailureTests(_ResetSingletonMixin, unittest.TestCase):
 
         os.environ["GEMINI_API_KEY"] = "rotated-but-bad"
         boom = RuntimeError("constructor refused new key")
-        with patch.object(executor.genai, "Client", side_effect=boom), self.assertLogs(
-            executor.logger, level="ERROR"
-        ) as logs:
+        with (
+            patch.object(executor.genai, "Client", side_effect=boom),
+            self.assertLogs(executor.logger, level="ERROR") as logs,
+        ):
             got = executor._get_client()
 
         self.assertIs(got, prev, "failed rotation must return the previously-cached client")

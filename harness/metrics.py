@@ -208,7 +208,7 @@ if _enabled:
     )
     harness_a2a_prompt_oversize_total = prometheus_client.Counter(
         "harness_a2a_prompt_oversize_total",
-        "Total A2A execute() calls rejected because the prompt exceeded " "A2A_MAX_PROMPT_BYTES (#783).",
+        "Total A2A execute() calls rejected because the prompt exceeded A2A_MAX_PROMPT_BYTES (#783).",
     )
     harness_a2a_traces_received_total = prometheus_client.Counter(
         "harness_a2a_traces_received_total",
@@ -790,7 +790,7 @@ if _enabled:
     )
     harness_a2a_backend_request_duration_seconds = prometheus_client.Histogram(
         "harness_a2a_backend_request_duration_seconds",
-        "Wall-clock seconds for outbound A2A requests from the harness to " "each configured backend (#622).",
+        "Wall-clock seconds for outbound A2A requests from the harness to each configured backend (#622).",
         ["backend"],
     )
     harness_a2a_backend_circuit_state = prometheus_client.Gauge(
@@ -838,7 +838,7 @@ if _enabled:
     )
     harness_event_stream_events_published_total = prometheus_client.Counter(
         "harness_event_stream_events_published_total",
-        "Total events successfully fanned out on the SSE event stream (#1110), " "labelled by envelope type.",
+        "Total events successfully fanned out on the SSE event stream (#1110), labelled by envelope type.",
         ["type"],
     )
     harness_event_stream_events_dropped_total = prometheus_client.Counter(
@@ -864,8 +864,7 @@ if _enabled:
     )
     harness_event_stream_ring_size = prometheus_client.Gauge(
         "harness_event_stream_ring_size",
-        "Current depth of the SSE event stream replay ring (#1110). Bounded "
-        "by EVENT_STREAM_RING_MAX (default 1000).",
+        "Current depth of the SSE event stream replay ring (#1110). Bounded by EVENT_STREAM_RING_MAX (default 1000).",
     )
     harness_event_stream_inbound_rejected_total = prometheus_client.Counter(
         "harness_event_stream_inbound_rejected_total",

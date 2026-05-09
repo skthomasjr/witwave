@@ -147,7 +147,7 @@ class SqliteTaskStore(TaskStore):
                 _ensure_schema(conn)
                 self._initialised = True
                 logger.info(
-                    "SqliteTaskStore opened at %s (WAL, busy_timeout=%sms, " "per-thread connection pool)",
+                    "SqliteTaskStore opened at %s (WAL, busy_timeout=%sms, per-thread connection pool)",
                     self._path,
                     _BUSY_TIMEOUT_MS,
                 )
@@ -161,7 +161,7 @@ class SqliteTaskStore(TaskStore):
     def _save_sync(self, task_id: str, data: str) -> None:
         conn = self._get_conn()
         conn.execute(
-            "INSERT INTO tasks (id, data) VALUES (?, ?) " "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+            "INSERT INTO tasks (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
             (task_id, data),
         )
         conn.commit()

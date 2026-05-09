@@ -698,7 +698,7 @@ if _enabled:
     )
     backend_mcp_outbound_duration_seconds = prometheus_client.Histogram(
         "backend_mcp_outbound_duration_seconds",
-        "Wall-clock duration of an outbound MCP tool call from ToolUseBlock " "to ToolResultBlock. See #1104.",
+        "Wall-clock duration of an outbound MCP tool call from ToolUseBlock to ToolResultBlock. See #1104.",
         ["agent", "agent_id", "backend", "server", "tool", "outcome"],
         buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
     )

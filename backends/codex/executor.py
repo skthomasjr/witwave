@@ -518,7 +518,7 @@ def _pre_tool_use_gate(
         from hooks_engine import evaluate_pre_tool_use  # type: ignore
     except Exception as _imp_exc:
         logger.warning(
-            "_pre_tool_use_gate: hooks_engine import failed (%r); " "fail-open for %s.",
+            "_pre_tool_use_gate: hooks_engine import failed (%r); fail-open for %s.",
             _imp_exc,
             tool_name,
         )
@@ -660,7 +660,7 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                 # the regression class that #937 closed for the primary
                 # path only.
                 logger.warning(
-                    "_shell_executor: emitting hook.decision with empty " "session_id (edge-dispatch path?) rule=%s",
+                    "_shell_executor: emitting hook.decision with empty session_id (edge-dispatch path?) rule=%s",
                     rule,
                 )
                 if backend_hook_session_missing_total is not None:
@@ -1273,7 +1273,7 @@ def _session_layout_self_test() -> None:
     db_path = CODEX_SESSION_DB
     if not db_path or db_path == ":memory:":
         logger.info(
-            "session-layout self-test: CODEX_SESSION_DB is %r — skipping " "probe (in-memory / unset). (#806)",
+            "session-layout self-test: CODEX_SESSION_DB is %r — skipping probe (in-memory / unset). (#806)",
             db_path,
         )
         return
@@ -1286,8 +1286,7 @@ def _session_layout_self_test() -> None:
             os.makedirs(parent, exist_ok=True)
         except Exception as exc:
             logger.error(
-                "session-layout self-test: cannot create parent dir %r (%r) — "
-                "session history will not persist. (#806)",
+                "session-layout self-test: cannot create parent dir %r (%r) — session history will not persist. (#806)",
                 parent,
                 exc,
             )
@@ -1295,7 +1294,7 @@ def _session_layout_self_test() -> None:
             return
         if not os.access(parent, os.W_OK):
             logger.error(
-                "session-layout self-test: parent dir %r is not writable — " "session history will not persist. (#806)",
+                "session-layout self-test: parent dir %r is not writable — session history will not persist. (#806)",
                 parent,
             )
             _bump("parent_dir_not_writable")
@@ -1308,8 +1307,7 @@ def _session_layout_self_test() -> None:
             conn = _codex_sqlite_connect(db_path)
         except Exception as exc:
             logger.error(
-                "session-layout self-test: sqlite3.connect(%r) failed: %r — "
-                "session history will not persist. (#806)",
+                "session-layout self-test: sqlite3.connect(%r) failed: %r — session history will not persist. (#806)",
                 db_path,
                 exc,
             )
@@ -1333,11 +1331,11 @@ def _session_layout_self_test() -> None:
             # depend on. If the SDK ever switches schema or splits rows
             # across tables, _delete_sqlite_session would silently no-op.
             try:
-                cursor = conn.execute("SELECT name FROM sqlite_master " "WHERE type='table' AND name='agent_sessions'")
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_sessions'")
                 have_table = cursor.fetchone() is not None
             except Exception as exc:
                 logger.warning(
-                    "session-layout self-test: sqlite_master query failed: %r " "(#806)",
+                    "session-layout self-test: sqlite_master query failed: %r (#806)",
                     exc,
                 )
                 _bump("sqlite_master_query_failed")
@@ -1348,9 +1346,7 @@ def _session_layout_self_test() -> None:
                 # write/read round-trip below can run. The SDK will redefine
                 # / migrate on first real session use.
                 try:
-                    conn.execute(
-                        "CREATE TABLE IF NOT EXISTS agent_sessions (" "session_id TEXT PRIMARY KEY, " "data TEXT" ")"
-                    )
+                    conn.execute("CREATE TABLE IF NOT EXISTS agent_sessions (session_id TEXT PRIMARY KEY, data TEXT)")
                     conn.commit()
                 except Exception as exc:
                     logger.error(
@@ -1383,7 +1379,7 @@ def _session_layout_self_test() -> None:
                 return
             except Exception as exc:
                 logger.error(
-                    "session-layout self-test: sentinel INSERT failed: %r — " "session writes likely broken. (#806)",
+                    "session-layout self-test: sentinel INSERT failed: %r — session writes likely broken. (#806)",
                     exc,
                 )
                 _bump("insert_failed")
@@ -1402,7 +1398,7 @@ def _session_layout_self_test() -> None:
                     _bump("read_after_insert_missing")
             except Exception as exc:
                 logger.warning(
-                    "session-layout self-test: SELECT after INSERT failed: %r " "(#806)",
+                    "session-layout self-test: SELECT after INSERT failed: %r (#806)",
                     exc,
                 )
                 _bump("select_failed")
@@ -1425,13 +1421,13 @@ def _session_layout_self_test() -> None:
                     _bump("delete_did_not_remove")
             except Exception as exc:
                 logger.warning(
-                    "session-layout self-test: DELETE round-trip failed: %r " "(#806)",
+                    "session-layout self-test: DELETE round-trip failed: %r (#806)",
                     exc,
                 )
                 _bump("delete_failed")
 
             logger.info(
-                "session-layout self-test: CODEX_SESSION_DB=%r verified " "(write/read/delete round-trip OK). (#806)",
+                "session-layout self-test: CODEX_SESSION_DB=%r verified (write/read/delete round-trip OK). (#806)",
                 db_path,
             )
         finally:
@@ -2121,7 +2117,7 @@ async def run_query(
                 # and bump a divergence counter so operators can alert on
                 # frequent mismatches.
                 logger.debug(
-                    "final_output differs from streamed deltas — using final_output " "(len streamed=%d, len final=%d)",
+                    "final_output differs from streamed deltas — using final_output (len streamed=%d, len final=%d)",
                     len(streamed),
                     len(final),
                 )
@@ -2581,8 +2577,7 @@ class AgentExecutor(A2AAgentExecutor):
                         logger.warning("Previous MCP stack aclose error: %s", _close_exc)
                 else:
                     logger.info(
-                        "MCP hot-reload: deferring aclose of previous stack "
-                        "until %d in-flight request(s) release it.",
+                        "MCP hot-reload: deferring aclose of previous stack until %d in-flight request(s) release it.",
                         _prev_refcount,
                     )
                     self._mcp_old_stacks.append((_prev_stack, _prev_refcount))
@@ -2884,7 +2879,7 @@ class AgentExecutor(A2AAgentExecutor):
                     for _, path in changes:
                         if os.path.abspath(path) == os.path.abspath(key_file):
                             logger.info(
-                                "api_key_file_watcher: %r changed — " "refreshing OPENAI_API_KEY for the next request.",
+                                "api_key_file_watcher: %r changed — refreshing OPENAI_API_KEY for the next request.",
                                 key_file,
                             )
                             try:
@@ -3215,7 +3210,7 @@ class AgentExecutor(A2AAgentExecutor):
                     )
                 except Exception as _ef_exc:  # pragma: no cover
                     logger.warning(
-                        "session_stream: final chunk publish on error " "path failed: %r",
+                        "session_stream: final chunk publish on error path failed: %r",
                         _ef_exc,
                     )
             raise

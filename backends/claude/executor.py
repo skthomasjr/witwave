@@ -291,8 +291,7 @@ def _session_path_self_test() -> None:
 
         if not isinstance(resolved, pathlib.Path):
             logger.error(
-                "session-path self-test: _session_file_path returned %r (type=%s) — "
-                "expected pathlib.Path. See #530.",
+                "session-path self-test: _session_file_path returned %r (type=%s) — expected pathlib.Path. See #530.",
                 resolved,
                 type(resolved).__name__,
             )
@@ -373,7 +372,7 @@ def _session_path_self_test() -> None:
             pass
 
         logger.info(
-            "session-path self-test: ok — resolver layout matches documented conventions " "(%r).",
+            "session-path self-test: ok — resolver layout matches documented conventions (%r).",
             str(resolved),
         )
     except Exception as exc:
@@ -880,7 +879,7 @@ try:
     _HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
 except (TypeError, ValueError):
     logger.warning(
-        "HOOK_POST_MAX_INFLIGHT could not be parsed as int; " "forcing safe default %d (#1196).",
+        "HOOK_POST_MAX_INFLIGHT could not be parsed as int; forcing safe default %d (#1196).",
         _HOOK_POST_MAX_INFLIGHT_DEFAULT,
     )
     _HOOK_POST_MAX_INFLIGHT = _HOOK_POST_MAX_INFLIGHT_DEFAULT
@@ -2966,7 +2965,7 @@ class AgentExecutor(A2AAgentExecutor):
                             )
                         except Exception as _ef_exc:  # pragma: no cover
                             logger.warning(
-                                "session_stream: final chunk publish on " "error path failed: %r",
+                                "session_stream: final chunk publish on error path failed: %r",
                                 _ef_exc,
                             )
                     raise

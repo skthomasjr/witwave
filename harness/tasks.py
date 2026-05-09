@@ -677,7 +677,7 @@ async def run_task(
                         harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
                     try:
                         _window_str = (
-                            f"{item.window_start.strftime('%H:%M')}-" f"{item.window_end.strftime('%H:%M')}"
+                            f"{item.window_start.strftime('%H:%M')}-{item.window_end.strftime('%H:%M')}"
                             if item.window_start and item.window_end
                             else ""
                         )
@@ -697,7 +697,7 @@ async def run_task(
                         # #1274: bounded drain, prevents SIGTERM hang.
                         _drain_timeout = float(os.environ.get("TASKS_SHUTDOWN_DRAIN_TIMEOUT", "5"))
                         logger.info(
-                            f"Task '{item.name}' cancelled — awaiting in-flight bus.send " f"(up to {_drain_timeout}s)."
+                            f"Task '{item.name}' cancelled — awaiting in-flight bus.send (up to {_drain_timeout}s)."
                         )
                         try:
                             await asyncio.wait_for(
@@ -724,7 +724,7 @@ async def run_task(
                         harness_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
                     try:
                         _window_str = (
-                            f"{item.window_start.strftime('%H:%M')}-" f"{item.window_end.strftime('%H:%M')}"
+                            f"{item.window_start.strftime('%H:%M')}-{item.window_end.strftime('%H:%M')}"
                             if item.window_start and item.window_end
                             else ""
                         )

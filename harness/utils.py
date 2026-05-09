@@ -101,8 +101,7 @@ def _safe_load_bounded(yaml_text: str) -> Any:
     """
     if len(yaml_text.encode("utf-8", errors="replace")) > PARSE_FRONTMATTER_MAX_YAML_BYTES:
         raise FrontmatterTooLarge(
-            f"frontmatter YAML exceeds {PARSE_FRONTMATTER_MAX_YAML_BYTES} bytes "
-            f"(see PARSE_FRONTMATTER_MAX_YAML_BYTES)"
+            f"frontmatter YAML exceeds {PARSE_FRONTMATTER_MAX_YAML_BYTES} bytes (see PARSE_FRONTMATTER_MAX_YAML_BYTES)"
         )
     return yaml.safe_load(yaml_text)
 

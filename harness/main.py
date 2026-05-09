@@ -279,7 +279,7 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
                 )
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         logger.warning(
-            "POST /internal/events/hook-decision rejected: no auth token configured " "(set HOOK_EVENTS_AUTH_TOKEN)."
+            "POST /internal/events/hook-decision rejected: no auth token configured (set HOOK_EVENTS_AUTH_TOKEN)."
         )
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     header = request.headers.get("Authorization", "")
@@ -391,9 +391,7 @@ async def event_publish_handler(request: Request) -> JSONResponse:
     rejected rather than silently accepted.
     """
     if not HOOK_EVENTS_AUTH_TOKEN:
-        logger.warning(
-            "POST /internal/events/publish rejected: no auth token configured " "(set HOOK_EVENTS_AUTH_TOKEN)."
-        )
+        logger.warning("POST /internal/events/publish rejected: no auth token configured (set HOOK_EVENTS_AUTH_TOKEN).")
         _bump_inbound_rejected("auth")
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     header = request.headers.get("Authorization", "")
@@ -685,8 +683,7 @@ def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False)
     def _on_not_ready():
         global _ready
         logger.error(
-            f"Task {coro_fn.__name__!r} has crashed {WORKER_MAX_RESTARTS} "
-            "consecutive times — marking agent not ready"
+            f"Task {coro_fn.__name__!r} has crashed {WORKER_MAX_RESTARTS} consecutive times — marking agent not ready"
         )
         _ready = False
 
@@ -1755,7 +1752,7 @@ async def main():
             if not raw_fields.get("schedule"):
                 errors.append("heartbeat: missing 'schedule'")
         else:
-            errors.append(f"unknown kind={kind!r}; expected one of " "job/task/trigger/continuation/webhook/heartbeat")
+            errors.append(f"unknown kind={kind!r}; expected one of job/task/trigger/continuation/webhook/heartbeat")
 
         return JSONResponse({"ok": not errors, "errors": errors, "parsed": parsed})
 
@@ -2334,9 +2331,11 @@ async def main():
     for _w in executor._mcp_watchers():
         _mcp_task = asyncio.create_task(_guarded(_w))
         _mcp_task.add_done_callback(
-            lambda t, _wn=_w.__name__: logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
-            if not t.cancelled() and t.exception() is not None
-            else None
+            lambda t, _wn=_w.__name__: (
+                logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
         )
         executor._mcp_watcher_tasks.append(_mcp_task)
 

@@ -255,7 +255,7 @@ def _consume_budget(server: str, tool: str) -> None:
                 except Exception:
                     pass
             raise CallBudgetExhausted(
-                f"mcp {server}.{tool}: call budget exhausted " f"({cap} calls / {window:.0f}s window)."
+                f"mcp {server}.{tool}: call budget exhausted ({cap} calls / {window:.0f}s window)."
             )
         hits.append(now)
 
@@ -373,7 +373,7 @@ def record_tool_call(server: str, tool: str) -> Iterator[None]:
                 except Exception:
                     pass
             raise ConcurrencyCapExceeded(
-                f"mcp {server}.{tool}: per-tool concurrency cap exceeded " f"(set MCP_CONCURRENCY_* env vars to tune)"
+                f"mcp {server}.{tool}: per-tool concurrency cap exceeded (set MCP_CONCURRENCY_* env vars to tune)"
             )
     start = time.monotonic()
     outcome = "ok"

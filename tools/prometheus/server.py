@@ -383,8 +383,7 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             raise
         except httpx.TimeoutException as exc:
             err = PrometheusError(
-                f"prometheus {endpoint} timed out after "
-                f"{_MCP_REQUEST_TIMEOUT_SECONDS}s (MCP_SUBPROCESS_TIMEOUT_SEC)"
+                f"prometheus {endpoint} timed out after {_MCP_REQUEST_TIMEOUT_SECONDS}s (MCP_SUBPROCESS_TIMEOUT_SEC)"
             )
             set_span_error(_exec_span, err)
             raise err from exc
@@ -425,7 +424,7 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             set_span_error(_exec_span, err)
             raise err from exc
         if body.get("status") != "success":
-            err = PrometheusError(f"prometheus {endpoint} error: " f"{body.get('errorType')}: {body.get('error')}")
+            err = PrometheusError(f"prometheus {endpoint} error: {body.get('errorType')}: {body.get('error')}")
             set_span_error(_exec_span, err)
             raise err
         return body

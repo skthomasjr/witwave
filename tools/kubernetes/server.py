@@ -243,9 +243,7 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
     return {
         "_truncated": True,
         "_cap_bytes": cap,
-        "_note": (
-            f"mcp-kubernetes:{tool} response exceeded " f"MCP_RESPONSE_MAX_BYTES ({cap}); raw payload suppressed."
-        ),
+        "_note": (f"mcp-kubernetes:{tool} response exceeded MCP_RESPONSE_MAX_BYTES ({cap}); raw payload suppressed."),
     }
 
 
@@ -300,13 +298,12 @@ try:
 
     mcp_k8s_token_reload_total = _Counter(
         "mcp_k8s_token_reload_total",
-        "Count of Kubernetes client reloads triggered by a 401 response, "
-        "e.g. projected ServiceAccount token rotation.",
+        "Count of Kubernetes client reloads triggered by a 401 response, e.g. projected ServiceAccount token rotation.",
         ["outcome"],
     )
     mcp_discovery_reload_total = _Counter(
         "mcp_discovery_reload_total",
-        "Count of DynamicClient discovery-cache refreshes triggered by a " "ResourceNotFound / 404 during _resolve.",
+        "Count of DynamicClient discovery-cache refreshes triggered by a ResourceNotFound / 404 during _resolve.",
         ["outcome"],
     )
     # Inner-work histogram for apiserver latency (#1126). Distinct from
@@ -630,7 +627,7 @@ def list_resources(
                 # pay for bytes the caller will discard.
                 if limit > _MCP_LIST_LIMIT_MAX:
                     log.info(
-                        "list_resources: coercing limit %d down to " "MCP_LIST_LIMIT_MAX=%d (#1526)",
+                        "list_resources: coercing limit %d down to MCP_LIST_LIMIT_MAX=%d (#1526)",
                         limit,
                         _MCP_LIST_LIMIT_MAX,
                     )
@@ -939,7 +936,7 @@ def logs(
                 if not isinstance(since_seconds, int) or isinstance(since_seconds, bool):
                     raise ValueError("logs: 'since_seconds' must be an int")
                 if since_seconds < 1 or since_seconds > 604800:
-                    raise ValueError("logs: 'since_seconds' must be between 1 and 604800 " "(one week) (#1210)")
+                    raise ValueError("logs: 'since_seconds' must be between 1 and 604800 (one week) (#1210)")
                 kwargs["since_seconds"] = since_seconds
             # Per-call network timeout (#778). Prevents a wedged pod
             # log stream from pinning the handler indefinitely.
