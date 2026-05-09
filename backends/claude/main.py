@@ -184,35 +184,40 @@ async def health_start(request: Request) -> JSONResponse:
 
 
 async def health(request: Request) -> JSONResponse:
-    # #1608: /health is the LIVENESS probe — it returns 200 as soon as the
-    # process is up so kubelet does not CrashLoopBackOff a pod that is
-    # merely degraded. Boot-degraded state is surfaced informationally in
-    # the body but does NOT flip the status code. For readiness gating
-    # (i.e. removing a degraded pod from Service endpoints) point K8s
-    # readinessProbe at /health/ready instead.
+    # #1608 + 5e5d5a9b unification: /health is the LIVENESS probe — it
+    # returns 200 unconditionally so kubelet does not CrashLoopBackOff a
+    # pod that is merely starting or degraded. Pre-ready state is surfaced
+    # via the body's `status` field ("starting" vs "ok"); boot-degraded
+    # state is surfaced informationally via `boot_degraded`. Neither flips
+    # the status code. For readiness gating (i.e. removing a pod from
+    # Service endpoints) point K8s readinessProbe at /health/ready
+    # instead. This mirrors codex/main.py:136 and gemini/main.py:136 and
+    # closes the unification gap left by `5e5d5a9b` — claude's previous
+    # implementation returned 503 while `_ready=False`, which under slow
+    # startup (exceeding kubelet's initialDelaySeconds) would
+    # CrashLoopBackOff a backend that should have been merely removed
+    # from Service endpoints.
     if backend_health_checks_total is not None:
         backend_health_checks_total.labels(
             agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health"
         ).inc()
-    if _ready:
-        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-        # #1341: expose both fields so consumers that cross-reference with
-        # Prometheus metric labels (which use AGENT_OWNER as `agent`) can
-        # join cleanly. `agent` preserves the container-local name for
-        # backwards compat; `agent_owner` + `agent_id` match metric labels.
-        _resp = {
-            "status": "ok",
-            "agent": AGENT_NAME,
-            "agent_owner": AGENT_OWNER,
-            "agent_id": AGENT_ID,
-            "uptime_seconds": elapsed,
-        }
-        # #1368: surface boot-degraded state so operators alert on
-        # backends that came up with empty MCP/agent_md/hooks.
-        if _boot_degraded_reason is not None:
-            _resp["boot_degraded"] = _boot_degraded_reason
-        return JSONResponse(_resp)
-    return JSONResponse({"status": "starting"}, status_code=503)
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    # #1341: expose both fields so consumers that cross-reference with
+    # Prometheus metric labels (which use AGENT_OWNER as `agent`) can
+    # join cleanly. `agent` preserves the container-local name for
+    # backwards compat; `agent_owner` + `agent_id` match metric labels.
+    _resp = {
+        "status": "ok" if _ready else "starting",
+        "agent": AGENT_NAME,
+        "agent_owner": AGENT_OWNER,
+        "agent_id": AGENT_ID,
+        "uptime_seconds": elapsed,
+    }
+    # #1368: surface boot-degraded state so operators alert on
+    # backends that came up with empty MCP/agent_md/hooks.
+    if _boot_degraded_reason is not None:
+        _resp["boot_degraded"] = _boot_degraded_reason
+    return JSONResponse(_resp)
 
 
 async def health_ready(request: Request) -> JSONResponse:

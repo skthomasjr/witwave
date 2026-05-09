@@ -349,16 +349,28 @@ class HealthReadinessSplitTests(unittest.TestCase):
         # Degraded reason still surfaces informationally.
         self.assertEqual(body["boot_degraded"], "initial_loads_timeout")
 
-    def test_health_liveness_503_when_not_ready(self):
-        """/health (liveness) returns 503 while _ready is False.
+    def test_health_liveness_200_when_not_ready(self):
+        """/health (liveness) returns 200 with status="starting" while _ready is False.
 
-        Liveness only flips green once the process has actually bound the
-        listener; pre-ready 503 is fine because kubelet's liveness probe
-        is configured with an initial delay.
+        Per the 5e5d5a9b unification (and the original cycle-1 #1608
+        intent), liveness is always-200-once-the-process-is-up: relying on
+        kubelet's initialDelaySeconds to absorb pre-ready time would
+        CrashLoopBackOff a slow-starting pod that exceeds the delay.
+        Pre-ready state is surfaced via the body's status field; the
+        separate /health/ready probe (validated above) gates Service
+        endpoint removal during the same window.
+
+        This test pinned the pre-unification 503 behaviour; it was the
+        last drift point in claude's /health surface relative to
+        codex/main.py:136 and gemini/main.py:136.
         """
+        import json
+
         main._ready = False
         resp = _run(main.health(_make_request()))
-        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.body)
+        self.assertEqual(body["status"], "starting")
 
 
 if __name__ == "__main__":
