@@ -6,6 +6,19 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.3] — 2026-05-09
+
+Recovery patch for the v0.23.2 container build, which failed under the Go 1.26.2 toolchain: `staticcheck@2024.1.1` and
+`errcheck@v1.7.0` transitively pulled an old `golang.org/x/tools` whose `internal/tokeninternal/tokeninternal.go`
+contains a constant-overflow expression Go 1.26.2 hard-rejects. Bumping both analyzers clears the build and lets the
+container release pipeline ship the v0.23.x line cleanly.
+
+### Fixed
+
+- **backends/claude, backends/codex, backends/gemini**: Bump `STATICCHECK_VERSION` 2024.1.1 → 2026.1 and
+  `ERRCHECK_VERSION` v1.7.0 → v1.10.0 in each backend's Dockerfile so the analyzer pins compile under Go 1.26.2 (the
+  toolchain v0.23.2 introduced).
+
 ## [0.23.2] — 2026-05-09
 
 Patch release shipping a chronological-order fix for `ww conversation list --expand`, plus a batch of post-tag
