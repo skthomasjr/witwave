@@ -6,6 +6,39 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.2] — 2026-05-09
+
+Patch release shipping a chronological-order fix for `ww conversation list --expand`, plus a batch of post-tag
+stabilisation: Go toolchain bump to unblock `staticcheck` + `errcheck` on the analyzer surface, test-isolation hardening
+across the codex / gemini backends, a `NameError` fix in the kubernetes MCP tool tests, and agent-identity coordination
+tweaks for the cross-agent push and dispatch loops.
+
+### Fixed
+
+- **ww**: `ww conversation list --expand` returns sessions in chronological order (oldest → newest) so the rendered
+  tail matches the natural reading order.
+- **backends (Go toolchain)**: Bump `GO_VERSION` 1.23.4 → 1.26.2 to unblock `staticcheck` + `errcheck` on the analyzer
+  surface — the older Go was rejecting type inference patterns the analyzers needed.
+- **backends/codex, backends/gemini**: Test-suite stabilisation — codex switches to the stable
+  `prometheus_client.Counter.collect()` API instead of reaching into `._value` internals; gemini hardens four
+  test-isolation seams (`a2a.server` stub guard tightened to `a2a.server.apps`, prompt-size-cap test isolated from a
+  sibling test's `prometheus_client` stub, `_emit_chunk` metric-order test rebased onto the post-enqueue-removal
+  surface, `WriterDoneEventRaceTests` patches the correct write helper).
+- **tools/kubernetes**: Fix a broken comprehension that raised `NameError` on every test run.
+
+### Agent identity
+
+- **iris, zora**: Close the stuck-commits cascade wedge so cross-agent push delegation fails fast instead of silently
+  wedging the team.
+- **nova, kira**: Document explicit caller-return semantics for iris-delegated push so siblings know exactly what shape
+  they get back.
+- **zora, finn**: Polish-tier ladder for finn defaults to depth 3 (not 1) so the gap-fixer surfaces meaningful work on
+  first dispatch.
+- **evan, zora**: `risk-work` default depth bumps 3 → 5; `dispatch-team` gains a paranoid placeholder check before
+  firing evan against risk findings.
+- **zora**: `dispatch-team` handles iris's `[release-workflow-pending]` outcome by holding cadence without escalating,
+  instead of treating a pending workflow as a failure.
+
 ## [0.23.1] — 2026-05-08
 
 Patch release unifying the `/health` endpoint surface across the harness, claude/codex/gemini backends, and MCP servers
