@@ -46,7 +46,6 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import yaml
 
@@ -155,13 +154,13 @@ class RoutingConfig:
     to the default.
     """
 
-    default: Optional[RoutingEntry] = None
-    a2a: Optional[RoutingEntry] = None
-    heartbeat: Optional[RoutingEntry] = None
-    job: Optional[RoutingEntry] = None
-    task: Optional[RoutingEntry] = None
-    trigger: Optional[RoutingEntry] = None
-    continuation: Optional[RoutingEntry] = None
+    default: RoutingEntry | None = None
+    a2a: RoutingEntry | None = None
+    heartbeat: RoutingEntry | None = None
+    job: RoutingEntry | None = None
+    task: RoutingEntry | None = None
+    trigger: RoutingEntry | None = None
+    continuation: RoutingEntry | None = None
 
 
 def load_routing_config(raw: dict | None = None) -> RoutingConfig:

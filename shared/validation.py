@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 __all__ = ["parse_max_tokens", "sanitize_model_label"]
 
@@ -36,7 +36,7 @@ __all__ = ["parse_max_tokens", "sanitize_model_label"]
 _MODEL_LABEL_RE = re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
 
 
-def sanitize_model_label(value: Optional[str]) -> str:
+def sanitize_model_label(value: str | None) -> str:
     """Clamp a model label to a bounded, well-formed string for Prometheus.
 
     Returns the input unchanged when it matches ``_MODEL_LABEL_RE``; otherwise
@@ -56,8 +56,8 @@ def parse_max_tokens(
     *,
     logger: logging.Logger,
     source: str,
-    session_id: Optional[str] = None,
-) -> Optional[int]:
+    session_id: str | None = None,
+) -> int | None:
     """Parse a raw ``max_tokens`` value into a positive ``int`` or ``None``.
 
     Parameters

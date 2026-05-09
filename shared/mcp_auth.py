@@ -84,9 +84,10 @@ def require_bearer_token(
         # readiness — exposing all three keeps the surface uniform with
         # the harness (which uses /health/live + /health/ready) and the
         # backends (which use /health + /health/ready).
-        if scope.get("path") in ("/health", "/health/live", "/health/ready") and scope.get(
-            "method", "GET"
-        ) in ("GET", "HEAD"):
+        if scope.get("path") in ("/health", "/health/live", "/health/ready") and scope.get("method", "GET") in (
+            "GET",
+            "HEAD",
+        ):
             await _send_health(send)
             return
         token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()

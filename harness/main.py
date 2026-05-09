@@ -2126,7 +2126,9 @@ async def main():
 
     _routes = [
         Route("/health/start", health_start),
-        Route("/health", health_live),  # bare /health alias for liveness — uniform surface across harness/backends/MCP tools
+        Route(
+            "/health", health_live
+        ),  # bare /health alias for liveness — uniform surface across harness/backends/MCP tools
         Route("/health/live", health_live),
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),

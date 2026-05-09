@@ -28,7 +28,7 @@ import asyncio
 import logging
 import os
 import threading
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -70,8 +70,8 @@ def _resolve_metrics_port() -> int:
 def start_metrics_server_in_thread(
     handler: Callable[[Request], Awaitable[Response]],
     *,
-    logger: Optional[logging.Logger] = None,
-    port: Optional[int] = None,
+    logger: logging.Logger | None = None,
+    port: int | None = None,
     path: str = "/metrics",
 ) -> threading.Thread:
     """Same as :func:`start_metrics_server` but runs in a daemon thread with
@@ -142,10 +142,10 @@ def start_metrics_server_in_thread(
 def start_metrics_server(
     handler: Callable[[Request], Awaitable[Response]],
     *,
-    logger: Optional[logging.Logger] = None,
-    port: Optional[int] = None,
+    logger: logging.Logger | None = None,
+    port: int | None = None,
     path: str = "/metrics",
-    extra_routes: Optional[list] = None,
+    extra_routes: list | None = None,
 ) -> asyncio.Task:
     """Start a uvicorn server hosting ``handler`` at ``path`` in the background.
 

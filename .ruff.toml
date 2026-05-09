@@ -3,4 +3,21 @@ line-length = 120
 [lint]
 select = ["E", "F", "W", "I", "UP"]
 
+[lint.per-file-ignores]
+# backends/codex/executor.py interleaves a module-level ContextVar
+# (`_current_session_id`) between two import groups for documentation
+# locality (#937 — see the explanatory block above the ContextVar).
+# Moving the ContextVar would scatter the rationale; suppressing E402
+# for this file is the smaller cost.
+"backends/codex/executor.py" = ["E402"]
+# backends/gemini/executor.py imports `google.genai`, then runs a
+# version-pin guard (#737) that emits an early warning before the
+# remaining imports load. The guard MUST sit between the genai import
+# and downstream imports — moving it would defeat its purpose.
+"backends/gemini/executor.py" = ["E402"]
+# Test files commonly insert sys.path entries / set environment
+# variables before importing the unit under test, which is structural,
+# not a style violation.
+"**/test_*.py" = ["E402"]
+
 [format]
