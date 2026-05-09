@@ -339,7 +339,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(
-                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"  # noqa: E501
             )
             if backend_task_restarts_total is not None:
                 backend_task_restarts_total.labels(
@@ -347,7 +347,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 ).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
                 logger.error(
-                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"
+                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"  # noqa: E501
                 )
                 _ready = False
             await asyncio.sleep(restart_delay)
@@ -613,14 +613,14 @@ async def main():
                                             # controls when switching backends.
                                             "session_id": {
                                                 "type": "string",
-                                                "description": "Optional session identifier for conversation continuity. "
+                                                "description": "Optional session identifier for conversation continuity. "  # noqa: E501
                                                 "A valid UUID is passed through verbatim; any other string is "
                                                 "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
                                             },
                                             "max_tokens": {
                                                 "type": "integer",
                                                 "minimum": 1,
-                                                "description": "Optional per-call token budget. Positive integers only; "
+                                                "description": "Optional per-call token budget. Positive integers only; "  # noqa: E501
                                                 "non-positive or invalid values are logged and ignored.",
                                             },
                                         },

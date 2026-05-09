@@ -299,7 +299,7 @@ async def _run_inner(
     )
     _trace_tag = f" trace_id={trace_context.trace_id}" if trace_context is not None else ""
     logger.info(
-        f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id}{_trace_tag} — prompt: {_prompt_preview!r}"
+        f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id}{_trace_tag} — prompt: {_prompt_preview!r}"  # noqa: E501
     )
     await log_entry("user", prompt, session_id, model=model, backend=resolved_id, trace_context=trace_context)
 

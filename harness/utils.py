@@ -32,7 +32,7 @@ def parse_duration(value: str) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass  # noqa: E402
 
 
 @dataclass
@@ -152,7 +152,7 @@ def parse_frontmatter_raw(raw: str) -> tuple[dict, str]:
 # instead of FIFO which would evict the oldest inserted regardless of
 # recent access. Also tracks an eviction counter so operators can alert
 # on cache thrash (>1024 md files in a watched tree).
-from collections import OrderedDict
+from collections import OrderedDict  # noqa: E402
 
 _MD_CACHE: "OrderedDict[str, tuple[int, int, str]]" = OrderedDict()
 _MD_CACHE_MAX = int(os.environ.get("PARSE_FRONTMATTER_CACHE_MAX", "1024"))

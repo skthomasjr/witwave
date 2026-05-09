@@ -39,7 +39,7 @@ _FAIL_CLOSED_COUNT_SINCE_WARN: int = 0
 # #1406: check-and-reset on counter is not atomic under the GIL;
 # protect the full sequence with a threading.Lock so concurrent
 # rejects can't double-fire or skip the 500-threshold warn.
-import threading as _threading
+import threading as _threading  # noqa: E402
 
 _FAIL_CLOSED_LOCK = _threading.Lock()
 

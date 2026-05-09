@@ -277,7 +277,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(
-                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"  # noqa: E501
             )
             if backend_task_restarts_total is not None:
                 backend_task_restarts_total.labels(
@@ -285,7 +285,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 ).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
                 logger.error(
-                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"
+                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"  # noqa: E501
                 )
                 _ready = False
             await asyncio.sleep(restart_delay)

@@ -365,7 +365,7 @@ if _enabled:
     )
     backend_prompt_too_large_total = prometheus_client.Counter(
         "backend_prompt_too_large_total",
-        "Total execute() invocations rejected because the inbound prompt's UTF-8 byte length exceeded MAX_PROMPT_BYTES (#1620 / #1730).",
+        "Total execute() invocations rejected because the inbound prompt's UTF-8 byte length exceeded MAX_PROMPT_BYTES (#1620 / #1730).",  # noqa: E501
         ["agent", "agent_id", "backend"],
     )
 

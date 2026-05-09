@@ -130,7 +130,7 @@ _INFLIGHT: set[asyncio.Task] = set()
 # #1233: cross-thread (OTel worker thread) dispatches go through
 # run_coroutine_threadsafe; track those Futures here so the inflight
 # cap governs them too.
-import concurrent.futures as _cf_mod
+import concurrent.futures as _cf_mod  # noqa: E402
 
 _INFLIGHT_CF: set[_cf_mod.Future[Any]] = set()
 

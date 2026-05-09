@@ -154,7 +154,7 @@ _CIRCUIT_STATES: tuple[str, ...] = ("closed", "open", "half_open")
 # closed. Without it, a reload that finishes building new backends after the
 # lifespan `finally` has already snapshotted executor._backends leaks those
 # clients. Using a WeakSet keeps this from extending backend lifetimes.
-import weakref as _weakref
+import weakref as _weakref  # noqa: E402
 
 _pending_backends: _weakref.WeakSet[A2ABackend] = _weakref.WeakSet()
 

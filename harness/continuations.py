@@ -644,7 +644,7 @@ class ContinuationRunner:
             cleanup=_cleanup,
             logger_=logger,
             not_found_message="Continuations directory not found — retrying in 10s.",
-            watcher_exited_message="Continuations directory watcher exited — directory deleted or unavailable. Retrying in 10s.",
+            watcher_exited_message="Continuations directory watcher exited — directory deleted or unavailable. Retrying in 10s.",  # noqa: E501
             watcher_events_metric=harness_watcher_events_total,
             file_watcher_restarts_metric=harness_file_watcher_restarts_total,
         )

@@ -232,7 +232,7 @@ _MCP_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC"
 # defers failure to first use.
 # #1407: double-checked locking so concurrent first-touches from the
 # FastMCP thread-pool can't each build + orphan a client.
-import threading as _threading
+import threading as _threading  # noqa: E402
 
 _SHARED_HTTPX_CLIENT: httpx.Client | None = None
 _SHARED_HTTPX_CLIENT_LOCK = _threading.Lock()

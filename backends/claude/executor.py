@@ -1320,7 +1320,7 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
 from mcp_command_allowlist import (  # noqa: E402
     mcp_command_allowed as _mcp_command_allowed,
 )
-from mcp_command_allowlist import (
+from mcp_command_allowlist import (  # noqa: E402
     mcp_command_args_safe as _mcp_command_args_safe,
 )
 
@@ -2705,7 +2705,7 @@ class AgentExecutor(A2AAgentExecutor):
                             except Exception:
                                 pass
                             logger.info(
-                                "settings.json reloaded: ALLOWED_TOOLS -> %s (direction=%s, %d active sessions still on old set; takes effect on next session).",
+                                "settings.json reloaded: ALLOWED_TOOLS -> %s (direction=%s, %d active sessions still on old set; takes effect on next session).",  # noqa: E501
                                 ",".join(ALLOWED_TOOLS),
                                 direction,
                                 _active_at_reload,

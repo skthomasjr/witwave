@@ -1730,7 +1730,7 @@ async def run_query(
                             )
                         except asyncio.TimeoutError:
                             logger.warning(
-                                "Session %r: on_chunk callback timed out after %.3fs; dropping chunk and continuing stream",
+                                "Session %r: on_chunk callback timed out after %.3fs; dropping chunk and continuing stream",  # noqa: E501
                                 session_id,
                                 STREAM_CHUNK_TIMEOUT_SECONDS,
                             )

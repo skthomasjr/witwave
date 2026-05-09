@@ -127,7 +127,7 @@ def _get_mcp_caller_identities_lock() -> asyncio.Lock:
 # defense — a hostile/buggy caller can lie about (or omit)
 # Content-Length under chunked transfer, and only the streaming check
 # bounds actual bytes received before json() buffers them.
-from mcp_body_cap import read_capped_body as _read_capped_body
+from mcp_body_cap import read_capped_body as _read_capped_body  # noqa: E402
 
 
 def load_agent_description() -> str:
@@ -392,7 +392,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(
-                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+                f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"  # noqa: E501
             )
             if backend_task_restarts_total is not None:
                 backend_task_restarts_total.labels(
@@ -400,7 +400,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 ).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
                 logger.error(
-                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"
+                    f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready"  # noqa: E501
                 )
                 _ready = False
             await asyncio.sleep(restart_delay)
@@ -685,14 +685,14 @@ async def main():
                                         "prompt": {"type": "string", "description": "The prompt to send to the agent."},
                                         "session_id": {
                                             "type": "string",
-                                            "description": "Optional session identifier for conversation continuity (#596). "
+                                            "description": "Optional session identifier for conversation continuity (#596). "  # noqa: E501
                                             "A valid UUID is passed through verbatim; any other string is "
                                             "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
                                         },
                                         "max_tokens": {
                                             "type": "integer",
                                             "minimum": 1,
-                                            "description": "Optional per-call token budget (#460). Positive integers only; "
+                                            "description": "Optional per-call token budget (#460). Positive integers only; "  # noqa: E501
                                             "non-positive or invalid values are logged and ignored.",
                                         },
                                     },

@@ -56,7 +56,7 @@ class GeminiAgentMdRevisionTests(unittest.TestCase):
         # without running module-level side effects from executor.py.
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location(
+        _spec = importlib.util.spec_from_file_location(
             "_gemini_exec_partial",
             _HERE / "executor.py",
         )

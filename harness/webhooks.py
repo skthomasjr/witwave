@@ -738,7 +738,7 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
                 max_concurrent_deliveries = max(1, int(raw_max_del))
             except (ValueError, TypeError):
                 logger.warning(
-                    f"Webhook file {path}: invalid 'max-concurrent-deliveries' {raw_max_del!r} — using default {WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB}."
+                    f"Webhook file {path}: invalid 'max-concurrent-deliveries' {raw_max_del!r} — using default {WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB}."  # noqa: E501
                 )
 
         filename = Path(path).stem
@@ -985,7 +985,7 @@ async def _retry_deliver(
             url_recheck = await _validate_url_async(url)
             if url_recheck is not None:
                 logger.error(
-                    f"Webhook '{sub.name}': URL failed re-validation before retry {attempt} — {url_recheck}; aborting retry chain."
+                    f"Webhook '{sub.name}': URL failed re-validation before retry {attempt} — {url_recheck}; aborting retry chain."  # noqa: E501
                 )
                 result = "url_revalidation_failed"
                 _record(result)
@@ -1500,7 +1500,7 @@ async def _deliver_hook_decision(
             url_recheck = await _validate_url_async(url)
             if url_recheck is not None:
                 logger.error(
-                    f"Webhook '{sub.name}': URL failed re-validation before hook.decision POST — {url_recheck}; aborting delivery."
+                    f"Webhook '{sub.name}': URL failed re-validation before hook.decision POST — {url_recheck}; aborting delivery."  # noqa: E501
                 )
                 return
             resp = await client.post(
