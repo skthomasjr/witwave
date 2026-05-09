@@ -131,12 +131,7 @@ def test_delete_resource_dry_run_passes_string_not_list():
 
         # Find any outbound kubernetes client call that carries the
         # dry_run kwarg and assert its shape.
-        # TODO(evan): this comprehension references `mock_instance` in the
-        # leftmost `for` clause before it is bound by the second `for`,
-        # which raises NameError at runtime. Likely intent is just
-        # `[c for c in fake_instance.mock_calls if c.kwargs]`. Logged in
-        # nova/project_code_findings as F821-tools-kubernetes-test_server.
-        all_calls = [c for c in mock_instance.mock_calls for mock_instance in (fake_instance,) if c.kwargs]  # noqa: F821
+        all_calls = [c for c in fake_instance.mock_calls if c.kwargs]
         dry_run_calls = [c for c in all_calls if "dry_run" in c.kwargs]
         if dry_run_calls:  # graceful when the mock graph deflected all calls
             for call in dry_run_calls:
