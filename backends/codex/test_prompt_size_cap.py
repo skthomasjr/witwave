@@ -86,11 +86,23 @@ class PromptSizeCapMetricRegistrationTests(unittest.TestCase):
         # actually instantiated rather than left at the module-level None.
         self._prev = os.environ.get("METRICS_ENABLED")
         os.environ["METRICS_ENABLED"] = "1"
-        if "metrics" in sys.modules:
-            del sys.modules["metrics"]
+        # Displace any cached `prometheus_client` (sibling
+        # `test_health_ready_route_codex.py` installs a `_Metric` test-double
+        # at module-import time that stubs labels()/inc()/observe() but NOT
+        # `.collect()` — the stable read API `_counter_value()` below relies
+        # on) and the cached `metrics` module so this test re-imports against
+        # the real `prometheus_client` available in CI deps. The displaced
+        # modules are restored in tearDown so siblings that imported the
+        # stubbed versions at module load still see them for the rest of the
+        # pytest run.
+        self._displaced: dict[str, object] = {}
+        for mod_name in ("prometheus_client", "metrics"):
+            if mod_name in sys.modules:
+                self._displaced[mod_name] = sys.modules.pop(mod_name)
         # prometheus_client uses a process-wide default registry; clear any
         # collectors from a previous import to avoid duplicate-registration
-        # errors.
+        # errors when this test re-imports metrics.py against the real
+        # prometheus_client we just exposed above.
         try:
             import prometheus_client
 
@@ -108,6 +120,11 @@ class PromptSizeCapMetricRegistrationTests(unittest.TestCase):
             os.environ.pop("METRICS_ENABLED", None)
         else:
             os.environ["METRICS_ENABLED"] = self._prev
+        # Restore any prometheus_client / metrics stubs that sibling tests
+        # installed before us so they keep working for tests that run later
+        # in the same pytest session.
+        for mod_name, mod_obj in self._displaced.items():
+            sys.modules[mod_name] = mod_obj
 
     def test_counter_registered(self):
         self.assertIsNotNone(self.metrics.backend_prompt_too_large_total)
