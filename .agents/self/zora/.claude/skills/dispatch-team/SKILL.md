@@ -180,6 +180,43 @@ investigating "why did probe fail?" — but the active probe above is the load-b
 
 Read your `team_state.md`: when did you last dispatch each peer for which skill?
 
+#### 2f. Chosen-levers (your throughput tuning)
+
+Read the `chosen_levers:` block in `team_state.md`. This is where you record the throughput knobs you've
+decided to tune, with the rationale, so the decision survives pod restarts and image-roll-forward
+boundaries. See `CLAUDE.md` → "Throughput targets" for the policy framing and the lever menu.
+
+Schema:
+
+```yaml
+chosen_levers:
+  set_at: <RFC3339 timestamp of last update>
+  rationale: |
+    <one-paragraph why — typically references the user directive, recent decision-log
+     observations, or a peer's reply that surfaced "I exhausted the cheap finds at this depth.">
+  cadence_floors:                    # null = use default from CLAUDE.md cadence-floors block
+    evan_bug_work_hours: 3           # int hours
+    evan_risk_work_hours: 8
+    nova_code_cleanup_hours: 8
+    kira_docs_cleanup_hours: 6
+    finn_gap_work_hours: 6
+    kira_docs_research_days: 3
+  polish_tier_advance_zero_streak: 2  # consecutive 0/0/0 runs before advancing the ladder; default 2, drop to 1 for faster surfacing
+  default_depths:                    # per-skill default depth at dispatch time
+    evan_bug_work: 5
+    evan_risk_work: 5
+    finn_gap_work: 3                 # finn "tier" not "depth" but same semantics — risk tolerance floor
+  concurrency_max_per_tick: 1        # max parallel peer dispatches in one tick; default 1 to keep findings sequential
+```
+
+If the block is absent, you're at defaults — apply the values shown above. When you decide to tune,
+update the block with the new values AND a rationale paragraph; preserve the prior values in `decision_log.md`
+so the trail of how you arrived at your current tuning is reviewable. Update `set_at` on every change.
+
+When you READ values from this block during a tick (cadence-floor checks, polish-tier-advance threshold,
+default-depth selection), prefer the `chosen_levers` value over the CLAUDE.md default. The CLAUDE.md
+defaults are the cold-boot fallback; `chosen_levers` is your active tuning.
+
 ### 3. Apply priority policy
 
 Walk these in order. The first match wins; act and exit (after logging).
@@ -594,6 +631,11 @@ Update `/workspaces/witwave-self/memory/agents/zora/team_state.md` with:
   write the current probe result, even when unchanged from last tick (so the timestamp in the file reflects when the
   state was last verified, not just when it last changed).
 - Updated backlog counts
+- **`chosen_levers:` block** — only write this when you've decided to tune a throughput knob. See Step 2f for the
+  schema and CLAUDE.md → "Throughput targets" for the lever menu. Writing this block is what makes your tuning
+  decision survive pod restarts. When you write a new value, also log the prior value + rationale in
+  `decision_log.md` under a `## YYYY-MM-DDTHH:MMZ — chosen_levers update` heading, so the audit trail of how
+  the team's tuning evolved is reviewable.
 
 Append to `peer_heartbeat_log.md` (diagnostic ledger) one line per peer per tick with the probe outcome and any state
 transition (e.g., `2026-05-08T22:00Z finn ONLINE → ONLINE (probe-ok in 47ms)` or
