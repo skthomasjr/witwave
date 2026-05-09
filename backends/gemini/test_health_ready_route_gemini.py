@@ -116,7 +116,7 @@ if "uvicorn" not in sys.modules:
 # a2a-sdk stubs — only what main.py touches at import.
 # ---------------------------------------------------------------------------
 def _install_a2a_stubs() -> None:
-    if "a2a" in sys.modules:
+    if "a2a.server.apps" in sys.modules:
         return
     _a2a = types.ModuleType("a2a")
     _server = types.ModuleType("a2a.server")
