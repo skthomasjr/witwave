@@ -326,14 +326,21 @@ as its own ground to cover; only depth=9 across all-day-one with adversarial pas
 
 **Choosing risk-tier for finn dispatches (polish-tier control).** Same shape as evan's depth ladder but the integer
 denotes **risk tolerance** for a fill, not analysis intensity. Tier 1 is purely cosmetic / orphan removal (zero behavior
-change); tier 9-10 is architectural cross-cutting work. The team starts at tier 1 and walks up the ladder
-`1 → 3 → 5 → 7 → 9` only as each tier's gap pool exhausts. **Cautious-by-default — the autonomous safety story for finn
-rests on this gate.** Bigger fills happen later, after low-tier territory is verified clean.
+change); tier 9-10 is architectural cross-cutting work. The team works UP the ladder `3 → 5 → 7 → 9` as each tier's
+gap pool exhausts. **Cautious-by-default — the autonomous safety story for finn rests on this gate.** Bigger fills
+happen later, after low-tier territory is verified clean.
+
+**Floor: tier=3, not tier=1.** The ladder used to reset to 1 on every fresh commit. With main receiving commits
+constantly, that pinned finn at tier=1 (purely cosmetic) forever — every advance was preempted by another reset.
+Tier 3 is the safer floor: "bounded scope, sibling-pattern available" (add a missing test mirroring an existing
+test; add `defer resp.Body.Close()`; fill an explicit TODO with the sibling validator's pattern). Tier 1-2 work
+is still reachable — tier-3 fills include those candidates because the gauntlet + fix-bar at tier=3 trivially
+clears anything tier 1-2 would.
 
 Read the current tier from `team_state.md`:
 
 ```
-polish_tier_finn_gap:               <int, default 1>
+polish_tier_finn_gap:               <int, default 3>
 polish_tier_finn_gap_zero_streak:   <int, default 0>
 polish_tier_finn_gap_last_run_sha:  <sha, default latest tag at first run>
 ```
@@ -342,15 +349,19 @@ Decide the tier for THIS dispatch:
 
 1. **Reset check.** If `git log <last_run_sha>..HEAD` returns any commits in finn's gap-source scope (which is wider
    than evan's section scope — finn reads docs, charts, dashboard, AND code; effectively any commit on main is a
-   potential reset trigger) — set tier back to **1** and zero the streak. Fresh content surfaces new low-risk gaps;
-   restart from the cheap pass.
+   potential reset trigger) — set tier back to **3** (the floor) and zero the streak. Fresh content surfaces new
+   low-risk gaps; restart from the bounded-scope pass, not from the cosmetic-only pass.
 2. **Advance check.** If no fresh source AND `zero_streak ≥ 2` at the current tier — advance the tier along the ladder
-   (`1 → 3 → 5 → 7 → 9`; cap at 9) and zero the streak. The advance encodes "we've exhausted this risk tier; raise the
+   (`3 → 5 → 7 → 9`; cap at 9) and zero the streak. The advance encodes "we've exhausted this risk tier; raise the
    boldness floor."
 3. **Hold check.** Otherwise keep the tier as-is.
 
-Pass it to finn in the call-peer prompt: `Run your gap-work skill at tier=<N>, sections=all-day-one` (optionally
-`focus=operator-parity` etc. — see finn's CLAUDE.md priority subsystems).
+Pass it to finn in the call-peer prompt with the literal integer substituted (NOT the placeholder
+`<N>`): `Run your gap-work skill at tier=3, sections=all-day-one` (or `tier=5`, etc.). **If your dispatch prompt
+contains the literal string `tier=<N>` or `tier=<n>` or `tier=` followed by a non-digit, abort the dispatch and
+log the error in `decision_log.md` — sending an unsubstituted placeholder makes finn fall back to her own
+default-1 path, which silently undermines the polish-tier ladder.** Optionally include
+`focus=operator-parity` etc. — see finn's CLAUDE.md priority subsystems.
 
 After the dispatch, when finn reports back, update `team_state.md`:
 
