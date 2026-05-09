@@ -247,7 +247,7 @@ def test_redact_diff_blank_line_between_data_leaves_preserves_redaction():
     (#1031). The bug was the inverse: the un-indented-non-blank exit
     path dropped the map prematurely on mixed diffs. Verify blank
     lines inside the data map do not leak subsequent leaves."""
-    diff_text = " kind: Secret\n" " data:\n" "   k1: dmFsMQ==\n" "\n" "   k2: dmFsMg==\n"
+    diff_text = " kind: Secret\n data:\n   k1: dmFsMQ==\n\n   k2: dmFsMg==\n"
     out = server._redact_diff(diff_text)
     assert "dmFsMQ==" not in out
     assert "dmFsMg==" not in out
@@ -256,9 +256,7 @@ def test_redact_diff_blank_line_between_data_leaves_preserves_redaction():
 def test_redact_diff_still_resets_on_standalone_doc_separator():
     """The exact ``---`` separator must still reset state so a Secret
     in doc N doesn't suppress a non-Secret leaf in doc N+1."""
-    diff_text = (
-        " kind: Secret\n" " data:\n" "   pw: c2hoaA==\n" "---\n" " kind: ConfigMap\n" " data:\n" "   color: blue\n"
-    )
+    diff_text = " kind: Secret\n data:\n   pw: c2hoaA==\n---\n kind: ConfigMap\n data:\n   color: blue\n"
     out = server._redact_diff(diff_text)
     # pw is redacted, but color is left alone after the doc separator.
     assert "c2hoaA==" not in out
@@ -732,7 +730,7 @@ def test_diff_repo_accepts_https(_stub_helm):
 
 def test_redact_error_text_masks_stdin_string_leaves():
     """Stdin-delivered values should be masked in stderr/stdout text."""
-    stdin_payload = "postgres:\n" "  password: hunter2-special\n" "  user: app\n"
+    stdin_payload = "postgres:\n  password: hunter2-special\n  user: app\n"
     body = "Error: invalid value 'hunter2-special' rendered in template"
     out = server._redact_helm_error_text(body, [], stdin_payload)
     assert "hunter2-special" not in out
@@ -767,7 +765,7 @@ def test_redact_error_text_handles_nested_dicts_and_lists():
         "  nested:\n"
         "    api_key: deadbeef-cafe-1234-5678\n"
     )
-    body = "echoed: my-secret-token-1 and my-secret-token-2 plus " "deadbeef-cafe-1234-5678 in error"
+    body = "echoed: my-secret-token-1 and my-secret-token-2 plus deadbeef-cafe-1234-5678 in error"
     out = server._redact_helm_error_text(body, [], stdin_payload)
     assert "my-secret-token-1" not in out
     assert "my-secret-token-2" not in out

@@ -356,7 +356,7 @@ try:
 
     mcp_subprocess_timeouts_total = _prom.Counter(
         "mcp_subprocess_timeouts_total",
-        "Total helm CLI subprocess invocations killed because they " "exceeded HELM_SUBPROCESS_TIMEOUT_SECONDS (#857).",
+        "Total helm CLI subprocess invocations killed because they exceeded HELM_SUBPROCESS_TIMEOUT_SECONDS (#857).",
         ["tool", "command"],
     )
     # Inner-work histogram for helm-CLI latency (#1126). Distinct from
@@ -636,7 +636,7 @@ def _helm(
                 return json.loads(out) if out else None
             if truncated:
                 stdout_text += (
-                    f"\n\n# [mcp-helm] subprocess output truncated at " f"{_subp_cap} bytes (#1204); process killed."
+                    f"\n\n# [mcp-helm] subprocess output truncated at {_subp_cap} bytes (#1204); process killed."
                 )
             return stdout_text
         except subprocess.TimeoutExpired as exc:
@@ -686,8 +686,7 @@ def _helm(
             # non-zero-exit path is.
             safe_args = _redact_helm_error_text(" ".join(args), args)
             err = HelmError(
-                f"helm {safe_args} killed after "
-                f"{_HELM_SUBPROCESS_TIMEOUT_SECONDS}s (HELM_SUBPROCESS_TIMEOUT_SECONDS)"
+                f"helm {safe_args} killed after {_HELM_SUBPROCESS_TIMEOUT_SECONDS}s (HELM_SUBPROCESS_TIMEOUT_SECONDS)"
             )
             set_span_error(_exec_span, err)
             raise err from exc
@@ -837,10 +836,10 @@ def _reject_flag_like(**named: str | None) -> None:
         for _bad in ("\n", "\r", "\t", "\0"):
             if _bad in value:
                 raise ValueError(
-                    f"helm: {label!r} must not contain control characters " f"(newline/CR/tab/NUL) (got {value!r})"
+                    f"helm: {label!r} must not contain control characters (newline/CR/tab/NUL) (got {value!r})"
                 )
         if not value.isprintable():
-            raise ValueError(f"helm: {label!r} must contain only printable characters " f"(got {value!r})")
+            raise ValueError(f"helm: {label!r} must contain only printable characters (got {value!r})")
 
 
 def _validate_repo_url(url: str) -> None:
@@ -866,9 +865,9 @@ def _validate_repo_url(url: str) -> None:
 
     parsed = _urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise HelmError(f"helm: 'repo' URL scheme must be http or https (got " f"{parsed.scheme!r}). See #1638.")
+        raise HelmError(f"helm: 'repo' URL scheme must be http or https (got {parsed.scheme!r}). See #1638.")
     if not parsed.hostname:
-        raise HelmError(f"helm: 'repo' URL must have a hostname (got {url!r}). " "See #1638.")
+        raise HelmError(f"helm: 'repo' URL must have a hostname (got {url!r}). See #1638.")
 
 
 # Key substrings that mark a values-tree leaf as likely secret material
@@ -1711,7 +1710,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
             returncode = proc.returncode if proc.returncode is not None else -1
             truncated = _stdout_truncated[0] or _stderr_truncated[0]
             if returncode not in (0, 1):
-                err = HelmError(f"kubectl diff exited {returncode}: " f"{(stderr_text or stdout_text).strip()}")
+                err = HelmError(f"kubectl diff exited {returncode}: {(stderr_text or stdout_text).strip()}")
                 set_span_error(_h, err)
                 raise err
             raw = stdout_text
@@ -1736,9 +1735,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
             return _truncate_text(raw, tool="diff_manifest")
         except subprocess.TimeoutExpired as exc:
             err = HelmError(
-                f"kubectl diff killed after "
-                f"{_HELM_SUBPROCESS_TIMEOUT_SECONDS}s "
-                "(HELM_SUBPROCESS_TIMEOUT_SECONDS)"
+                f"kubectl diff killed after {_HELM_SUBPROCESS_TIMEOUT_SECONDS}s (HELM_SUBPROCESS_TIMEOUT_SECONDS)"
             )
             set_span_error(_h, err)
             raise err from exc
@@ -1937,9 +1934,9 @@ def repo_add(name: str, url: str) -> str:
                     f"helm repo_add: hostname {parsed.hostname!r} failed IDN normalisation. See #1369."
                 ) from _idn_exc
     if parsed.scheme not in ("http", "https", "oci"):
-        raise HelmError(f"helm repo_add: URL scheme must be http/https/oci (got " f"{parsed.scheme!r}). See #1202.")
+        raise HelmError(f"helm repo_add: URL scheme must be http/https/oci (got {parsed.scheme!r}). See #1202.")
     if not hostname:
-        raise HelmError(f"helm repo_add: URL must have a hostname (got {url!r}). " "See #1202.")
+        raise HelmError(f"helm repo_add: URL must have a hostname (got {url!r}). See #1202.")
     allowlist = _repo_url_allowlist()
     allow_any = _repo_allow_any()
     if not allowlist and not allow_any:
