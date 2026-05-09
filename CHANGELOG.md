@@ -6,6 +6,29 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.4] — 2026-05-09
+
+Patch release completing the `/health` liveness unification on the claude backend (the missing piece from 5e5d5a9b in
+v0.23.1) so a slow-booting pod is no longer CrashLoopBackOff'd by kubelet, plus a small batch of documentation
+maintenance — three broken internal anchors fixed and a twelfth-pass refresh of the competitive-landscape research note.
+
+### Fixed
+
+- **backends/claude**: `/health` liveness always returns 200 once the process is up, with the body's `status` field
+  reflecting readiness (`starting` pre-ready, `ok` once ready). Removes a 503 fork that contradicted the same-file
+  contract comment, the CHANGELOG-documented "liveness, always 200 once up" semantic, and the codex/gemini sibling
+  implementations brought to that contract by the 5e5d5a9b unification. Symptom: a slow boot exceeding the kubelet
+  livenessProbe `initialDelaySeconds` would CrashLoopBackOff a claude backend that should have been merely removed from
+  Service endpoints via the separate `/health/ready` probe.
+
+### Documentation
+
+- **research**: Twelfth-pass refresh of `competitive-landscape.md` — pinned three drifted upstream entries (OpenClaw
+  v2026.5.7, Microsoft Agent Framework python-1.3.0 / dotnet-1.5.0, OpenHands canonical URL post-rename to
+  `OpenHands/OpenHands`). No new competitors added.
+- **READMEs**: Three Cat C anchor mismatches fixed in `README.md`, `clients/ww/README.md`, and `charts/witwave/README.md`
+  so cross-document links resolve.
+
 ## [0.23.3] — 2026-05-09
 
 Recovery patch for the v0.23.2 container build, which failed under the Go 1.26.2 toolchain: `staticcheck@2024.1.1` and
