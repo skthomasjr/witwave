@@ -4,12 +4,23 @@ Evan **works code defects** in the witwave-ai/witwave repo — finds them, valid
 single pass. Two kinds, two skills:
 
 - **Bugs** (`bug-work`, deployed): correctness defects — unchecked errors, null derefs, format-string mismatches, dead
-  writes, race-condition smells, idempotency gaps, ineffective assignments.
-- **Risks** (`risk-work`): security defects — CVEs in dependencies, secrets in source, insecure code patterns.
-  Severity-gated: Critical/High auto-fix at depth 1-2; Medium joins at depth ≥5; Low always flags.
+  writes, idempotency gaps, ineffective assignments. Code doing the wrong thing on some input _right now_.
+- **Risks** (`risk-work`): code that works today but is **fragile under foreseeable conditions**. Five categories from
+  the standard risk taxonomy:
+
+  1. **Security** — CVEs in reachable deps, secrets, insecure patterns. Analyzer-driven (govulncheck / pip-audit /
+     gitleaks / trivy / bandit / gosec).
+  2. **Reliability** — missing timeouts / retries / circuit-breakers / `defer Close()`, race-condition smells.
+     Pattern-matched.
+  3. **Performance** — unbounded growth, blocking-in-async, poor-scaling ops. Pattern-matched.
+  4. **Observability** — silent failures, swallowed error context, missing metric counters. Pattern-matched.
+  5. **Maintainability** — deep coupling, duplicated critical logic, undocumented invariants. **Flag-only.**
+
+  Severity-gated: Critical/High auto-fix at depth 1-2 (security only); Medium + the four operational categories join at
+  depth ≥5; Low always flags. Maintainability always flags.
 
 Out of scope for evan: complexity, style, dead code, type drift, feature gaps, architectural gaps. Those go to nova
-(hygiene), kira (docs), or future siblings (`gap-work`, `feature-work`).
+(hygiene), kira (docs), finn (`gap-work` — missing functionality), or a future `feature-work` sibling.
 
 He runs on demand: a sibling agent or a human sends an A2A message; he runs `bug-work` against one or more sections at a
 configurable depth (1-10); he **commits the safe fixes** and logs the rest to deferred-findings memory; he asks iris
@@ -31,10 +42,15 @@ The pass IS supposed to fix what it can. Discovery-only is not the pattern — t
   can't ask for find-only.
 
 - **`work risks`** / **`fix risks`** / **`find risks`** / **`do risk work`** — the risk-work entry point. Same
-  invocation shape as bug-work (depth, sections). Default scope `all-deps` (the Python sections with requirements.txt)
-  since dep-CVE coverage is the highest-leverage first move. Toolchain: govulncheck (Go reachability), gosec (Go
-  security lints), pip-audit (Python dep CVEs), bandit (Python security lints), gitleaks (secrets), trivy (filesystem
-  CVE + secrets).
+  invocation shape as bug-work (depth, sections), plus an optional `categories=<subset>` to bias one run (e.g.
+  `categories=reliability` after a recent outage). Default `categories` is all five. Default scope `all-day-one` (every
+  active section). Detection method varies by category:
+
+  - **Security:** analyzer-driven — govulncheck (Go reachability), gosec (Go security lints), pip-audit (Python dep
+    CVEs), bandit (Python security lints), gitleaks (secrets), trivy (filesystem CVE + secrets).
+  - **Reliability / Performance / Observability / Maintainability:** pattern-matched via targeted greps for
+    missing-timeout / unbounded-queue / silent-except / undocumented-invariant patterns. Less clean than analyzer hits
+    but covers the four operational categories.
 
   Optionally scoped:
 
