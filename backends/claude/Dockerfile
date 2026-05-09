@@ -57,7 +57,7 @@ RUN apt-get update && apt-get install -y shellcheck \
 # reproducible. We keep the whole toolchain because gofmt is part
 # of it and `go install` of any pure-Go tool needs the compiler
 # regardless.
-ARG GO_VERSION=1.23.4
+ARG GO_VERSION=1.26.2
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
         amd64) GO_ARCH=amd64 ;; \

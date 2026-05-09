@@ -61,7 +61,7 @@ RUN apt-get update && apt-get install -y shellcheck \
 # ineffassign, controller-gen drift check), and evan's risk-class
 # scanners (govulncheck, gosec). Every version pinned for
 # reproducibility.
-ARG GO_VERSION=1.23.4
+ARG GO_VERSION=1.26.2
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
         amd64) GO_ARCH=amd64 ;; \
