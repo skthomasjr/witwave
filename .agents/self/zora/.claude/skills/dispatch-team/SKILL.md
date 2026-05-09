@@ -99,11 +99,30 @@ with a narrative-count fallback on older ones:
 | finn | `project_finn_findings.md` | Count `[pending]` + `[flagged: …]` markers (canonical schema). Look for `[CRITICAL]` markers — these are doc-promised features that don't exist (users hitting missing endpoints / unread env vars). `[CRITICAL]` blocks the medium-quality-bar release gate same as evan's CRITICAL CVEs. `[flagged: above-tier-N]` is the most common flag and is benign — re-attempted on the next higher-tier dispatch. |
 | nova | `project_code_findings.md` | For sections dated **2026-05-07 onward**: count `[pending]` + `[flagged: …]` markers (same canonical schema). For sections dated **before 2026-05-07** (legacy narrative format): read the most recent dated narrative section header (`## YYYY-MM-DD`); within it, sum the bullet-list counts nova recorded inline (e.g., `× 94`, `× 90`, "118 remaining diagnostics").                                    |
 | kira | `project_doc_findings.md`  | Same shape as nova: marker schema on 2026-05-07-or-newer sections; narrative-bullet count on older ones.                                                                                                                                                                                                                                                                                                    |
-| iris | n/a (service peer)         | No backlog count — iris is on-demand only.                                                                                                                                                                                                                                                                                                                                                                  |
+| iris | n/a (service peer) + `stuck_commits.md` | No backlog count, but ALWAYS read `agents/iris/stuck_commits.md` if present. Each `[open]` entry there is a stuck-push state: a peer asked iris to push, iris hit a rebase conflict or second-push rejection on retry-once, and N commits are sitting ahead of `origin/main` on her local checkout with no path forward. Treat as P1 escalation (see "Priority 1 — Urgent" walk). Pause cadence dispatches to the blocked caller-peer until iris flips the entry to `[resolved: HH:MMZ]`. |
 
 The legacy-narrative branch is a transient compatibility shim — once the legacy sections age out (typically as peers run
 new sweeps that supersede the older entries' relevance), the adapter degenerates to a pure marker count and the schema
 is fully uniform team-wide. Until then, the adapter gets the count _right enough_ — within ±5 — for backlog tiebreaking.
+
+**Stuck-commits triage flow (when iris's `stuck_commits.md` has any `[open]` entry):**
+
+1. **First action this tick:** mirror the entry to `escalations.md` as
+   `[escalation: stuck-commits-iris-blocked: <caller-peer>]` so it shows up in `ww escalations` for the user.
+   Include iris's verbatim git stderr excerpt and her recovery hint so the human can diagnose without trawling
+   memory. New escalation OR existing-but-still-open both count — keep it surfaced on every tick until
+   resolved.
+2. **Pause cadence dispatches to the blocked caller-peer.** Don't fire `<caller>'s` cadence-mandated work
+   while their commits are stuck — every new commit they produce widens the stuck pile. The skip is silent in
+   `decision_log.md` ("evan bug-work cadence breach DEFERRED — iris stuck-commits open since HH:MMZ"). Other
+   peers continue normally if their commits aren't entangled.
+3. **Don't auto-retry iris.** Stuck-commits state is iris's signal that retry-once already exhausted; firing
+   another `git-push` dispatch just produces another `[open]` entry. The retry path runs through the human:
+   they resolve the conflict, then ask iris to push again, and iris flips the entry to `[resolved]` on
+   success.
+4. **Watch for resolution.** Once the entry flips to `[resolved: HH:MMZ]`, log
+   `[escalation: stuck-commits-iris-blocked: <caller-peer>] CLOSED` in `decision_log.md`, mirror the closure
+   to `escalations.md`, and resume `<caller>'s` cadence dispatching from the next tick.
 
 #### 2d. Peer health (active probe + heartbeat history)
 
@@ -168,6 +187,12 @@ Read your `team_state.md`: when did you last dispatch each peer for which skill?
 Walk these in order. The first match wins; act and exit (after logging).
 
 #### Priority 1 — Urgent
+
+- **Stuck-commits in iris's `stuck_commits.md`** (any `[open]` entry) → **DO NOT auto-retry iris.** Mirror to
+  `escalations.md`, pause the blocked caller-peer's cadence dispatches, log the deferral in `decision_log.md`,
+  and continue the priority walk (stuck commits don't preempt CI fires or cadence on unaffected peers). See
+  full triage flow under "Stuck-commits triage flow" in Step 2c. Treat this BEFORE the cadence-floor walk so
+  the affected peer is excluded from the candidate pool naturally.
 
 - **Critical CVE in evan's deferred-findings** → dispatch `evan risk-work` with explicit instruction to fix that
   candidate now (preempt other risk-work work).

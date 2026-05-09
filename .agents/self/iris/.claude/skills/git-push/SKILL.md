@@ -61,13 +61,40 @@ git -C <checkout> push origin <branch>
 ```
 
 If the rebase is clean and the second push succeeds: report success. If either step fails — rebase has conflicts, or the
-second push is also rejected — **stop and surface the state** to the user. Do NOT:
+second push is also rejected — **stop, log, and surface the state**. Do NOT:
 
 - Retry a third time (a steady stream of rejections means something more interesting than a one-off race; surface and
   ask)
 - `git rebase --abort` and try a different strategy
 - Force-push to "win" the race
 - Reset local HEAD to remote and lose your local commits
+
+**Log the stuck state to your own memory** so zora can see it on her next tick and stop dispatching the calling peer
+until commits clear. Append (creating if absent) to
+`/workspaces/witwave-self/memory/agents/iris/stuck_commits.md`:
+
+```markdown
+## YYYY-MM-DDTHH:MMZ — stuck-commits: <caller-peer>
+
+- **Caller:** <peer name from the call-peer who asked for the push, OR `local-iris` if you initiated the
+  push from your own work>.
+- **Local commits ahead of `origin/<branch>`:** N — list each with `<sha>  <subject>`.
+- **Failure mode:** one of `rebase-conflict` / `second-push-rejected` / `auth` / `network` / `branch-protection`.
+- **Verbatim git stderr:** the relevant 1-3 lines of the actual git output so a human can diagnose without re-running.
+- **Recovery hint:** what unblocks this (e.g., "human resolves conflict in <files>", "credential rotation",
+  "branch-protection rule change").
+- **Status:** `[open]` (flip to `[resolved: HH:MMZ]` once you successfully push the next time the caller retries).
+```
+
+**Trim entries older than 7 days during the same write** so the file stays bounded. zora's dispatch-team reads
+this file every tick — an `[open]` entry triggers a P1 escalation and pauses cadence dispatches to the blocked
+peer until it flips to `[resolved]`.
+
+Then surface verbatim to the caller. Expected reply shape:
+
+> Push stuck for <caller>: <failure mode>. <N> commits sitting ahead of origin. Logged to my
+> `stuck_commits.md`; zora will see it on her next tick and pause your cadence dispatches until the conflict
+> resolves. Verbatim git output: \<excerpt\>.
 
 ### 5. Final verification
 
