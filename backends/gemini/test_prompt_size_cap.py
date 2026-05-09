@@ -35,6 +35,27 @@ _EXECUTOR_PATH = _HERE / "executor.py"
 _METRICS_PATH = _HERE / "metrics.py"
 
 
+def _counter_value(counter, labels: dict) -> float:
+    """Read a labeled counter's current value via the stable `.collect()` API.
+
+    The previous test reached into prometheus-client internals via
+    `c.labels(...)._value.get()`, which broke under the CI environment where
+    `c.labels(...)` returned a `_Metric` (not a `Counter`) — sibling
+    `test_health_ready_route_gemini.py` installs a `_Metric` test-double at
+    module-import time that stubs labels()/inc()/observe() but does NOT expose
+    `_value`. `.collect()` is the documented public API and works uniformly
+    across versions; combined with the displace-and-restore in setUp/tearDown
+    below it lets this test see the real prometheus_client even when sibling
+    tests have cached the stub in `sys.modules`. Mirrors codex's
+    `backends/codex/test_prompt_size_cap.py` (#1507dd75).
+    """
+    for metric in counter.collect():
+        for sample in metric.samples:
+            if sample.name == counter._name + "_total" and sample.labels == labels:
+                return sample.value
+    return 0.0
+
+
 class PromptTooLargeErrorTests(unittest.TestCase):
     """Verify the shared exception carries the right diagnostic payload."""
 
@@ -62,10 +83,27 @@ class PromptSizeCapMetricRegistrationTests(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, str(_HERE))
         self.addCleanup(lambda: sys.path.remove(str(_HERE)))
+        # Force a fresh import under METRICS_ENABLED=1 so the counter is
+        # actually instantiated rather than left at the module-level None.
         self._prev = os.environ.get("METRICS_ENABLED")
         os.environ["METRICS_ENABLED"] = "1"
-        if "metrics" in sys.modules:
-            del sys.modules["metrics"]
+        # Displace any cached `prometheus_client` (sibling
+        # `test_health_ready_route_gemini.py` installs a `_Metric` test-double
+        # at module-import time that stubs labels()/inc()/observe() but NOT
+        # `.collect()` — which the stable read API `_counter_value()` above
+        # relies on) and the cached `metrics` module so this test re-imports
+        # against the real `prometheus_client` available in CI deps. The
+        # displaced modules are restored in tearDown so siblings that imported
+        # the stubbed versions at module load still see them for the rest of
+        # the pytest run. Mirrors codex's `1507dd75` fix verbatim.
+        self._displaced: dict[str, object] = {}
+        for mod_name in ("prometheus_client", "metrics"):
+            if mod_name in sys.modules:
+                self._displaced[mod_name] = sys.modules.pop(mod_name)
+        # prometheus_client uses a process-wide default registry; clear any
+        # collectors from a previous import to avoid duplicate-registration
+        # errors when this test re-imports metrics.py against the real
+        # prometheus_client we just exposed above.
         try:
             import prometheus_client
 
@@ -83,15 +121,20 @@ class PromptSizeCapMetricRegistrationTests(unittest.TestCase):
             os.environ.pop("METRICS_ENABLED", None)
         else:
             os.environ["METRICS_ENABLED"] = self._prev
+        # Restore any prometheus_client / metrics stubs that sibling tests
+        # installed before us so they keep working for tests that run later
+        # in the same pytest session.
+        for mod_name, mod_obj in self._displaced.items():
+            sys.modules[mod_name] = mod_obj
 
     def test_counter_registered(self):
         self.assertIsNotNone(self.metrics.backend_prompt_too_large_total)
 
     def test_counter_increments(self):
         labels = {"agent": "test", "agent_id": "test", "backend": "gemini"}
-        before = self.metrics.backend_prompt_too_large_total.labels(**labels)._value.get()
+        before = _counter_value(self.metrics.backend_prompt_too_large_total, labels)
         self.metrics.backend_prompt_too_large_total.labels(**labels).inc()
-        after = self.metrics.backend_prompt_too_large_total.labels(**labels)._value.get()
+        after = _counter_value(self.metrics.backend_prompt_too_large_total, labels)
         self.assertEqual(after - before, 1.0)
 
 
