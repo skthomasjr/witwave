@@ -20,9 +20,9 @@ directly).
 - **harness, backends, mcp**: Unify the `/health` surface across the harness, the claude/codex/gemini backends, and the
   MCP servers (kubernetes, helm, prometheus). Replaces ad-hoc per-tier endpoints with a consistent `/health/live` +
   `/health/ready` shape so callers (ww, zora's active probe) can rely on one contract.
-- **harness, shared, backends/claude**: Resolve F821 ruff errors by promoting late/conditional imports
-  (`threading`, `pathlib`, executor forward-ref types) to module scope. Latent in all three modules — the imports were
-  reachable at runtime but broke type-hint resolution and tripped CI's ruff gate.
+- **harness, shared, backends/claude**: Resolve F821 ruff errors by promoting late/conditional imports (`threading`,
+  `pathlib`, executor forward-ref types) to module scope. Latent in all three modules — the imports were reachable at
+  runtime but broke type-hint resolution and tripped CI's ruff gate.
 - **ww**: `ww status` probe targets `/health/live` (the bare `/health` returned 404 after the unification above).
 - **ww**: `ww send --async` tail hint points at `ww conversation list`, not `show` — `show` is single-session whereas
   the async-send flow wants the multi-session list.

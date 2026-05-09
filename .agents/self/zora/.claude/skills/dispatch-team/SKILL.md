@@ -20,11 +20,11 @@ None from the prompt. Read state from:
 - Peer `MEMORY.md` indexes + deferred-findings memory files
 - Recent CI workflow runs (via shell-out to `gh run list` — read-only; iris owns the auth, but read on `main` is
   unauth-allowed for public repos)
-- **Active HTTP probe of each peer's harness `/.well-known/agent.json`** (every tick — Step 2d). The probe is the authoritative
-  signal for peer liveness; without it, peer-OFFLINE flags can persist indefinitely against actually-running
-  pods (this happened to finn on 2026-05-08 — flag stuck despite finn being 3/3 Running for 3+ hours).
-- Your own memory: `decision_log.md` (your last decisions), `team_state.md` (last-fire times + per-peer
-  liveness state), `peer_heartbeat_log.md` (probe history, diagnostic only)
+- **Active HTTP probe of each peer's harness `/.well-known/agent.json`** (every tick — Step 2d). The probe is the
+  authoritative signal for peer liveness; without it, peer-OFFLINE flags can persist indefinitely against
+  actually-running pods (this happened to finn on 2026-05-08 — flag stuck despite finn being 3/3 Running for 3+ hours).
+- Your own memory: `decision_log.md` (your last decisions), `team_state.md` (last-fire times + per-peer liveness state),
+  `peer_heartbeat_log.md` (probe history, diagnostic only)
 
 ## Instructions
 
@@ -110,13 +110,13 @@ is fully uniform team-wide. Until then, the adapter gets the count _right enough
 Two signals combine here. The active probe is authoritative; the heartbeat history is a fallback diagnostic.
 
 **Active probe (every tick).** For each peer in `[iris, nova, kira, evan, finn]`, hit the peer's harness
-`/.well-known/agent.json` endpoint via the URL in `reference_peer_<peer>.md`. The probe is a plain HTTP GET with a 5-second
-timeout; no auth required (this is the A2A discovery path, public by design). Expected response is HTTP 200 with a JSON
-body describing the agent (name, skills, etc.). We use this endpoint rather than a `/health` route because the harness
-proxies A2A discovery but does NOT expose a separate `/health` path — calling `/health` returns 404 on every peer
-(verified 2026-05-08 when the first version of this Step 2d wired the wrong path). A 200 from `/.well-known/agent.json`
-means the harness is running AND its backend is reachable enough to render the agent card, which is a slightly
-stronger liveness signal than a bare `/health` would have provided.
+`/.well-known/agent.json` endpoint via the URL in `reference_peer_<peer>.md`. The probe is a plain HTTP GET with a
+5-second timeout; no auth required (this is the A2A discovery path, public by design). Expected response is HTTP 200
+with a JSON body describing the agent (name, skills, etc.). We use this endpoint rather than a `/health` route because
+the harness proxies A2A discovery but does NOT expose a separate `/health` path — calling `/health` returns 404 on every
+peer (verified 2026-05-08 when the first version of this Step 2d wired the wrong path). A 200 from
+`/.well-known/agent.json` means the harness is running AND its backend is reachable enough to render the agent card,
+which is a slightly stronger liveness signal than a bare `/health` would have provided.
 
 ```sh
 for peer in iris nova kira evan finn; do
@@ -126,39 +126,38 @@ for peer in iris nova kira evan finn; do
 done
 ```
 
-**Two-probe confirmation before flipping ONLINE → OFFLINE.** A single failed probe is treated as transient
-(network blip, mid-roll, garbage-collection pause). State machine in `team_state.md` per peer:
+**Two-probe confirmation before flipping ONLINE → OFFLINE.** A single failed probe is treated as transient (network
+blip, mid-roll, garbage-collection pause). State machine in `team_state.md` per peer:
 
 - **ONLINE** → probe succeeds → stays ONLINE.
-- **ONLINE** → probe fails → flip to **PROBE-FAILED-ONCE** (do NOT mark OFFLINE yet; still treat as eligible
-  for dispatch this tick). Log the probe failure to `peer_heartbeat_log.md`.
+- **ONLINE** → probe fails → flip to **PROBE-FAILED-ONCE** (do NOT mark OFFLINE yet; still treat as eligible for
+  dispatch this tick). Log the probe failure to `peer_heartbeat_log.md`.
 - **PROBE-FAILED-ONCE** → probe succeeds next tick → flip back to ONLINE. Log the recovery.
-- **PROBE-FAILED-ONCE** → probe fails again → flip to **OFFLINE**. This is the confirmed state; ~30 minutes
-  total elapsed (two consecutive 15-minute ticks).
-- **OFFLINE** → probe succeeds → flip back to ONLINE immediately (single-success recovery; we're optimistic
-  on the upswing). Log the recovery.
+- **PROBE-FAILED-ONCE** → probe fails again → flip to **OFFLINE**. This is the confirmed state; ~30 minutes total
+  elapsed (two consecutive 15-minute ticks).
+- **OFFLINE** → probe succeeds → flip back to ONLINE immediately (single-success recovery; we're optimistic on the
+  upswing). Log the recovery.
 - **OFFLINE** → probe fails → stays OFFLINE.
 
-This asymmetric design (two failures to mark OFFLINE; one success to mark ONLINE) avoids dispatch-flapping
-while keeping a recovered peer reachable on the very next tick.
+This asymmetric design (two failures to mark OFFLINE; one success to mark ONLINE) avoids dispatch-flapping while keeping
+a recovered peer reachable on the very next tick.
 
 **What to do with confirmed-OFFLINE peers (skip + log).** When a peer is OFFLINE during priority walk:
 
-- **Skip the peer** for cadence-floor dispatches and polish-tier advances. Log it in `decision_log.md`
-  under "Peer health snapshot" so the rationale for skipping is visible to humans.
-- **Do not** auto-escalate via `escalations.md` for a single OFFLINE peer — that's expected during pod rolls
-  and image bumps. Only escalate `[escalation: peer-offline-extended]` to `escalations.md` if a peer has been
-  OFFLINE for **6 consecutive ticks** (~90 minutes) — at that point the operator should investigate.
+- **Skip the peer** for cadence-floor dispatches and polish-tier advances. Log it in `decision_log.md` under "Peer
+  health snapshot" so the rationale for skipping is visible to humans.
+- **Do not** auto-escalate via `escalations.md` for a single OFFLINE peer — that's expected during pod rolls and image
+  bumps. Only escalate `[escalation: peer-offline-extended]` to `escalations.md` if a peer has been OFFLINE for **6
+  consecutive ticks** (~90 minutes) — at that point the operator should investigate.
 - **Special case finn:** if finn is OFFLINE, gap-work cadence breaches accumulate silently. Note that in
-  `decision_log.md` ("finn skipped — would have dispatched gap-work, breach window N min") so the gap-work
-  debt is visible.
+  `decision_log.md` ("finn skipped — would have dispatched gap-work, breach window N min") so the gap-work debt is
+  visible.
 
-**Heartbeat history (diagnostic only).** `peer_heartbeat_log.md` you've maintained for cycles records when
-each peer last replied HEARTBEAT_OK. The harness scheduler runs heartbeats independently; their replies land
-in YOUR conversation log when peers respond to your ticks but otherwise are not visible to you. Use this log
-as a debugging aid when investigating "why did probe fail?" — but the active probe above is the
-load-bearing signal, not heartbeat-OK history. (Heartbeat replies can be stale from peer-side caching; the
-HTTP probe is authoritative.)
+**Heartbeat history (diagnostic only).** `peer_heartbeat_log.md` you've maintained for cycles records when each peer
+last replied HEARTBEAT_OK. The harness scheduler runs heartbeats independently; their replies land in YOUR conversation
+log when peers respond to your ticks but otherwise are not visible to you. Use this log as a debugging aid when
+investigating "why did probe fail?" — but the active probe above is the load-bearing signal, not heartbeat-OK history.
+(Heartbeat replies can be stale from peer-side caching; the HTTP probe is authoritative.)
 
 #### 2e. Last-fire times
 
@@ -524,15 +523,15 @@ Append to `/workspaces/witwave-self/memory/agents/zora/decision_log.md`:
 Update `/workspaces/witwave-self/memory/agents/zora/team_state.md` with:
 
 - New last-fire timestamp for the dispatched peer (if any)
-- **Per-peer liveness state from Step 2d's active probe** — one of `ONLINE`, `PROBE-FAILED-ONCE`,
-  `OFFLINE`. Always write the current probe result, even when unchanged from last tick (so the timestamp
-  in the file reflects when the state was last verified, not just when it last changed).
+- **Per-peer liveness state from Step 2d's active probe** — one of `ONLINE`, `PROBE-FAILED-ONCE`, `OFFLINE`. Always
+  write the current probe result, even when unchanged from last tick (so the timestamp in the file reflects when the
+  state was last verified, not just when it last changed).
 - Updated backlog counts
 
-Append to `peer_heartbeat_log.md` (diagnostic ledger) one line per peer per tick with the probe outcome
-and any state transition (e.g., `2026-05-08T22:00Z finn ONLINE → ONLINE (probe-ok in 47ms)` or
-`2026-05-08T22:00Z finn PROBE-FAILED-ONCE → OFFLINE (probe-fail #2 in a row, 5s timeout)`). Trim entries
-older than 7 days during this step to keep the file bounded.
+Append to `peer_heartbeat_log.md` (diagnostic ledger) one line per peer per tick with the probe outcome and any state
+transition (e.g., `2026-05-08T22:00Z finn ONLINE → ONLINE (probe-ok in 47ms)` or
+`2026-05-08T22:00Z finn PROBE-FAILED-ONCE → OFFLINE (probe-fail #2 in a row, 5s timeout)`). Trim entries older than 7
+days during this step to keep the file bounded.
 
 ### 8. Exit cleanly
 

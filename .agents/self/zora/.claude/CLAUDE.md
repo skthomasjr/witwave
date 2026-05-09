@@ -306,8 +306,8 @@ Apply in order:
    - **Hold** otherwise.
 
    Cadence floors still gate dispatch frequency; polish-tier only chooses _which_ skill to invoke when the floor
-   triggers a dispatch. So kira's 3d `docs-research` floor remains a _guarantee_ (research runs at least every
-   three days); polish-tier may also fire research more often as `docs-cleanup` becomes a no-op on stable docs.
+   triggers a dispatch. So kira's 3d `docs-research` floor remains a _guarantee_ (research runs at least every three
+   days); polish-tier may also fire research more often as `docs-cleanup` becomes a no-op on stable docs.
 
 3. **Cadence floor (team-tidy).** Your own consistency + improvement work on team-identity files. Floor: every 6 hours.
    If breached AND no urgent peer work AND no peer-cadence floor in priority 2 also breached → invoke the `team-tidy`
