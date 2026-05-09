@@ -242,6 +242,33 @@ Walk these in order. The first match wins; act and exit (after logging).
   5. **Don't fire any new release-warranted dispatches** until this one is recovered. Otherwise the team layers broken
      release on broken release.
 
+- **Pending release workflow** (iris's release skill returned `[release-workflow-pending]` because her watch step
+  hit its 30-min-per-workflow timeout while one or more `Release*` workflows were still running, OR a `Release*`
+  workflow on the latest tag is currently `in_progress` / `queued` / `requested` / `waiting`) → **HOLD cadence
+  dispatches but don't escalate.** Pending is not failure — the workflow is still doing real work; concurrent
+  cadence-driven commits during this window can tangle the in-flight release artifacts (a dashboard image build
+  racing with a code-cleanup commit on dashboard source, a Helm chart re-render racing with a chart-touching
+  commit, etc.). Procedure:
+
+  1. **Stand down on cadence-mandated dispatches this tick.** Skip the P2 cadence-floor walk entirely; the breaches
+     accumulate but don't fire while the release is in flight. Note in `decision_log.md`:
+     `cadence dispatches DEFERRED — release pipeline pending: <run-ids still in-progress>, oldest started HH:MMZ`.
+  2. **Continue P1 work** — red-CI recovery, stuck-commits, critical CVEs, peer-offline-extended escalations.
+     Those are higher priority than the pending release; the team can fix red CI even with a release in flight
+     (and arguably MUST — a red CI mid-release means the next tag is poisoned too).
+  3. **Re-check on the next tick.** Use the same gh run list query that detected the pending state initially:
+     ```sh
+     gh run list --branch main --workflow="Release*" --limit 10 --json status,conclusion,name,databaseId
+     ```
+     If all release workflows have concluded (any combination of success/failure) — flow into either the "fully
+     successful" path (resume cadence) or the `[release-workflow-failed]` path above. If still pending — repeat
+     the hold for one more tick.
+  4. **Pending-too-long escalation.** If a release workflow has been pending >45 minutes (3 consecutive ticks of
+     `[release-workflow-pending]`), append `[escalation: release-workflow-stuck]` to `escalations.md` with the
+     workflow name + run-id + initial-fire timestamp. Most release pipelines complete in ≤30min; >45min usually
+     means GitHub Actions queueing issue or a hung step worth a human eye. Keep cadence held until either the
+     workflow concludes or the user intervenes.
+
 - **Stuck peer** (peer dispatch in flight >1h, OR peer's pod has dirty WIP blocking subsequent dispatches) → follow the
   **time-bounded escalation** ladder below. Don't just stand down forever — past versions of this policy held the team
   idle for 3+ hours waiting for human resolution while every cadence floor breached and zero fix attempts ran. Today's

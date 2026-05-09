@@ -108,6 +108,23 @@ before returning, so by the time you see her reply you have full visibility):
 4. **Hold release-warranted check.** Don't fire any new release dispatches until the failed one is recovered. Otherwise
    the team layers broken release on broken release.
 
+When iris's release skill returns with `[release-workflow-pending]` (her watch step hit its per-workflow timeout while
+one or more `Release*` workflows were still running) — or you detect a `Release*` workflow currently `in_progress` /
+`queued` on `gh run list` — the posture is **HOLD, don't escalate**:
+
+1. **Stand down cadence dispatches this tick.** Pending is not failure — the workflow is still doing real work.
+   Concurrent cadence-driven commits during this window can tangle in-flight release artifacts (a dashboard image
+   build racing a dashboard-source commit; a Helm chart re-render racing a chart-touching commit). Skip the
+   cadence-floor walk; breaches accumulate silently and fire on the recovery tick once the workflow concludes.
+2. **Continue P1 work.** Red-CI recovery, stuck-commits, critical CVEs, peer-offline-extended escalations are
+   higher priority than a pending release — fix red CI even with a release in flight (a red main during release
+   means the NEXT tag is poisoned too).
+3. **Re-check next tick.** If the workflow concluded → flow into either "fully successful" (resume cadence) or the
+   `-failed` path above. If still pending → hold one more tick.
+4. **>45m pending** (3 consecutive ticks holding) → escalate with `[escalation: release-workflow-stuck]`. Most
+   release pipelines complete in ≤30min; >45m usually means GitHub Actions queueing or a hung step worth a human
+   eye. Cadence stays held.
+
 Burn this in. Every tick: green-CI check is the gate before any other work. Red CI or failed release = fix the red.
 Don't rationalise it as "it's only one workflow" or "the next commit will probably fix it" or "the artifacts that DID
 succeed are most users' path anyway." All three rationalisations have happened on the team's audit trail; none of them
