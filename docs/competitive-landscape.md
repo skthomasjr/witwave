@@ -1,12 +1,16 @@
 # Competitive Landscape
 
-Last updated: 2026-04-20 by local-agent (eleventh pass — rewrote the OpenClaw entry with fresh research from
-<https://openclaw.ai/> and <https://github.com/openclaw/openclaw> pulled during a session-end strategic discussion.
-Captured owner's "witwave is OpenClaw for teams with Kubernetes clusters" positioning frame and listed OpenClaw's 20+
-chat-platform integrations, menu-bar voice-wake companion, workspace skills system with agent-written-skill loop, and
-MIT + calendar-versioned release cadence. Marked OpenClaw as "primary open-source competitor" in the section heading;
-added explicit differentiator lists in both directions. Earlier tenth pass (2026-04-19) aggressively cut Research Themes
-from deep research-synthesis bibliography to one-paragraph navigational scaffolding per theme.)
+Last updated: 2026-05-09 by kira-agent-witwave (twelfth pass — narrow refresh against current upstream state: bumped
+OpenClaw to `v2026.5.7` (2026-05-07), Microsoft Agent Framework to `python-1.3.0` / `dotnet-1.5.0` (both 2026-05-08),
+and rewrote stale `All-Hands-AI/OpenHands` URLs to the post-rename canonical `OpenHands/OpenHands` (the GitHub redirect
+still resolves but the org has been renamed; sources verified via og:title on the live release pages, accessed
+2026-05-09). Eleventh pass (2026-04-20) rewrote the OpenClaw entry with fresh research from <https://openclaw.ai/> and
+<https://github.com/openclaw/openclaw> pulled during a session-end strategic discussion. Captured owner's "witwave is
+OpenClaw for teams with Kubernetes clusters" positioning frame and listed OpenClaw's 20+ chat-platform integrations,
+menu-bar voice-wake companion, workspace skills system with agent-written-skill loop, and MIT + calendar-versioned
+release cadence. Marked OpenClaw as "primary open-source competitor" in the section heading; added explicit
+differentiator lists in both directions. Earlier tenth pass (2026-04-19) aggressively cut Research Themes from deep
+research-synthesis bibliography to one-paragraph navigational scaffolding per theme.)
 
 ---
 
@@ -74,10 +78,12 @@ GUI, and cloud/enterprise deployment. Current version: **v1.7.0 (May 1, 2026)** 
 KVM-accelerated sandbox containers (`SANDBOX_KVM_ENABLED`), exposing the SDK settings schema to OpenHands, and folding
 the Tavily search key into MCP settings, plus dependency CVE patches; the v1.6.0 Kubernetes/RBAC narrative below remains
 the substantive recent headline. 72,500+ GitHub stars (sources:
-<https://github.com/All-Hands-AI/OpenHands/releases/tag/1.7.0> and <https://github.com/All-Hands-AI/OpenHands>, accessed
-2026-05-06). Scores 77.6+ on SWEBench Verified; community benchmarks report 87% of bug tickets resolved same-day. Key
-differentiators: multi-LLM support (Claude, GPT, any open-source model), deep integrations with Slack, Jira, Linear,
-GitHub, GitLab, Azure DevOps, Bitbucket, and MCP servers.
+<https://github.com/OpenHands/OpenHands/releases/tag/1.7.0> and <https://github.com/OpenHands/OpenHands>, accessed
+2026-05-09; the project's GitHub org was renamed from `All-Hands-AI` to `OpenHands` — old `All-Hands-AI/OpenHands` URLs
+still redirect, but the canonical path is now `OpenHands/OpenHands`). Scores 77.6+ on SWEBench Verified; community
+benchmarks report 87% of bug tickets resolved same-day. Key differentiators: multi-LLM support (Claude, GPT, any
+open-source model), deep integrations with Slack, Jira, Linear, GitHub, GitLab, Azure DevOps, Bitbucket, and MCP
+servers.
 
 **v1.5.0 headline feature — Planning Agent (BETA):** Implements a two-phase Plan/Code workflow. In Plan Mode, the agent
 has read-only tool access except for a single writable file (`PLAN.md` in the workspace root) — deliberately preventing
@@ -347,10 +353,10 @@ this project targets the team running coordinated agents as cluster workloads.
 
 OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
 pressure, and three days later settled on **OpenClaw**. Category-leading install base — **368,700+ GitHub stars and
-75,900+ forks as of 2026-05-06**, with a very active commit cadence (latest release `v2026.5.4` on 2026-05-05) — the
+75,900+ forks as of 2026-05-06**, with a very active commit cadence (latest release `v2026.5.7` on 2026-05-07) — the
 exact number drifts fast, so re-pin before quoting in marketing or external docs (sources:
-<https://github.com/openclaw/openclaw> and <https://github.com/openclaw/openclaw/releases/tag/v2026.5.4>, accessed
-2026-05-06). Runs on user-controlled infrastructure (notable community trend: a Mac Mini hardware rush for 24/7
+<https://github.com/openclaw/openclaw> and <https://github.com/openclaw/openclaw/releases/tag/v2026.5.7>, accessed
+2026-05-09). Runs on user-controlled infrastructure (notable community trend: a Mac Mini hardware rush for 24/7
 hosting). Connects to Claude, OpenAI, DeepSeek, and local models. **MIT licensed; calendar-versioned releases
 (`vYYYY.M.D`) with beta and dev channels; very active development cadence.**
 
@@ -447,8 +453,9 @@ hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
 
 **Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows. **GA
 1.0 shipped 2026-04-02** (Python + .NET both tagged `1.0.0` the same day); on the v1 line the cadence has been brisk —
-Python `1.2.2` (2026-04-29), .NET `dotnet-1.4.0` (2026-05-05) — exiting the "public preview" framing the doc previously
-used (source: <https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-06). First-class A2A, MCP, and
+Python `1.3.0` (2026-05-08), .NET `dotnet-1.5.0` (2026-05-08), with both lines now shipping minor releases on
+near-weekly cadence — exiting the "public preview" framing the doc previously used (source:
+<https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-09). First-class A2A, MCP, and
 OpenTelemetry — exactly the same tripod we ship.
 
 **Foundry Agent Service:** GA announced March 2026. OpenAI Responses-compatible API; hosts DeepSeek, xAI, Meta,
