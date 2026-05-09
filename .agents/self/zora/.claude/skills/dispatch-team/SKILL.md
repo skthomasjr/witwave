@@ -324,6 +324,13 @@ Log the tier choice + reason in `decision_log.md` on each dispatch:
 This is how the team becomes _actually_ bug-free / risk-free rather than "0 found at the cheap depth." Treat each tier
 as its own ground to cover; only depth=9 across all-day-one with adversarial passes counts as "we've looked hard."
 
+**Substitute the literal integer in evan's call-peer prompt** (e.g. `Run your bug-work skill at depth=5,
+sections=all-day-one`). Same paranoid guard as the finn dispatches: if your dispatch prompt contains the literal
+string `depth=<N>` or `depth=<n>` or `depth=` followed by a non-digit, abort the dispatch and log the error in
+`decision_log.md`. An unsubstituted placeholder makes evan fall back to his SKILL parser default — which is now
+`5` for risk-work (matches the cadence floor) and `3` for bug-work (the cheap-pass anchor); either way, sending
+the literal placeholder undermines the polish-tier ladder you just decided.
+
 **Choosing risk-tier for finn dispatches (polish-tier control).** Same shape as evan's depth ladder but the integer
 denotes **risk tolerance** for a fill, not analysis intensity. Tier 1 is purely cosmetic / orphan removal (zero behavior
 change); tier 9-10 is architectural cross-cutting work. The team works UP the ladder `3 → 5 → 7 → 9` as each tier's

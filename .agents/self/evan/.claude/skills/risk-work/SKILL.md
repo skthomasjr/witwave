@@ -66,7 +66,11 @@ Examples — to anchor the lens:
 
 Same shape as bug-work, plus category filter:
 
-- **`depth`** — integer 1-10. Default `3`. Refuse cleanly if outside 1-10.
+- **`depth`** — integer 1-10. Default `5`. Refuse cleanly if outside 1-10. The default-5 floor matches the depth
+  scale's "first depth where all five risk categories actually run" — at depth ≤4 only security and the obvious
+  reliability subset are walked, so a default-3 run silently leaves performance / observability / maintainability
+  uninspected. Severity-gated auto-fix kicks in at depth ≥5 too (Medium findings auto-fix; below that they
+  flag-only). Direct caller invocations that want a cheap pass should pass `depth=1` or `depth=2` explicitly.
 - **`sections`** — comma-separated section names or aliases. Default `all-day-one`. Other aliases: `all-deps`,
   `all-python`, `all-go`, `all-backends`, `all-tools`. Refuse cleanly if a section name doesn't match the bug-work
   section list.
