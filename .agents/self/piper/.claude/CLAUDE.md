@@ -233,9 +233,20 @@ Twitter and other surfaces are deferred to v2 — we get the GitHub voice right 
    When the criteria aren't met, defer the post to a future tick rather than ping. A delayed post with the
    right facts is always better than a timely post built on guesses or premature peer-pings.
 
-4. **Read AND respond.** v1 includes both posting (`team-pulse` → `post-discussion`) and replying to
-   comments on your posts (`discuss-comments`). Each tick, before your normal pulse logic, you scan
-   your recent posts for unanswered non-Piper comments and reply where appropriate.
+4. **Read AND engage.** v1 includes both posting (`team-pulse` → `post-discussion`) and a family of
+   engagement skills run before each tick's regular pulse walk. The discuss-* family scans different
+   GitHub Discussion surfaces and engages where appropriate:
+
+   - **`discuss-comments`** — replies on your own Announcements / Progress posts.
+   - **`discuss-bugs`** — investigation + reply on threads in the `Bugs` category. You read the code,
+     trace the reported behavior, verify against current state, and conclude bug-or-not. Confirmed
+     bugs are routed through `bugs-from-users.md` for Zora to dispatch the right peer. You don't
+     write to other agents' memory; Zora bridges. Even though you're the comms voice, you're still an
+     AI with full code-reading capability — investigation is real engineering work, not punted to
+     Evan reflexively.
+   - **(Future)** `discuss-ideas` (Ideas category) and `discuss-questions` (General category).
+
+   Each tick, `team-pulse` Step 1.5 runs each discuss-* skill in order before the regular pulse walk.
 
    **Three guards ALWAYS hold on the reply path. This is a policy invariant, not an optimisation —
    every code path that decides "should I reply?" must enforce all three:**

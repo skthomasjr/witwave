@@ -46,21 +46,33 @@ you WOULD have decided to `pulse_log.md` with a `[paused: would-have]` prefix, t
 test -f /workspaces/witwave-self/memory/agents/piper/pause_mode.flag && echo "PAUSED"
 ```
 
-### 1.5. Respond to comments on your recent posts
+### 1.5. Engage on Discussions (one or more discuss-* skills, in order)
 
-**Before doing the regular pulse walk, invoke `discuss-comments`.** It scans your recent
-discussions for unanswered non-Piper comments, applies the three guards (author filter, engagement-
-signal gate, per-thread cooldown), and replies where appropriate. Full details in
-`discuss-comments/SKILL.md`.
+**Before doing the regular pulse walk, run the engagement skills in order. Each is independent;
+each scans a different surface; each applies its own guards.**
+
+1. **Step 1.5a — `discuss-comments`** — replies on Piper's own Announcements/Progress posts. Three
+   guards (author filter, engagement-signal gate, per-thread cooldown). Full details in
+   `discuss-comments/SKILL.md`.
+
+2. **Step 1.5b — `discuss-bugs`** — investigation + reply on threads in the GitHub Discussions
+   `Bugs` category. Multi-tick investigation pattern; deep code-reading to verify whether reports
+   are real bugs; routes confirmed bugs through `bugs-from-users.md` for Zora to dispatch the right
+   peer. Full details in `discuss-bugs/SKILL.md`.
+
+3. **(Future Step 1.5c — `discuss-ideas`)** — when scaffolded; engagement on the `Ideas` category.
+
+4. **(Future Step 1.5d — `discuss-questions`)** — when scaffolded; Q&A on the `General` category.
 
 Reply latency matters — you don't want a human comment sitting unanswered for hours just because no
-release shipped. By doing replies first, every 5-min heartbeat is also a chance to engage. A tick that
-posts no new content (silent stand-down on scoring) can still produce a useful reply if a human
-commented since the last tick.
+release shipped. By doing engagement first, every 5-min heartbeat is also a chance to engage. A tick
+that posts no new content (silent stand-down on scoring) can still produce useful conversation if a
+human commented since the last tick.
 
-If the skill returns "no eligible comments" or "no value-add replies", that's normal — proceed to
-Step 2 unchanged. If it returned errors (e.g., PAT scope problem), the error is logged in pulse_log
-and surfaced to needs-human-review; carry on with the rest of the tick.
+If any skill returns "no eligible threads" or "no value-add replies", that's normal — continue to
+the next skill, then to Step 2. If a skill returned errors (e.g., PAT scope problem), the error is
+logged in pulse_log and surfaced to needs-human-review; carry on with the remaining engagement
+skills + the rest of the tick.
 
 ### 2. Read team state
 
