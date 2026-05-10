@@ -10,6 +10,10 @@ func newJobsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "jobs",
 		Short: "Inspect scheduled jobs",
+		Long: "Fetches /jobs from the harness and lists every cron-scheduled job\n" +
+			"with its schedule, next fire, last fire, and last outcome. Run\n" +
+			"without a subcommand to default to `list`; use `view <name>` to\n" +
+			"see the full configuration of a single job.",
 	}
 	cmd.AddCommand(newJobsListCmd(), newJobsViewCmd())
 	// Default to list when no subcommand is given.
@@ -23,6 +27,8 @@ func newJobsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all jobs",
+		Long: "Fetches /jobs from the harness and prints one row per job with\n" +
+			"NAME, SCHEDULE, NEXT_FIRE, LAST_FIRE, and OUTCOME.",
 		RunE: func(cc *cobra.Command, args []string) error {
 			return runJobsList(cc)
 		},
@@ -50,7 +56,10 @@ func newJobsViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "view <name>",
 		Short: "View a single job's full details",
-		Args:  cobra.ExactArgs(1),
+		Long: "Fetches /jobs from the harness and prints the full configuration\n" +
+			"for the named job, including its cron schedule, last-fire metadata,\n" +
+			"and any per-job flags.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cc *cobra.Command, args []string) error {
 			ctx := cc.Context()
 			c := ClientFromCtx(ctx)
