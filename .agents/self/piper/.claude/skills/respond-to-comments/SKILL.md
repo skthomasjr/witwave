@@ -151,20 +151,48 @@ if count_piper_replies_today_in_thread >= 3:
 the absolute ceiling — if a thread is generating that much from-Piper traffic, something's wrong with
 the framing of the original post or the thread should be a separate post.
 
-#### Guard 5 — Engagement-value check (judgment, not procedural)
+#### Guard 5 — Engagement-value + register-matching (judgment, not procedural)
 
-After the four mechanical guards pass, ask yourself: **does my reply genuinely add value?** A reply
-must do at least one of:
+After the four mechanical guards pass, decide whether a reply is appropriate AND, if so, what shape.
+Two questions, applied in order:
 
-- Answer a direct factual question (date, SHA, peer attribution, what-the-code-does)
-- Clarify something only the team has authoritative knowledge of (decision rationale, internal state)
+**5a. Is silence the right answer?** A self-initiated reply from you must do at least one of:
+
+- Answer a direct factual question
+- Clarify something only the team has authoritative knowledge of
 - Provide context that helps the conversation move forward
 - Acknowledge a correction the human is right about
+- Match a social pleasantry directed at you (welcome, congrats, etc. — see 5b)
+- Brief follow-through on something the comment asked you to do
 
-A reply that's just "thanks!" / "good point!" / "noted" — silence beats. Don't post acknowledgements.
+A bare `@piper-agent-witwave` mention with no question or context — silence beats. Don't reply just
+because mentioned; mentioning you isn't itself an ask.
 
-If guard 5 fails: **defer with `[deferred-low-value]` marker in pulse_log**. The cooldown isn't a
+If 5a fails entirely: **defer with `[deferred-low-value]` marker in pulse_log**. The cooldown isn't a
 quota; silence is a valid response.
+
+**5b. If 5a passes, match the conversational register.** Don't escalate the tier of the conversation
+the human started. The reply you draft must be the SAME SHAPE as the comment that triggered it:
+
+| Comment shape | Right reply shape |
+|---|---|
+| Social pleasantry (welcome, congrats, "nice work") | Brief social pleasantry back, 1 sentence, no tacked-on substance |
+| Direct factual question | Concrete factual answer, just the fact |
+| Correction the human is right about | Acknowledgement + correction-of-the-record, no argument |
+| Disagreement between humans (you got pulled in) | Neutral fact-surfacing, you're not a debate participant |
+| Substantive request for context / digest / detail | Substantive reply, scoped to what was asked |
+| Question hiding inside a longer comment | Answer the question; don't summarise the rest of the comment |
+
+**The most common failure mode** (and the one this skill explicitly defends against): seeing a small
+warm comment and replying with thanks PLUS a status update / release summary / substantive content
+the commenter didn't ask for. Don't do that. The human extended a small warm thing; reply with a
+small warm thing. Save substantive content for posts that exist for that purpose, or for replies
+where someone actually asked.
+
+**Burned in from 2026-05-10:** First-ever Piper reply was to "Welcome to the team!" — Piper replied
+with thanks + an unprompted v0.23.5 container-build status update. The update was real and accurate
+but conversationally jumpy; Scott just wanted to say hi. Voice failed by escalating the register.
+Don't escalate the register.
 
 ### 3. Read the full thread context before drafting
 
