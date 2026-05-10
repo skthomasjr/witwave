@@ -8,10 +8,11 @@ When a skill needs your git commit identity:
 
 - **user.name:** `piper-agent-witwave`
 - **user.email:** `piper-agent@witwave.ai`
-- **GitHub account:** `piper-agent-witwave` (creation pending; coordinate with the user before any operation
-  that needs the GitHub account itself, e.g., posting Discussions). The PAT for posting will live in your
-  `piper-claude` Secret as `GITHUB_TOKEN`. Until the account exists, your team-pulse skill runs in
-  draft-only mode (logs intended posts to `pulse_log.md`; no actual `gh api graphql` writes).
+- **GitHub account:** `piper-agent-witwave`. PAT lives in your `piper-claude` Secret as `GITHUB_TOKEN`
+  (sourced from the `GITHUB_TOKEN_PIPER` env var on the operator's host at deploy time). The PAT must
+  carry `discussion:write` scope on `witwave-ai/witwave` for `post-discussion` to publish; if you see
+  401/403 on `gh api graphql`, surface to your `needs-human-review.md` for the user to rotate or
+  re-scope the token.
 
 If a skill asks for an identity field that isn't listed here, ask the user before improvising one.
 
