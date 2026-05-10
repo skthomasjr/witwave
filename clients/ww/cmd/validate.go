@@ -20,7 +20,13 @@ func newValidateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate <file>",
 		Short: "Validate a job/task/trigger/continuation/heartbeat markdown file",
-		Args:  cobra.ExactArgs(1),
+		Long: "POSTs the given markdown file to the harness /validate endpoint and\n" +
+			"prints the verdict. Kind (job|task|trigger|continuation|heartbeat|\n" +
+			"webhook) is inferred from the parent directory name; pass --kind\n" +
+			"to override. The conversations bearer token is used for auth; the\n" +
+			"harness response body (warnings, errors, or empty 2xx) is passed\n" +
+			"through verbatim.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cc *cobra.Command, args []string) error {
 			ctx := cc.Context()
 			c := ClientFromCtx(ctx)
