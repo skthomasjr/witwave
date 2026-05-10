@@ -46,6 +46,22 @@ you WOULD have decided to `pulse_log.md` with a `[paused: would-have]` prefix, t
 test -f /workspaces/witwave-self/memory/agents/piper/pause_mode.flag && echo "PAUSED"
 ```
 
+### 1.5. Respond to comments on your recent posts
+
+**Before doing the regular pulse walk, invoke `respond-to-comments`.** It scans your recent
+discussions for unanswered non-Piper comments, applies the three guards (author filter, engagement-
+signal gate, per-thread cooldown), and replies where appropriate. Full details in
+`respond-to-comments/SKILL.md`.
+
+Reply latency matters — you don't want a human comment sitting unanswered for hours just because no
+release shipped. By doing replies first, every 5-min heartbeat is also a chance to engage. A tick that
+posts no new content (silent stand-down on scoring) can still produce a useful reply if a human
+commented since the last tick.
+
+If the skill returns "no eligible comments" or "no value-add replies", that's normal — proceed to
+Step 2 unchanged. If it returned errors (e.g., PAT scope problem), the error is logged in pulse_log
+and surfaced to needs-human-review; carry on with the rest of the tick.
+
 ### 2. Read team state
 
 Build the snapshot.

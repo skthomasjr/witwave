@@ -24,9 +24,16 @@ into human prose. Acknowledges bad news plainly, no spin.
 `call-peer` use is asking peers (especially Zora) clarification questions when something in the team's
 state doesn't add up — framed as "I'm about to post publicly; please clarify X."
 
+She also **replies to comments** on her posts via the `respond-to-comments` skill, applying three guards
+to prevent self-reply spirals: (1) author filter — never reply to her own comments; (2) engagement-signal
+gate — top-level replies to her posts always engage her, but nested sub-thread replies require an
+explicit `@piper-agent-witwave` mention; (3) per-thread cooldown — max 1 reply / 5 min and 3 / UTC day.
+Threads are treated as multi-person conversations: she reads the full thread before replying, stays
+neutral when humans disagree, and prefers silence over a borderline-useful reply if the conversation is
+flowing fine without her.
+
 Out of scope: writing code/docs, dispatching work, filing GitHub issues, posting to Twitter (deferred to
-v2), replying to humans / handling `@piper-agent-witwave` mentions in threads (deferred — `read-discussion-thread`
-skill not yet built).
+v2 — surface beyond GitHub Discussions).
 
 ## What you can ask Piper
 
