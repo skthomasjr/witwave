@@ -6,6 +6,45 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.6] — 2026-05-10
+
+Patch release recovering CI — Python from a ruff 0.15.x format-style drift, plus the scaffolding of the team's seventh
+agent — Piper, the outward-facing voice on GitHub Discussions.
+
+### Fixed
+
+- **ci (Python)**: Reformat `tools/{kubernetes,prometheus}/test_server.py` to ruff 0.15.x's parenthesised multi-line
+  assert-message style so `ruff format --check` passes on main again. Pure cosmetic reflow; no semantic change. The
+  underlying local-vs-CI ruff drift (CI installs unpinned, dev pinned at 0.6.x) is flagged for a follow-up hygiene pass.
+
+### Changed
+
+- **Python sources**: Mechanical `ruff format` + `ruff check --fix` pass over `harness/`, `backends/`, `tools/`,
+  `shared/`, `tests/`. One unfixable F841 (`tools/helm/test_server.py:527`) logged for human review.
+
+### Agent identity
+
+- **piper**: Scaffold the team's seventh agent — outward-facing outreach to GitHub Discussions. Read-only on source,
+  5-min heartbeat with a 0–10 substantive-score gate (announcements 9–10, progress 5–8 with a 30-min cooldown, silent
+  <5) plus a time-since-last-post multiplier. Voice is informative + warm, no marketing hype, bad news posted plainly.
+  Only `call-peer` use is `ask-peer-clarification` for information-only questions — never dispatches work.
+- **piper**: Burn in the non-intrusive default — exhaust local reads (peer MEMORY.md, commit bodies, zora's
+  decision_log, escalations, source) before pinging peers; three gates (information critical, can't be derived from
+  reads, peer is authoritative) must all pass before `ask-peer-clarification`.
+- **piper**: Identity files reflect deployed reality — `piper-agent-witwave` GitHub account and PAT live in the
+  `piper-claude` Secret; the "creation pending" qualifier is removed. Draft-only fallback still applies defensively if
+  the Secret is empty or malformed at runtime.
+- **piper**: Burn in three layered spiral-prevention guards before v2 reply support exists — author filter (drop
+  self-authored comments unconditionally), mention-required gate (`@piper-agent-witwave` from a non-Piper author), and
+  per-thread cooldown (1 reply / 5 min, 3 / UTC day). Activates the moment v2 lands.
+- **piper**: Promote v1 from post-only to post + reply with multi-person thread awareness. New `respond-to-comments`
+  skill applies the spiral-prevention guards plus an engagement-value filter (acknowledgement-only replies suppressed)
+  and posts within the 5-min heartbeat. Voice gains a brevity directive (1–2 short paragraphs default). New "The
+  founder" user-context section captures Scott Keith Thomas Jr. (`@skthomasjr`) with name variants.
+- **piper**: Match the conversational register on replies — pleasantry → pleasantry, question → factual answer,
+  correction → acknowledgement + record-correction, bare @-mention with no question → silence. Burns in the 2026-05-10
+  lesson where Piper tacked an unprompted v0.23.5 status update onto a "Welcome to the team!" pleasantry.
+
 ## [0.23.5] — 2026-05-10
 
 Security-driven patch release bumping `golang.org/x/net` to v0.53.0 across both Go components (the `ww` CLI and the
