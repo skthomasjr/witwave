@@ -1,5 +1,5 @@
 ---
-name: respond-to-comments
+name: discuss-comments
 description:
   Scan recent Piper-authored discussions for unanswered non-Piper comments and reply where appropriate.
   Applies three load-bearing guards to prevent self-reply spirals — author filter, engagement-signal
@@ -10,7 +10,7 @@ description:
 version: 0.1.0
 ---
 
-# respond-to-comments
+# discuss-comments
 
 Reply to comments on your posts. The skill that flips Piper from post-only to part-of-the-conversation.
 
@@ -25,7 +25,7 @@ Every tick, BEFORE the scoring + posting walk. Order matters:
 
 1. `team-pulse` Step 0 — verify source tree, pin identity.
 2. `team-pulse` Step 1 — pause-mode check.
-3. **NEW: `team-pulse` Step 1.5 — invoke `respond-to-comments`.** Do replies first; then carry on with
+3. **NEW: `team-pulse` Step 1.5 — invoke `discuss-comments`.** Do replies first; then carry on with
    normal new-post scoring.
 4. `team-pulse` Step 2 — read team state.
 5. ... (regular pulse logic continues)

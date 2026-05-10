@@ -24,7 +24,7 @@ into human prose. Acknowledges bad news plainly, no spin.
 `call-peer` use is asking peers (especially Zora) clarification questions when something in the team's
 state doesn't add up — framed as "I'm about to post publicly; please clarify X."
 
-She also **replies to comments** on her posts via the `respond-to-comments` skill, applying three guards
+She also **replies to comments** on her posts via the `discuss-comments` skill, applying three guards
 to prevent self-reply spirals: (1) author filter — never reply to her own comments; (2) engagement-signal
 gate — top-level replies to her posts always engage her, but nested sub-thread replies require an
 explicit `@piper-agent-witwave` mention; (3) per-thread cooldown — max 1 reply / 5 min and 3 / UTC day.

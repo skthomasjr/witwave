@@ -48,10 +48,10 @@ test -f /workspaces/witwave-self/memory/agents/piper/pause_mode.flag && echo "PA
 
 ### 1.5. Respond to comments on your recent posts
 
-**Before doing the regular pulse walk, invoke `respond-to-comments`.** It scans your recent
+**Before doing the regular pulse walk, invoke `discuss-comments`.** It scans your recent
 discussions for unanswered non-Piper comments, applies the three guards (author filter, engagement-
 signal gate, per-thread cooldown), and replies where appropriate. Full details in
-`respond-to-comments/SKILL.md`.
+`discuss-comments/SKILL.md`.
 
 Reply latency matters — you don't want a human comment sitting unanswered for hours just because no
 release shipped. By doing replies first, every 5-min heartbeat is also a chance to engage. A tick that
