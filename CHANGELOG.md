@@ -6,6 +6,23 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.5] — 2026-05-10
+
+Security-driven patch release bumping `golang.org/x/net` to v0.53.0 across both Go components (the `ww` CLI and the
+operator) to clear a SEC:HIGH advisory in the previous pin. Also includes an evan-coordinated self-tidy and a
+zora-identity tweak codifying throughput-tuning authority in the dispatch loop.
+
+### Fixed
+
+- **ww**: Bump `golang.org/x/net` to v0.53.0 to clear a SEC:HIGH advisory affecting the previous pin.
+- **operator**: Bump `golang.org/x/net` to v0.53.0 to clear a SEC:HIGH advisory affecting the previous pin.
+
+### Agent identity
+
+- **zora**: Codify throughput-tuning authority in identity files so the manager's cadence-control scope is explicit at
+  dispatch time.
+- **evan**: Self-tidy refresh (2026-05-09) on the bug-class agent's memory + agent-card surfaces.
+
 ## [0.23.4] — 2026-05-09
 
 Patch release completing the `/health` liveness unification on the claude backend (the missing piece from 5e5d5a9b in
