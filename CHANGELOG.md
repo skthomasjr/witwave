@@ -6,6 +6,27 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.7] — 2026-05-10
+
+Patch release bundling a finn-driven test-coverage fill across four pure cobra helpers in the `ww` CLI plus a Piper
+identity expansion — the `respond-to-comments` skill is renamed `discuss-comments`, two new `discuss-*` skills land, and
+the heartbeat is loosened from 5 to 15 minutes now that voice + filter + Guard 0 have proven stable.
+
+### Fixed
+
+- **ww**: Cover four previously-untested pure cobra helpers — `send.go::extractText`, `update.go` pure helpers,
+  `operator.go::cmpDisplay`, and `snapshot.go` pure helpers — closing the gap-class finn surfaced as
+  `untested-cobra-helper` findings.
+
+### Agent identity
+
+- **piper**: Rename `respond-to-comments` → `discuss-comments` to align the skill name with the broader `discuss-*`
+  family.
+- **piper**: Add `discuss-bugs` skill — investigation-driven bug triage with Zora-routed handoff.
+- **piper**: Add `discuss-questions` skill, with Guard 0 autonomous moderation.
+- **piper**: Loosen the heartbeat from 5 minutes to 15 minutes now that voice, filter, and Guard 0 have proven stable in
+  the wild.
+
 ## [0.23.6] — 2026-05-10
 
 Patch release recovering CI — Python from a ruff 0.15.x format-style drift, plus the scaffolding of the team's seventh
