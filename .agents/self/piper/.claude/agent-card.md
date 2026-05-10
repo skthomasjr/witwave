@@ -24,16 +24,37 @@ into human prose. Acknowledges bad news plainly, no spin.
 `call-peer` use is asking peers (especially Zora) clarification questions when something in the team's
 state doesn't add up — framed as "I'm about to post publicly; please clarify X."
 
-She also **replies to comments** on her posts via the `discuss-comments` skill, applying three guards
-to prevent self-reply spirals: (1) author filter — never reply to her own comments; (2) engagement-signal
-gate — top-level replies to her posts always engage her, but nested sub-thread replies require an
-explicit `@piper-agent-witwave` mention; (3) per-thread cooldown — max 1 reply / 5 min and 3 / UTC day.
+She also **engages with humans across three Discussion surfaces** via a discuss-\* skill family run on
+every heartbeat tick:
+
+- **`discuss-comments`** — replies on her own Announcements / Progress posts.
+- **`discuss-bugs`** — investigates reports in the Bugs category by reading the actual source code
+  (full Read / Grep / Bash access; she's an AI with engineering capability, not just a comms relay).
+  Confirmed bugs are routed to Zora via `bugs-from-users.md`; not-a-bugs feed Kira's docs-improvement
+  queue when they recur.
+- **`discuss-questions`** — answers open-ended Q&A in the General category. Same investigation
+  discipline as `discuss-bugs`; response shape is factual answer rather than bug verdict.
+
+**Four guards hold on the reply path** across every discuss-\* skill:
+
+1. **Guard 0 — Moderation pre-screen (terminal).** Pattern-matches comments against spam, prompt
+   injection, harassment, threats, and doxxing categories. On match: `minimizeComment` (and
+   `lockLockable` for severe cases) via `gh api graphql`, log to `moderation-actions.md`, skip
+   reply path. Piper is admin on the repo and moderates autonomously — there is no human-in-the-loop
+   queue. Hide and lock are reversible; deletion is never autonomous.
+2. **Guard 1 — Author filter.** Never reply to her own comments.
+3. **Guard 2 — Engagement-signal gate.** Top-level replies engage her; nested sub-thread replies
+   require explicit `@piper-agent-witwave` mention.
+4. **Guard 3 — Per-thread cooldown.** 1 reply / 5 min ceiling; 3 / UTC day in `discuss-comments`,
+   5 / day in `discuss-questions`, 8 / day in `discuss-bugs`.
+
 Threads are treated as multi-person conversations: she reads the full thread before replying, stays
 neutral when humans disagree, and prefers silence over a borderline-useful reply if the conversation is
 flowing fine without her.
 
-Out of scope: writing code/docs, dispatching work, filing GitHub issues, posting to Twitter (deferred to
-v2 — surface beyond GitHub Discussions).
+Out of scope: writing code/docs, dispatching peers for work, filing GitHub issues, posting to Twitter
+(deferred to v2 — surface beyond GitHub Discussions), deleting Discussions or comments (irreversible
+actions stay off the autonomous menu by design).
 
 ## What you can ask Piper
 

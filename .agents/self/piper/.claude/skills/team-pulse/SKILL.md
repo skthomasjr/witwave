@@ -51,18 +51,26 @@ test -f /workspaces/witwave-self/memory/agents/piper/pause_mode.flag && echo "PA
 **Before doing the regular pulse walk, run the engagement skills in order. Each is independent;
 each scans a different surface; each applies its own guards.**
 
-1. **Step 1.5a — `discuss-comments`** — replies on Piper's own Announcements/Progress posts. Three
-   guards (author filter, engagement-signal gate, per-thread cooldown). Full details in
-   `discuss-comments/SKILL.md`.
+1. **Step 1.5a — `discuss-comments`** — replies on Piper's own Announcements/Progress posts. Four
+   guards (Guard 0 moderation pre-screen, author filter, engagement-signal gate, per-thread
+   cooldown). Full details in `discuss-comments/SKILL.md`.
 
 2. **Step 1.5b — `discuss-bugs`** — investigation + reply on threads in the GitHub Discussions
    `Bugs` category. Multi-tick investigation pattern; deep code-reading to verify whether reports
    are real bugs; routes confirmed bugs through `bugs-from-users.md` for Zora to dispatch the right
    peer. Full details in `discuss-bugs/SKILL.md`.
 
-3. **(Future Step 1.5c — `discuss-ideas`)** — when scaffolded; engagement on the `Ideas` category.
+3. **Step 1.5c — `discuss-questions`** — engagement on the `General` category. Open-ended Q&A from
+   humans about the team, the platform, design rationale, the autonomous-experiment narrative.
+   Investigation discipline matches `discuss-bugs` (read the code, verify before answering); response
+   shape is factual answer rather than bug-class verdict. Full details in `discuss-questions/SKILL.md`.
 
-4. **(Future Step 1.5d — `discuss-questions`)** — when scaffolded; Q&A on the `General` category.
+4. **(Future Step 1.5d — `discuss-ideas`)** — when scaffolded; engagement on the `Ideas` category.
+
+All four guards (Guard 0 first, then 1-3) hold across every discuss-\* skill. Guard 0 (moderation
+pre-screen via `minimizeComment` ± `lockLockable`) is terminal — matched bad-shape content gets
+moderated and never enters the reply path. See CLAUDE.md → "Moderation posture" for the canonical
+pattern table.
 
 Reply latency matters — you don't want a human comment sitting unanswered for hours just because no
 release shipped. By doing engagement first, every 5-min heartbeat is also a chance to engage. A tick

@@ -73,7 +73,16 @@ critical events, user-visible surface changes), Progress (5-8 — substantive de
 silent (<5 — most ticks; routine churn doesn't warrant a public post). The threshold scales with cadence so frequent
 heartbeats don't flood the GitHub Discussions feed. Voice is informative + warm. **Read-only on source** and writes
 only to her memory namespace + GitHub Discussions; doesn't dispatch peers for work, only `call-peer` for clarification
-questions before posting publicly. (`.agents/self/piper/`)
+questions before posting publicly.
+
+She also engages with humans across three Discussion surfaces via a discuss-\* skill family
+(`discuss-comments` on her own posts, `discuss-bugs` in the Bugs category with deep code-investigation,
+`discuss-questions` in the General category for open-ended Q&A). Confirmed user-reported bugs route
+through Zora via `bugs-from-users.md`; recurring misconceptions feed Kira's docs queue. Piper has
+**admin role on the repo and moderates the Discussions surface autonomously** — Guard 0 (the
+moderation pre-screen running before all reply guards) hides spam / prompt-injection / harassment
+via `minimizeComment` and locks abusive threads via `lockLockable` without human-in-the-loop. Hide and
+lock are reversible; deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
 
 ## Topology
 
