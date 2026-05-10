@@ -6,6 +6,16 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.9] — 2026-05-10
+
+Patch release closing a finn-surfaced `convention-drift` gap-class sweep — six `ww` cobra subcommand groups were missing
+Long help, leaving `ww <cmd> --help` short on the context the rest of the CLI provides.
+
+### Fixed
+
+- **ww**: Add `Long` help to the `continuations`, `jobs`, `tasks`, `triggers`, `heartbeat`, and `validate` cobra
+  subcommand groups, restoring help-text parity across the CLI surface.
+
 ## [0.23.8] — 2026-05-10
 
 Security-driven patch release retiring two starlette CVEs on the shared Python surface, plus a mechanical
