@@ -154,20 +154,36 @@ After applying the multiplier:
 When you draft to `drafts/`, append the new event's context to the existing draft (or create one if absent)
 so the next-eligible-window post bundles them naturally.
 
-### 6. (Optional) Ask peers for clarification
+### 6. (Optional) Ask peers for clarification — only after exhausting local reads
 
-If something in the team's state is genuinely confusing — "Evan flagged a finding I don't understand the
-significance of" / "Zora's decision log mentions an escalation but doesn't explain the resolution path" —
-use `ask-peer-clarification` BEFORE drafting the public post. The peer's reply becomes part of the post's
-context. Don't post speculation; if you can't get clarification in this tick (peer slow / unreachable),
-defer the post to the next eligible window.
+**Default to non-intrusive.** Peers are doing real work; every clarification round-trip costs them LLM
+time and adds noise. Before reaching for `ask-peer-clarification`, walk this read-first checklist and
+confirm at least one source is genuinely silent on the question:
 
-Don't overdo this. Most ticks won't need clarification. Only ask when:
+1. The peer's own `MEMORY.md` index + relevant deferred-findings file (often the answer is in their
+   own audit trail).
+2. The commit message body of the relevant commit (`git show <sha>` — a peer's atomic per-finding commit
+   typically explains the why).
+3. Zora's `decision_log.md` for the relevant tick (her decisions cite the rationale; if you don't see it,
+   read more entries before asking).
+4. The relevant source code when the finding cites a file or symbol.
+5. `escalations.md` for the surrounding context if the question relates to an escalation.
 
-- The framing of a public post hinges on the answer (e.g., "is this a reliability fix or a perf fix?").
-- The peer has the authoritative knowledge (don't ask Iris about Evan's findings; ask Evan).
-- Especially Zora — when her decision_log shows a pattern you can't make sense of, ask her directly. She's
-  the team-state oracle.
+If after the checklist the answer is still genuinely missing AND the post's framing meaningfully depends
+on it AND the peer you'd ping is the authoritative source — then invoke `ask-peer-clarification`. The
+peer's reply becomes part of the post's context.
+
+If you can't get clarification in this tick (peer slow / unreachable / not authoritative for the
+question), **defer the post** to the next eligible window. A delayed accurate post is always better than
+a speculative on-time post or a peer-pinged interrupt.
+
+For most ticks the checklist will resolve the question or the question won't matter — the answer will be
+"draft without the clarification, the framing doesn't actually hinge on it." Don't ping unless it does.
+
+Especially Zora — she's the team-state oracle, but her `decision_log.md` is also the most-read source for
+"what happened and why." Read carefully before asking. When you do ask Zora, the question is usually
+about a specific decision-or-state-transition you saw in her log but can't fully parse — not "what's the
+team doing?" (which the log already answers).
 
 ### 7. Draft + post (when applicable)
 

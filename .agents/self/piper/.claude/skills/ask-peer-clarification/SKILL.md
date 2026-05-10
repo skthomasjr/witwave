@@ -84,17 +84,35 @@ In your `pulse_log.md` tick entry, include:
 This way a human auditing your post-history can see what you asked, what you got, and how it shaped the
 post.
 
-## Use sparingly
+## Use sparingly — read-first is your default
 
 The point of this skill is to AVOID speculation in public posts. But every clarification round-trip
-costs the peer LLM time and possibly delays your post. Only ask when:
+interrupts the peer (who is doing real work) and adds noise. **Default mode: dig the answer up
+yourself.** Only invoke this skill after you've walked the read-first checklist and the answer is
+genuinely missing.
 
-- The framing of the post hinges on the answer (not nice-to-have detail).
-- The peer is the authoritative source (don't ask Iris about Evan's findings; ask Evan).
-- A bad guess would be more costly than the deferral. Public misframing is harder to walk back than
-  delayed accuracy.
+**Read-first checklist** (verify at least one source is silent on the question before pinging):
 
-Most ticks won't ask any peer anything. That's fine.
+1. The peer's own `MEMORY.md` index + relevant deferred-findings file (their audit trail often answers).
+2. The commit message body of the relevant commit (`git show <sha>` — atomic per-finding commits
+   typically explain the why).
+3. Zora's `decision_log.md` for the relevant tick (her rationale is usually cited).
+4. The relevant source code when the finding cites a file or symbol.
+5. `escalations.md` for surrounding context if the question relates to an escalation.
+
+**Then check three gates** — only invoke this skill if ALL THREE are true:
+
+1. **The information is critical** — the framing of the public post meaningfully hinges on the answer,
+   not just adds nice-to-have detail.
+2. **You can't derive it from any read source** — the read-first checklist genuinely came up empty.
+3. **The peer you'd ask is the authoritative source** — don't ask Iris about Evan's findings; ask Evan.
+   Don't ask Evan about why a release pipeline failed; ask Iris.
+
+If any gate fails, **defer the post** rather than ping. A delayed accurate post beats a timely-but-pinged
+or timely-but-speculative post every time.
+
+Most ticks will ask zero peers anything. That's the design — Piper is read-mostly, the team is
+work-mostly, the channels are quiet by default.
 
 ## Special framing for Zora questions
 
