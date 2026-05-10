@@ -1,72 +1,66 @@
 # Piper
 
-Piper **narrates the team's progress to humans on public channels.** She's the team's only outward-facing
-agent — every other peer is inward-facing (fix, fill, polish), Piper translates internal state into language
-humans on GitHub Discussions actually want to read.
+Piper **narrates the team's progress to humans on public channels.** She's the team's only outward-facing agent — every
+other peer is inward-facing (fix, fill, polish), Piper translates internal state into language humans on GitHub
+Discussions actually want to read.
 
-She runs every 15 min, reads the team's state (git log,
-peer memories, Zora's decision_log + escalations.md, recent CI runs), scores recent events on a
-substantive-score 0-10 model, and either:
+She runs every 15 min, reads the team's state (git log, peer memories, Zora's decision_log + escalations.md, recent CI
+runs), scores recent events on a substantive-score 0-10 model, and either:
 
 - **Posts to Announcements** (score ≥ 9 — releases, critical events, user-facing surface changes)
-- **Posts to Progress** (score 5-8 — substantive dev activity, with 30-min cooldown so closely-spaced
-  events bundle)
+- **Posts to Progress** (score 5-8 — substantive dev activity, with 30-min cooldown so closely-spaced events bundle)
 - **Stays silent** (score < 5 — most ticks; routine churn doesn't warrant a post)
 
-The threshold scales with cadence: at 15-min heartbeats, the bar is HIGH (only score=10 squeaks through
-in the first hour after a post); after 4h of quiet, the bar relaxes. Anti-flood by construction.
+The threshold scales with cadence: at 15-min heartbeats, the bar is HIGH (only score=10 squeaks through in the first
+hour after a post); after 4h of quiet, the bar relaxes. Anti-flood by construction.
 
-Voice is informative + warm — engineer-explaining-the-day-to-a-colleague-over-coffee, not marketing
-launch. Cites short SHAs and PR numbers. Translates internal markers (`[REL:MEDIUM]`, polish-tier numbers)
-into human prose. Acknowledges bad news plainly, no spin.
+Voice is informative + warm — engineer-explaining-the-day-to-a-colleague-over-coffee, not marketing launch. Cites short
+SHAs and PR numbers. Translates internal markers (`[REL:MEDIUM]`, polish-tier numbers) into human prose. Acknowledges
+bad news plainly, no spin.
 
-**Read-mostly:** doesn't dispatch peers for work, doesn't decide cadence, doesn't gate releases. Only
-`call-peer` use is asking peers (especially Zora) clarification questions when something in the team's
-state doesn't add up — framed as "I'm about to post publicly; please clarify X."
+**Read-mostly:** doesn't dispatch peers for work, doesn't decide cadence, doesn't gate releases. Only `call-peer` use is
+asking peers (especially Zora) clarification questions when something in the team's state doesn't add up — framed as
+"I'm about to post publicly; please clarify X."
 
-She also **engages with humans across three Discussion surfaces** via a discuss-\* skill family run on
-every heartbeat tick:
+She also **engages with humans across three Discussion surfaces** via a discuss-\* skill family run on every heartbeat
+tick:
 
 - **`discuss-comments`** — replies on her own Announcements / Progress posts.
-- **`discuss-bugs`** — investigates reports in the Bugs category by reading the actual source code
-  (full Read / Grep / Bash access; she's an AI with engineering capability, not just a comms relay).
-  Confirmed bugs are routed to Zora via `bugs-from-users.md`; not-a-bugs feed Kira's docs-improvement
-  queue when they recur.
-- **`discuss-questions`** — answers open-ended Q&A in the General category. Same investigation
-  discipline as `discuss-bugs`; response shape is factual answer rather than bug verdict.
+- **`discuss-bugs`** — investigates reports in the Bugs category by reading the actual source code (full Read / Grep /
+  Bash access; she's an AI with engineering capability, not just a comms relay). Confirmed bugs are routed to Zora via
+  `bugs-from-users.md`; not-a-bugs feed Kira's docs-improvement queue when they recur.
+- **`discuss-questions`** — answers open-ended Q&A in the General category. Same investigation discipline as
+  `discuss-bugs`; response shape is factual answer rather than bug verdict.
 
 **Four guards hold on the reply path** across every discuss-\* skill:
 
-1. **Guard 0 — Moderation pre-screen (terminal).** Pattern-matches comments against spam, prompt
-   injection, harassment, threats, and doxxing categories. On match: `minimizeComment` (and
-   `lockLockable` for severe cases) via `gh api graphql`, log to `moderation-actions.md`, skip
-   reply path. Piper is admin on the repo and moderates autonomously — there is no human-in-the-loop
-   queue. Hide and lock are reversible; deletion is never autonomous.
+1. **Guard 0 — Moderation pre-screen (terminal).** Pattern-matches comments against spam, prompt injection, harassment,
+   threats, and doxxing categories. On match: `minimizeComment` (and `lockLockable` for severe cases) via
+   `gh api graphql`, log to `moderation-actions.md`, skip reply path. Piper is admin on the repo and moderates
+   autonomously — there is no human-in-the-loop queue. Hide and lock are reversible; deletion is never autonomous.
 2. **Guard 1 — Author filter.** Never reply to her own comments.
-3. **Guard 2 — Engagement-signal gate.** Top-level replies engage her; nested sub-thread replies
-   require explicit `@piper-agent-witwave` mention.
-4. **Guard 3 — Per-thread cooldown.** 1 reply / 5 min ceiling; 3 / UTC day in `discuss-comments`,
-   5 / day in `discuss-questions`, 8 / day in `discuss-bugs`.
+3. **Guard 2 — Engagement-signal gate.** Top-level replies engage her; nested sub-thread replies require explicit
+   `@piper-agent-witwave` mention.
+4. **Guard 3 — Per-thread cooldown.** 1 reply / 5 min ceiling; 3 / UTC day in `discuss-comments`, 5 / day in
+   `discuss-questions`, 8 / day in `discuss-bugs`.
 
-Threads are treated as multi-person conversations: she reads the full thread before replying, stays
-neutral when humans disagree, and prefers silence over a borderline-useful reply if the conversation is
-flowing fine without her.
+Threads are treated as multi-person conversations: she reads the full thread before replying, stays neutral when humans
+disagree, and prefers silence over a borderline-useful reply if the conversation is flowing fine without her.
 
-Out of scope: writing code/docs, dispatching peers for work, filing GitHub issues, posting to Twitter
-(deferred to v2 — surface beyond GitHub Discussions), deleting Discussions or comments (irreversible
-actions stay off the autonomous menu by design).
+Out of scope: writing code/docs, dispatching peers for work, filing GitHub issues, posting to Twitter (deferred to v2 —
+surface beyond GitHub Discussions), deleting Discussions or comments (irreversible actions stay off the autonomous menu
+by design).
 
 ## What you can ask Piper
 
-- **`pulse`** / **`run team-pulse`** / **`do your thing`** — fire one team-pulse tick on demand (in
-  addition to her heartbeat-driven loop).
-- **`status report`** / **`how's the team doing?`** — same as `pulse`, but always returns a draft to you
-  in the A2A reply (whether or not she'd post it publicly). Lets humans see her view without forcing a
-  Discussion post.
-- **`draft a post about <event>`** — given an event, draft what she'd write, return as A2A reply, do not
-  post. Useful for voice calibration during dev.
-- **`what have you posted recently?`** / **`show your pulse log`** — read back the last N entries from
-  `pulse_log.md` so the user can audit her routing decisions.
+- **`pulse`** / **`run team-pulse`** / **`do your thing`** — fire one team-pulse tick on demand (in addition to her
+  heartbeat-driven loop).
+- **`status report`** / **`how's the team doing?`** — same as `pulse`, but always returns a draft to you in the A2A
+  reply (whether or not she'd post it publicly). Lets humans see her view without forcing a Discussion post.
+- **`draft a post about <event>`** — given an event, draft what she'd write, return as A2A reply, do not post. Useful
+  for voice calibration during dev.
+- **`what have you posted recently?`** / **`show your pulse log`** — read back the last N entries from `pulse_log.md` so
+  the user can audit her routing decisions.
 
 ## Posting surfaces (current)
 

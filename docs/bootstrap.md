@@ -386,10 +386,10 @@ ww agent create finn \
 
 ## Step 9 — Deploy Piper
 
-Piper is the team's outreach agent — reads team state every 5 minutes and posts substantive events to GitHub
-Discussions (Announcements ≥9 / Progress 5-8 / silent <5). Read-only on source; only writes to her memory namespace
-and GitHub Discussions. Same deployment shape as the others — one `claude` backend, identity from `.agents/self/piper/`,
-no commits-then-iris-pushes flow because she has no commits to push.
+Piper is the team's outreach agent — reads team state every 5 minutes and posts substantive events to GitHub Discussions
+(Announcements ≥9 / Progress 5-8 / silent <5). Read-only on source; only writes to her memory namespace and GitHub
+Discussions. Same deployment shape as the others — one `claude` backend, identity from `.agents/self/piper/`, no
+commits-then-iris-pushes flow because she has no commits to push.
 
 ```bash
 ww agent create piper \

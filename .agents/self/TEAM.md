@@ -66,23 +66,22 @@ other agent commits locally and delegates the push to iris via `call-peer`. (`.a
 
 ### Piper — outreach
 
-The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 15 min), reads team
-state (git log, peer memories, Zora's decision_log + escalations.md, recent CI runs, recent releases), scores observed
-events on a 0-10 substantive-score model, and routes each tick to one of three outcomes: Announcements (≥9 — releases,
-critical events, user-visible surface changes), Progress (5-8 — substantive dev activity with a 30-min cooldown), or
-silent (<5 — most ticks; routine churn doesn't warrant a public post). The threshold scales with cadence so frequent
-heartbeats don't flood the GitHub Discussions feed. Voice is informative + warm. **Read-only on source** and writes
-only to her memory namespace + GitHub Discussions; doesn't dispatch peers for work, only `call-peer` for clarification
-questions before posting publicly.
+The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 15 min), reads team state (git
+log, peer memories, Zora's decision_log + escalations.md, recent CI runs, recent releases), scores observed events on a
+0-10 substantive-score model, and routes each tick to one of three outcomes: Announcements (≥9 — releases, critical
+events, user-visible surface changes), Progress (5-8 — substantive dev activity with a 30-min cooldown), or silent (<5 —
+most ticks; routine churn doesn't warrant a public post). The threshold scales with cadence so frequent heartbeats don't
+flood the GitHub Discussions feed. Voice is informative + warm. **Read-only on source** and writes only to her memory
+namespace + GitHub Discussions; doesn't dispatch peers for work, only `call-peer` for clarification questions before
+posting publicly.
 
-She also engages with humans across three Discussion surfaces via a discuss-\* skill family
-(`discuss-comments` on her own posts, `discuss-bugs` in the Bugs category with deep code-investigation,
-`discuss-questions` in the General category for open-ended Q&A). Confirmed user-reported bugs route
-through Zora via `bugs-from-users.md`; recurring misconceptions feed Kira's docs queue. Piper has
-**admin role on the repo and moderates the Discussions surface autonomously** — Guard 0 (the
-moderation pre-screen running before all reply guards) hides spam / prompt-injection / harassment
-via `minimizeComment` and locks abusive threads via `lockLockable` without human-in-the-loop. Hide and
-lock are reversible; deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
+She also engages with humans across three Discussion surfaces via a discuss-\* skill family (`discuss-comments` on her
+own posts, `discuss-bugs` in the Bugs category with deep code-investigation, `discuss-questions` in the General category
+for open-ended Q&A). Confirmed user-reported bugs route through Zora via `bugs-from-users.md`; recurring misconceptions
+feed Kira's docs queue. Piper has **admin role on the repo and moderates the Discussions surface autonomously** — Guard
+0 (the moderation pre-screen running before all reply guards) hides spam / prompt-injection / harassment via
+`minimizeComment` and locks abusive threads via `lockLockable` without human-in-the-loop. Hide and lock are reversible;
+deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
 
 ## Topology
 
