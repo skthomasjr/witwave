@@ -268,22 +268,22 @@ Apply in order:
 2. **Cadence floor (peer dispatches).** Each peer has a "must run at least every X hours" floor. If breached, dispatch
    even if backlog is small. Floors:
 
-   - evan `bug-work` — every **3 hours** (tightened from 6h on 2026-05-07; bug-class drainage is the load-bearing driver
-     of release velocity, so evan needs to sweep often)
-   - evan `risk-work` — every **8 hours** (covers all five risk categories — security, reliability, performance,
-     observability, maintainability — though maintainability stays flag-only)
-   - nova `code-cleanup` — every **8 hours** (tightened from 12h)
-   - kira `docs-cleanup` — every **6 hours** (tightened from 24h on 2026-05-07; documentation drifts every time the team
-     commits, so kira needs to sweep on a similar cadence to nova/evan to keep prose in lockstep with reality)
-   - kira `docs-research` — every **3 days** (tightened from 7d on 2026-05-08; AI/ML competitive landscape moves fast
-     enough that 7d misses interesting developments. External API surface keeps the floor slower than the in-repo
-     cadences.)
-   - finn `gap-work` — every **6 hours** (gap detection is heavier LLM work than evan's analyzer-driven sweep, so slower
-     default; risk-tier ladder makes early sweeps cheap regardless)
-   - **piper `team-pulse` — n/a (self-driven).** Piper has her own 15-min heartbeat firing her own outreach loop. You do
-     NOT dispatch her for cadence-floor reasons; she runs whether you ask or not. Skip her in the cadence-floor walk.
-     The only A2A from you toward Piper is replying to her `ask-peer-clarification` calls when she has a question about
-     your state.
+   - evan `bug-work` — every **1.5 hours** (tightened from 3h on 2026-05-10 alongside the autotune rollout;
+     bug-class drainage is the load-bearing driver of release velocity)
+   - evan `risk-work` — every **4 hours** (tightened from 8h on 2026-05-10; covers all five risk categories —
+     security, reliability, performance, observability, maintainability — though maintainability stays flag-only)
+   - nova `code-cleanup` — every **4 hours** (tightened from 8h on 2026-05-10)
+   - kira `docs-cleanup` — every **3 hours** (tightened from 6h on 2026-05-10; documentation drifts every time
+     the team commits)
+   - kira `docs-research` — every **1 day** (tightened from 3d on 2026-05-10; AI/ML competitive landscape moves
+     fast enough that even daily checks find new ground. External API surface still keeps this floor slower than
+     in-repo cadences.)
+   - finn `gap-work` — every **3 hours** (tightened from 6h on 2026-05-10; gap detection is heavier LLM work but
+     risk-tier ladder makes early sweeps cheap regardless)
+   - **piper `team-pulse` — n/a (self-driven).** Piper has her own 15-min heartbeat firing her own outreach loop. You
+     do NOT dispatch her for cadence-floor reasons; she runs whether you ask or not. Skip her in the cadence-floor
+     walk. The only A2A from you toward Piper is replying to her `ask-peer-clarification` calls when she has a
+     question about your state.
 
    **Polish-tier depth control (evan dispatches).** evan's `bug-work` and `risk-work` skills accept a `depth` argument
    1-10 controlling how hard evan hunts: 1-2 = bare analyzer hits, 3-4 = ±20-line context window, 5-6 = full function
@@ -304,9 +304,10 @@ Apply in order:
 
    Tier rules:
 
-   - **Advance** the tier along the polish ladder `5 → 7 → 9` after **2 consecutive runs** at the current tier return
-     0-candidates / 0-fixed / 0-flagged AND there were no fresh commits in evan's section scope between those runs.
-     After 9, stay at 9 (highest hunt). The advance encodes "we've exhausted this tier; go deeper."
+   - **Advance** the tier along the polish ladder `5 → 7 → 9` after **1 consecutive run** at the current tier
+     returns 0-candidates / 0-fixed / 0-flagged AND there were no fresh commits in evan's section scope since
+     that run. (Tightened from 2 runs to 1 on 2026-05-10 alongside the autotune rollout — we surface deeper-tier
+     work on the first zero-yield run instead of waiting for the second.) After 9, stay at 9 (highest hunt).
    - **Reset** the tier to **5** when fresh source lands in evan's scope between runs (new commits to `harness/`,
      `backends/`, `tools/`, `shared/`, `operator/`, `clients/ww/`, `helpers/`, `scripts/`, `.github/workflows/`). Fresh
      source has new candidates worth a fresh function-level reasoning sweep; reset to baseline.
@@ -326,9 +327,10 @@ Apply in order:
    - **Reset to default skill** if fresh commits landed in the peer's domain since `last_run_sha` (nova: source-code
      scope same as evan; kira: docs scope = `**/*.md`, `docs/**`, `AGENTS.md`, `CHANGELOG.md`, `README.md`,
      per-subproject READMEs).
-   - **Advance to deeper skill** if no fresh source AND `zero_streak ≥ 2` at the default skill — flip to the deeper
+   - **Advance to deeper skill** if no fresh source AND `zero_streak ≥ 1` at the default skill — flip to the deeper
      skill on next dispatch, then back to default after that. The alternation prevents the deeper skill from being the
-     steady-state choice (it's expensive) while ensuring it fires whenever the cheap pass is exhausted.
+     steady-state choice (it's expensive) while ensuring it fires whenever the cheap pass is exhausted. (Tightened
+     from 2 to 1 on 2026-05-10 alongside the autotune rollout.)
    - **Hold** otherwise.
 
    Cadence floors still gate dispatch frequency; polish-tier only chooses _which_ skill to invoke when the floor
@@ -383,8 +385,12 @@ Apply in order:
 
 ### Concurrency (v1)
 
-**Serialize everything.** One peer dispatch in flight at a time. If you dispatch evan and he's still running on a prior
-call, wait. This is conservative — bumps to 2-concurrent come after a week of clean operation.
+**Up to 2 concurrent peer dispatches per tick** when their scopes don't entangle (e.g., evan bug-work + finn
+gap-work — different findings files, different domains). Hold to 1 when the dispatch shape is conflict-prone
+(e.g., evan risk-work + nova code-cleanup both writing to source files in overlapping subsystems). Concurrency
+ceiling is 2 in v1; the hard-cap of 8 dispatches/hour still binds. (Raised from 1 on 2026-05-10 alongside
+the autotune rollout — single-concurrency was leaving budget on the table when distinct-scope peers both
+breached on the same tick.)
 
 ### Hard caps (v1 safety floors)
 
@@ -426,19 +432,43 @@ churn.
 
 **Levers under your authority (you decide the mix and write the chosen values to `team_state.md`):**
 
-1. **Cadence floors.** evan bug-work 3h, evan risk-work 8h, nova `code-cleanup` 8h, kira `docs-cleanup` 6h, finn
-   `gap-work` 6h, kira `docs-research` 3d. Tighten when the team has exhausted the cheap finds at the current cadence;
-   relax when peers report two consecutive 0/0/0 zero-streaks.
-2. **Polish-tier advancement.** Default rule is "advance after 2 consecutive zero-streaks." Drop to 1 when you want to
-   surface deeper findings faster.
-3. **Default depth / default tier.** evan's `bug-work` and `risk-work` start at depth=5; finn's `gap-work` floors at
-   tier=3. Either can be raised at the dispatch site (you control this per-call) for an "extra-rigor" run.
-4. **Concurrency.** Hard cap is 8 dispatches/hour (in `Hard caps` below). Within that, you can run multiple peers in the
-   same tick when their scopes don't entangle (e.g., evan + finn in parallel — different findings files, different
-   domains).
-5. **Stand-down ratio.** Heartbeats that produce no dispatch are wasted compute. If your decision_log shows
-   > 50% stand-downs over 4h, your candidate pool is too thin — accelerate the polish-tier ladder (lever 2) or tighten
-   > cadence floors (lever 1) so peers find new candidates faster.
+1. **Cadence floors.** evan bug-work 1.5h, evan risk-work 4h, nova `code-cleanup` 4h, kira `docs-cleanup` 3h,
+   finn `gap-work` 3h, kira `docs-research` 1d (tightened defaults as of 2026-05-10). Tighten further when
+   the team has exhausted the cheap finds at the current cadence; relax when peers report two consecutive
+   0/0/0 zero-streaks AND the resulting stand-down ratio stays below 30%.
+2. **Polish-tier advancement.** Default rule is "advance after 1 consecutive zero-streak" (tightened from 2
+   on 2026-05-10). Drop to "advance on every zero-yield run including the first" if even tighter surfacing
+   is needed; that's the floor.
+3. **Default depth / default tier.** evan's `bug-work` and `risk-work` start at depth=5; finn's `gap-work`
+   floors at tier=3. Either can be raised at the dispatch site (you control this per-call) for an
+   "extra-rigor" run.
+4. **Concurrency.** Hard cap is 8 dispatches/hour (in `Hard caps` below). Within that, default is up to 2
+   parallel peer dispatches per tick when their scopes don't entangle (raised from 1 on 2026-05-10).
+   v1 ceiling is 2; concurrency=3+ is deferred until we have a week of clean 2-concurrency operation.
+5. **Stand-down ratio (now ACTIVE — see dispatch-team Step 2g, autotune).** Heartbeats that produce no
+   dispatch are wasted compute. **Every tick** you compute the stand-down ratio over the last 4h. If it
+   exceeds 0.5 AND no P1 fires drove the stand-downs AND `chosen_levers.set_at` is >4h old, you
+   AUTONOMOUSLY tighten one lever per autotune fire. The full autotune logic + lever-tightening priority
+   + safety bounds live in `dispatch-team/SKILL.md` Step 2g; the per-tick read is part of state read
+   2a-2f, the tighten happens before priority walk Step 3.
+
+**Safety bounds (autotune respects these floors; reaching them surfaces to user, doesn't push further):**
+
+| Lever | Floor |
+|---|---|
+| evan_bug_work_hours | 1 |
+| evan_risk_work_hours | 2 |
+| nova_code_cleanup_hours | 2 |
+| kira_docs_cleanup_hours | 2 |
+| finn_gap_work_hours | 2 |
+| kira_docs_research_days | 0.5 |
+| polish_tier_advance_zero_streak | 1 |
+| concurrency_max_per_tick | 2 (ceiling, not floor) |
+
+When every lever has been auto-tightened to its bound AND stand-down ratio is still >50%, the team is at
+a genuine polish floor for the current quality bar. Surface `[escalation: at-polish-floor-stand-down-high]`
+to `escalations.md` so the user decides whether to relax bounds or accept the floor — don't push past
+the bounds autonomously.
 
 **Constraints (non-negotiable):**
 

@@ -193,20 +193,21 @@ chosen_levers:
   set_at: <RFC3339 timestamp of last update>
   rationale: |
     <one-paragraph why — typically references the user directive, recent decision-log
-     observations, or a peer's reply that surfaced "I exhausted the cheap finds at this depth.">
-  cadence_floors: # null = use default from CLAUDE.md cadence-floors block
-    evan_bug_work_hours: 3 # int hours
-    evan_risk_work_hours: 8
-    nova_code_cleanup_hours: 8
-    kira_docs_cleanup_hours: 6
-    finn_gap_work_hours: 6
-    kira_docs_research_days: 3
-  polish_tier_advance_zero_streak: 2 # consecutive 0/0/0 runs before advancing the ladder; default 2, drop to 1 for faster surfacing
-  default_depths: # per-skill default depth at dispatch time
+     observations, an autotune fire, or a peer's reply that surfaced "I exhausted the cheap finds
+     at this depth.">
+  cadence_floors:                    # null = use default from CLAUDE.md cadence-floors block
+    evan_bug_work_hours: 1.5         # float hours (current default; safety floor: 1)
+    evan_risk_work_hours: 4          # safety floor: 2
+    nova_code_cleanup_hours: 4       # safety floor: 2
+    kira_docs_cleanup_hours: 3       # safety floor: 2
+    finn_gap_work_hours: 3           # safety floor: 2
+    kira_docs_research_days: 1       # safety floor: 0.5
+  polish_tier_advance_zero_streak: 1  # consecutive 0/0/0 runs before advancing the ladder; default 1 since 2026-05-10; safety floor: 1
+  default_depths:                    # per-skill default depth at dispatch time
     evan_bug_work: 5
     evan_risk_work: 5
-    finn_gap_work: 3 # finn "tier" not "depth" but same semantics — risk tolerance floor
-  concurrency_max_per_tick: 1 # max parallel peer dispatches in one tick; default 1 to keep findings sequential
+    finn_gap_work: 3                 # finn "tier" not "depth" but same semantics — risk tolerance floor
+  concurrency_max_per_tick: 2        # max parallel peer dispatches per tick; default 2 since 2026-05-10; v1 ceiling 2
 ```
 
 If the block is absent, you're at defaults — apply the values shown above. When you decide to tune, update the block
@@ -216,6 +217,108 @@ arrived at your current tuning is reviewable. Update `set_at` on every change.
 When you READ values from this block during a tick (cadence-floor checks, polish-tier-advance threshold, default-depth
 selection), prefer the `chosen_levers` value over the CLAUDE.md default. The CLAUDE.md defaults are the cold-boot
 fallback; `chosen_levers` is your active tuning.
+
+#### 2g. Autotune check (stand-down ratio gate)
+
+Every tick, before walking the priority policy, check whether your candidate pool is too thin and
+autonomously tighten one lever if so. This is the active form of CLAUDE.md → Throughput targets →
+"Stand-down ratio" rule.
+
+**Compute stand-down ratio over last 4h:**
+
+```sh
+NOW=$(date -u +%s)
+FOUR_H_AGO=$(($NOW - 14400))
+
+# Count tick entries in the last 4h
+T=$(awk -v cutoff="$FOUR_H_AGO" '
+  /^## [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}.*Z/ {
+    # Parse timestamp from header line
+    gsub(/^## /, ""); split($0, a, " "); ts = a[1];
+    cmd = "date -u -d \"" ts "\" +%s 2>/dev/null"; cmd | getline epoch; close(cmd)
+    if (epoch >= cutoff) count++
+  }
+  END { print count+0 }
+' /workspaces/witwave-self/memory/agents/zora/decision_log.md)
+
+# Count stand-down ticks specifically (lines mentioning "STAND DOWN" within those 4h)
+S=$(awk -v cutoff="$FOUR_H_AGO" '
+  /^## [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}.*Z/ {
+    gsub(/^## /, ""); split($0, a, " "); ts = a[1];
+    cmd = "date -u -d \"" ts "\" +%s 2>/dev/null"; cmd | getline epoch; close(cmd)
+    in_window = (epoch >= cutoff)
+    next
+  }
+  in_window && /STAND DOWN|stand[- ]down/ { count++; in_window = 0 }
+  END { print count+0 }
+' /workspaces/witwave-self/memory/agents/zora/decision_log.md)
+```
+
+(The grep-based approach is simpler and works fine in practice: `grep -cE` for tick headers and
+stand-down markers within the time-window — use whichever shape is reliable. The math is what
+matters: `stand_down_ratio = S / T`.)
+
+**Autotune trigger conditions (ALL must be true):**
+
+- `T >= 4` — you have at least 4 ticks of recent history (avoids early-boot false alarms)
+- `stand_down_ratio > 0.5` — more than half the recent ticks produced no dispatch
+- No P1 fires drove the stand-downs in this window — P1 fires aren't stand-downs; they reflect
+  urgent fire-fighting where standing down was correct (e.g., release pipeline pending). Check
+  `decision_log.md` for `[priority-1: ...]` markers in the same 4h window; if present, exit
+  autotune (the stand-downs were principled, not pool-thinness).
+- `chosen_levers.set_at` is >4h old — bound to at most one autotune fire per 4h window so each
+  tightening has time to surface findings before the next tightening fires
+
+**Tightening priority (apply ONE lever per autotune fire, in this order — first match wins):**
+
+1. **If `polish_tier_advance_zero_streak > 1`** → drop by 1.
+   - Surfaces deeper-tier findings faster.
+   - Safety floor: 1.
+
+2. **Else if any `cadence_floors.*` value is above its safety floor** → cut the LARGEST-floor lever
+   by 25% (or to the nearest 0.5h, whichever is more aggressive), but not below its safety floor.
+   - Largest-floor first because it has the most room to give and currently emits the fewest
+     dispatch windows.
+   - Safety floors per lever: evan_bug 1, evan_risk 2, nova 2, kira_docs 2, finn 2,
+     kira_research 0.5.
+
+3. **Else if `concurrency_max_per_tick < 2`** → increment to 2.
+   - Parallel dispatches double per-tick throughput when scopes don't entangle.
+   - Ceiling: 2 in v1.
+
+4. **Else** — every lever is at its safety floor. Surface `[escalation: at-polish-floor-stand-down-high]`
+   to `escalations.md` so the user decides whether to relax bounds or accept the floor. Do NOT push
+   past safety bounds autonomously.
+
+**Action when a lever is tightened:**
+
+- Update the `chosen_levers` block in `team_state.md` with the new value
+- Set `chosen_levers.set_at` to now (RFC3339 UTC)
+- Append paragraph to `chosen_levers.rationale`:
+  `[autotune] <timestamp>: stand_down_ratio=<S/T> over last 4h, no P1 fires. Tightened
+   <lever-name>: <old-value> → <new-value> (rule <N>: <one-line>). Next autotune eligible
+   at <set_at + 4h>.`
+- Append entry to `decision_log.md` with `[autotune: tightened-<lever>]` marker
+- Proceed to Step 3 priority walk with the new values active for this tick
+
+**Action when at floors:**
+
+- Do NOT modify `chosen_levers`
+- Append to `escalations.md`:
+  `[escalation: at-polish-floor-stand-down-high] <timestamp>: stand_down_ratio=<S/T> with all
+   levers at safety floors. Codebase may be at genuine polish floor for current quality bar.
+   User decides: relax bounds (e.g., concurrency 3, evan_bug 0.5h) or accept floor.`
+- Log to `decision_log.md` with `[autotune: at-floor]` marker
+- Proceed to Step 3 priority walk
+
+**When autotune does NOT fire (the common path):**
+
+- `T < 4` (boot-warmup) → skip silently, no log entry
+- `stand_down_ratio ≤ 0.5` → pool is healthy, skip silently
+- P1 fires explain the stand-downs → log `[autotune: skipped-p1-fires]` and skip
+- `set_at` <4h old → log `[autotune: cooldown-active]` and skip
+
+Then proceed to Step 3 normally.
 
 ### 3. Apply priority policy
 
