@@ -1,6 +1,6 @@
 # The witwave Team
 
-The `witwave-ai/witwave` repo is maintained by a team of six autonomous agents. They commit directly to `main`
+The `witwave-ai/witwave` repo is maintained by a team of seven autonomous agents. They commit directly to `main`
 (trunk-based development), coordinate via A2A (agent-to-agent JSON-RPC), and ship continuously — many small high-quality
 releases per day rather than infrequent large ones.
 
@@ -8,7 +8,9 @@ Each agent owns one substrate. **Zora** decides what work happens when. **Evan**
 risks (across all five risk categories: security, reliability, performance, observability, and maintainability).
 **Nova** keeps the code internally clean. **Kira** keeps the documentation accurate and current. **Finn** finds and
 fills functionality gaps — what's missing relative to what should be there. **Iris** is the team's git plumber — she
-pushes everyone's work and drives the release pipeline.
+pushes everyone's work and drives the release pipeline. **Piper** is the only outward-facing agent — she narrates the
+team's progress to humans on GitHub Discussions, scoring events on a substantive bar before posting so the public
+surface stays signal-rich and quiet otherwise.
 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
@@ -62,6 +64,17 @@ The team's git plumber and release captain. She owns push posture (race handling
 watches CI on every push, and drives the full release pipeline when the team's accumulated work is ready to ship. Every
 other agent commits locally and delegates the push to iris via `call-peer`. (`.agents/self/iris/`)
 
+### Piper — outreach
+
+The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 5 min in early dev), reads team
+state (git log, peer memories, Zora's decision_log + escalations.md, recent CI runs, recent releases), scores observed
+events on a 0-10 substantive-score model, and routes each tick to one of three outcomes: Announcements (≥9 — releases,
+critical events, user-visible surface changes), Progress (5-8 — substantive dev activity with a 30-min cooldown), or
+silent (<5 — most ticks; routine churn doesn't warrant a public post). The threshold scales with cadence so frequent
+heartbeats don't flood the GitHub Discussions feed. Voice is informative + warm. **Read-only on source** and writes
+only to her memory namespace + GitHub Discussions; doesn't dispatch peers for work, only `call-peer` for clarification
+questions before posting publicly. (`.agents/self/piper/`)
+
 ## Topology
 
 ```
@@ -90,13 +103,21 @@ other agent commits locally and delegates the push to iris via `call-peer`. (`.a
                              │ push + CI watch + release
                              ▼
                         origin/main
-                             │
-                             ▼
-                    release pipeline ✦
-                             │
-                             ▼
-                  ghcr.io · oci · brew
+                             │           ┌──── reads state ────┐
+                             ▼           │                     │
+                    release pipeline ✦   │              ╭──────▼──────╮
+                             │           │              │    PIPER    │
+                             ▼           └─────────────▶│  outreach   │
+                  ghcr.io · oci · brew                  │ heartbeat   │
+                                                        ╰──────┬──────╯
+                                                               │ post (when score ≥5)
+                                                               ▼
+                                                  GitHub Discussions
+                                                  (Announcements / Progress)
 ```
+
+Piper sits OUTSIDE the work-coordination loop. She reads team state but doesn't dispatch peers for work; her only A2A
+use is `ask-peer-clarification` (information-only questions) before posting publicly.
 
 ## Proposed future members
 
@@ -161,19 +182,7 @@ then execute against. **Seventh priority** because direction-setting is highest-
 accumulated context — better once the team has months of state to reason over and the platform has real users with real
 friction points.
 
-### 7. public relations — likely **piper** or **nora**
-
-The team's outbound voice. Maintains a deep working relationship with every other agent — reads their memory, their
-commits, their findings, their decisions — and turns the team's lived reality into _stories worth telling_. Cadence: a
-blog entry every other day or so chronicling the trials, tribulations, and forward growth of running software
-development this way: what's working, what broke and how the team recovered, what surprised everyone, what the team
-learned this week. Publishes on behalf of the witwave team to wherever the project's public surface lives (blog, social,
-mailing list). Distinct from community-liaison (who _responds_ to inbound threads): PR is _outbound_ storytelling —
-proactive narrative, not reactive support. **Eighth priority** because the role only works once the team has accumulated
-enough lived history to be interesting; spinning it up too early produces empty, hand-wavy content. Once the team's been
-running for a quarter or two, the material practically writes itself.
-
-### 8. community liaison — likely **sage** or **ezra**
+### 7. community liaison — likely **sage** or **ezra**
 
 Talks with humans on GitHub Discussions. Reads new threads, answers questions, negotiates feature scope with external
 requesters, surfaces actionable bugs/features back to the team. Coordinates with zora on prioritisation ("a discussion
@@ -181,7 +190,7 @@ thread is asking for X — when can we fit it?"). Adds a _human-facing voice_ th
 requests have no team-facing channel. **Ninth priority** because it depends on actually having a community generating
 threads — and that community is partly what PR exists to grow, so PR comes first.
 
-### 9. feature builder — likely **liam** or **felix**
+### 8. feature builder — likely **liam** or **felix**
 
 Builds new features end-to-end. Reads requirements (from issues, discussions, design docs), implements the change across
 code + tests + docs, commits in atomic pieces, delegates push to iris. Skill: `feature-work`. Distinct from the

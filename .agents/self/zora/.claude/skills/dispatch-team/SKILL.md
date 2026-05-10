@@ -126,7 +126,7 @@ is fully uniform team-wide. Until then, the adapter gets the count _right enough
 
 Two signals combine here. The active probe is authoritative; the heartbeat history is a fallback diagnostic.
 
-**Active probe (every tick).** For each peer in `[iris, nova, kira, evan, finn]`, hit the peer's harness
+**Active probe (every tick).** For each peer in `[iris, nova, kira, evan, finn, piper]`, hit the peer's harness
 `/.well-known/agent.json` endpoint via the URL in `reference_peer_<peer>.md`. The probe is a plain HTTP GET with a
 5-second timeout; no auth required (this is the A2A discovery path, public by design). Expected response is HTTP 200
 with a JSON body describing the agent (name, skills, etc.). We use this endpoint rather than a `/health` route because
@@ -136,7 +136,7 @@ peer (verified 2026-05-08 when the first version of this Step 2d wired the wrong
 which is a slightly stronger liveness signal than a bare `/health` would have provided.
 
 ```sh
-for peer in iris nova kira evan finn; do
+for peer in iris nova kira evan finn piper; do
   PEER_URL=$(grep -m1 -oE 'http[s]?://[^[:space:]]+' /workspaces/witwave-self/memory/agents/zora/reference_peer_${peer}.md 2>/dev/null)
   if [ -z "$PEER_URL" ]; then continue; fi
   curl -fsS --max-time 5 "${PEER_URL%/}/.well-known/agent.json" >/dev/null 2>&1 && echo "${peer}=ONLINE" || echo "${peer}=PROBE-FAIL"

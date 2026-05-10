@@ -384,9 +384,38 @@ ww agent create finn \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
+## Step 9 — Deploy Piper
+
+Piper is the team's outreach agent — reads team state every 5 minutes and posts substantive events to GitHub
+Discussions (Announcements ≥9 / Progress 5-8 / silent <5). Read-only on source; only writes to her memory namespace
+and GitHub Discussions. Same deployment shape as the others — one `claude` backend, identity from `.agents/self/piper/`,
+no commits-then-iris-pushes flow because she has no commits to push.
+
+```bash
+ww agent create piper \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=7200 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_PIPER:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_PIPER:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/piper \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+`GITHUB_TOKEN_PIPER` must carry `discussion: write` scope on `witwave-ai/witwave` so her `post-discussion` skill can
+publish to Announcements + Progress categories. Until the `piper-agent-witwave` GitHub account exists and the PAT is
+wired, Piper's `team-pulse` skill runs in draft-only mode (logs intended posts to her `pulse_log.md` + `drafts/`
+directory; no `gh api graphql` writes). This lets you calibrate her voice + scoring before publishing live.
+
 ## Verify the team
 
-After all six agents deploy, verify the workspace binding:
+After all seven agents deploy, verify the workspace binding:
 
 ```bash
 ww agent list \
