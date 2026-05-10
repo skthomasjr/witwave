@@ -11,6 +11,10 @@ func newContinuationsCmd() *cobra.Command {
 		Use:     "continuations",
 		Aliases: []string{"conts"},
 		Short:   "Inspect continuation chains",
+		Long: "Fetches /continuations from the harness and lists every continuation\n" +
+			"with its upstream link, last fire, fire count, and last outcome.\n" +
+			"Run without a subcommand to default to `list`; use `view <name>` to\n" +
+			"see the full configuration of a single continuation.",
 	}
 	cmd.AddCommand(newContinuationsListCmd(), newContinuationsViewCmd())
 	cmd.RunE = func(cc *cobra.Command, args []string) error { return runContinuationsList(cc) }
@@ -21,6 +25,8 @@ func newContinuationsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all continuations",
+		Long: "Fetches /continuations from the harness and prints one row per\n" +
+			"continuation with NAME, UPSTREAM, LAST_FIRE, COUNT, and OUTCOME.",
 		RunE: func(cc *cobra.Command, args []string) error {
 			return runContinuationsList(cc)
 		},
@@ -48,7 +54,10 @@ func newContinuationsViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "view <name>",
 		Short: "View a single continuation's full details",
-		Args:  cobra.ExactArgs(1),
+		Long: "Fetches /continuations from the harness and prints the full\n" +
+			"configuration for the named continuation, including upstream\n" +
+			"binding, last-fire metadata, and any per-continuation flags.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cc *cobra.Command, args []string) error {
 			ctx := cc.Context()
 			c := ClientFromCtx(ctx)
