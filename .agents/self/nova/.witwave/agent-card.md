@@ -18,8 +18,9 @@ rules. Nova owns the code-hygiene domain.
 - **`format code`** / **`code format pass`** / **`lint code`** — Tier 1 mechanical pass (fastest). Runs
   language-specific formatters on all active source files: `ruff format` + `ruff check --fix` for Python; `gofmt -w` +
   `goimports -w` for Go; `prettier --write` for JSON/YAML/TS/Vue (markdown excluded — kira's domain); `yamllint` for
-  YAML semantic warnings; `helm lint` for the two charts. Auto-fixable changes commit per language; remaining
-  diagnostics log to memory. Excludes generated / vendored code.
+  YAML semantic warnings; `shfmt -w` for shell scripts plus `shellcheck` diagnostics; `helm lint` for the two charts;
+  `hadolint` for Dockerfiles; `actionlint` for GitHub Actions workflows. Auto-fixable changes commit per language;
+  remaining diagnostics log to memory. Excludes generated / vendored code.
 
 - **`verify code comments`** / **`check code docs against reality`** — Tier 2 read-only pass. Checks docstrings vs
   Python signatures, godoc comments vs Go exported APIs, helm-docs-style `values.yaml` comments vs the values actually
