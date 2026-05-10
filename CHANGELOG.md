@@ -6,6 +6,25 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.8] — 2026-05-10
+
+Security-driven patch release retiring two starlette CVEs on the shared Python surface, plus a mechanical
+`ruff format` + `ruff check --fix` pass that recovered CI — Python from drift.
+
+### Fixed
+
+- **shared**: Bump `starlette` 0.46.1 → 0.49.1 to retire CVE-2025-62727 (HIGH) and CVE-2025-54121 (MEDIUM) on
+  `shared/requirements.txt`.
+
+### Changed
+
+- **Python sources**: Mechanical `ruff format` + `ruff check --fix` pass restoring CI — Python to green after a 0.15.x
+  format-style drift.
+
+### Agent identity
+
+- **nova**: Routine self-tidy on 2026-05-10.
+
 ## [0.23.7] — 2026-05-10
 
 Patch release bundling a finn-driven test-coverage fill across four pure cobra helpers in the `ww` CLI plus a Piper
