@@ -231,7 +231,14 @@ func newAgentTeamListCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List teams in a namespace (all teams by default, one team with --team)",
-		Args:  cobra.NoArgs,
+		Long: "Enumerates every team label in the namespace and the WitwaveAgent\n" +
+			"members in each. Without --team, prints one section per team, sorted\n" +
+			"by team name. With --team <name>, narrows to a single team and prints\n" +
+			"just its members. Untagged agents (no team label) are excluded from\n" +
+			"both modes — they're surfaced by `ww agent list`, not by this verb.\n\n" +
+			"Namespace resolution follows DESIGN.md NS-2: --namespace > kubeconfig\n" +
+			"context > ww default. The resolved namespace is always echoed first.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentTeamList(cmd.Context(), f, team)
 		},
@@ -262,7 +269,14 @@ func newAgentTeamShowCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show <agent>",
 		Short: "Show which team an agent is in + its teammates",
-		Args:  cobra.ExactArgs(1),
+		Long: "Looks up the WitwaveAgent <agent> in the resolved namespace, reads\n" +
+			"its team label, and prints the team name plus every other agent in\n" +
+			"that team. Errors clearly when the agent isn't in any team (no\n" +
+			"label) — distinct from the more general `ww agent show <agent>` which\n" +
+			"prints full spec/status regardless of team membership.\n\n" +
+			"Namespace resolution follows DESIGN.md NS-2: --namespace > kubeconfig\n" +
+			"context > ww default. The resolved namespace is always echoed first.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentTeamShow(cmd.Context(), f, args[0])
 		},
@@ -740,7 +754,15 @@ func newAgentGitListCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list <agent>",
 		Short: "Show the gitSyncs + mappings configured on a WitwaveAgent",
-		Args:  cobra.ExactArgs(1),
+		Long: "Prints the agent's `spec.gitSyncs[]` array as a flat table: each\n" +
+			"row is one git repo subscription, its destination mount path, and\n" +
+			"the agent-folder mapping (if any) that controls where the agent's\n" +
+			"backends + identity files render inside the cloned tree. Reads\n" +
+			"the CR straight from the apiserver — no harness round-trip — so\n" +
+			"works even when the agent pod is offline.\n\n" +
+			"Namespace resolution follows DESIGN.md NS-2: --namespace > kubeconfig\n" +
+			"context > ww default. The resolved namespace is always echoed first.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentGitList(cmd.Context(), f, args[0])
 		},
@@ -1321,7 +1343,16 @@ func newAgentStatusCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status <name>",
 		Short: "Show phase, backends, and reconcile history for a WitwaveAgent",
-		Args:  cobra.ExactArgs(1),
+		Long: "Reads the WitwaveAgent CR's `.status` subresource and prints the\n" +
+			"current phase (e.g. Pending / Reconciling / Ready / Failed), the\n" +
+			"per-backend status block (image, port, ready flag, last error),\n" +
+			"and the most recent reconcile conditions with timestamps. Useful\n" +
+			"as a first-pass diagnostic when an agent isn't responding — the\n" +
+			"phase + last condition usually pinpoints whether the issue is\n" +
+			"backend startup, image pull, or controller reconcile failure.\n\n" +
+			"Namespace resolution follows DESIGN.md NS-2: --namespace > kubeconfig\n" +
+			"context > ww default. The resolved namespace is always echoed first.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentStatus(cmd.Context(), f, args[0])
 		},
