@@ -76,7 +76,14 @@ func newConfigPathCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "path",
 		Short: "Print the path of the active config file (whether it exists or not)",
-		Args:  cobra.NoArgs,
+		Long: "Resolves the config file path the same way every `ww config *` verb\n" +
+			"does — --config (root flag) if set, else the first existing file in\n" +
+			"$HOME/.witwave/config.toml + the XDG / platform fallbacks. Always\n" +
+			"prints exactly one path plus a parenthesised note marking whether\n" +
+			"the file `exists` or `will be created on first \\`ww config set\\``.\n" +
+			"Useful as a diagnostic when `set` / `get` don't see the values you\n" +
+			"expect: shows which file ww is actually reading.",
+		Args: cobra.NoArgs,
 		RunE: func(cc *cobra.Command, _ []string) error {
 			w, err := config.OpenWriter(rootConfigFlag(cc), os.Getenv)
 			if err != nil {
@@ -188,7 +195,13 @@ func newConfigListKeysCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-keys",
 		Short: "Print every config key `ww config set` accepts",
-		Args:  cobra.NoArgs,
+		Long: "Prints the allowlist of settable config keys, alphabetised, with a\n" +
+			"short description of what each key does. This is the authoritative\n" +
+			"surface for `ww config set` — anything not in this list will be\n" +
+			"rejected by the validator regardless of whether it's a real key\n" +
+			"elsewhere in the ww config schema. Output is two columns (key,\n" +
+			"description) suitable for grep / cut piping. No flags.",
+		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			keys := config.SettableKeys()
 			sort.Slice(keys, func(i, j int) bool { return keys[i].Key < keys[j].Key })
