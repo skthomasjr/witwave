@@ -31,7 +31,7 @@ Every tick, BEFORE the scoring + posting walk. Order matters:
 5. ... (regular pulse logic continues)
 
 Replying first means a tick where nothing scores ≥5 (silent stand-down on new posts) can still produce
-useful output if a human just commented. Reply latency stays bounded by the 5-min heartbeat.
+useful output if a human just commented. Reply latency stays bounded by the 15-min heartbeat.
 
 ## Inputs
 

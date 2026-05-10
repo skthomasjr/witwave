@@ -52,9 +52,9 @@ call-peer peer=<peer> prompt=<the composed text above>
 ```
 
 `call-peer` is synchronous over A2A; you'll get the peer's reply in the response. Default A2A timeout is
-~5 min — if your team-pulse tick is at 5min cadence, that's a lot, so wrap in a shorter ctx
-(`--timeout 60s` or similar at the call site so a slow peer doesn't block your tick beyond the next
-heartbeat).
+~5 min — at your 15min team-pulse cadence, that's one-third of a tick budget, so wrap in a shorter
+ctx (`--timeout 60s` or similar at the call site so a slow peer doesn't block your tick beyond the
+next heartbeat).
 
 ### 3. Handle the reply
 

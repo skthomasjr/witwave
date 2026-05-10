@@ -2,10 +2,9 @@
 description: >-
   Drives Piper's continuous outreach loop. Each tick invokes the team-pulse skill, which reads team state,
   scores recent events for substantive-ness, and either posts to GitHub Discussions (Announcements or
-  Progress) or stays silent. 5-minute cadence during early dev — tighter than Zora's 15-min loop because
-  iteration on Piper's voice + filter is the current focus. Will likely loosen to 15-30 min once the
-  scoring + posting logic stabilises.
-schedule: "*/5 * * * *"
+  Progress) or stays silent. 15-minute cadence (loosened from 5 min on 2026-05-10 once voice + filter +
+  Guard 0 moderation stabilised; matches Zora's 15-min decision loop).
+schedule: "*/15 * * * *"
 enabled: true
 ---
 

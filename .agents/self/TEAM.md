@@ -66,7 +66,7 @@ other agent commits locally and delegates the push to iris via `call-peer`. (`.a
 
 ### Piper — outreach
 
-The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 5 min in early dev), reads team
+The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 15 min), reads team
 state (git log, peer memories, Zora's decision_log + escalations.md, recent CI runs, recent releases), scores observed
 events on a 0-10 substantive-score model, and routes each tick to one of three outcomes: Announcements (≥9 — releases,
 critical events, user-visible surface changes), Progress (5-8 — substantive dev activity with a 30-min cooldown), or

@@ -36,7 +36,7 @@ Each tick, AFTER `discuss-comments` and `discuss-bugs`, BEFORE the regular pulse
 6. (Future Step 1.5d — `discuss-ideas` for the Ideas category.)
 7. `team-pulse` Step 2+ — regular pulse walk.
 
-Reply latency on General questions is bounded by the 5-min heartbeat. Most General threads will
+Reply latency on General questions is bounded by the 15-min heartbeat. Most General threads will
 resolve in 1-2 turns (unlike Bugs which can iterate over many ticks).
 
 ## Inputs
@@ -477,6 +477,6 @@ that's expected. Silence is a valid output.
 
 ## When to invoke
 
-- **Heartbeat-driven** — `team-pulse` Step 1.5c every 5 min via `.witwave/HEARTBEAT.md`.
+- **Heartbeat-driven** — `team-pulse` Step 1.5c every 15 min via `.witwave/HEARTBEAT.md`.
 - **On demand** — user sends "check general" / "look at the general questions" / "see what's been
   asked". Same flow.

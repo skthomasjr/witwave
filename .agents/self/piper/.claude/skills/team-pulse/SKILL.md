@@ -4,15 +4,15 @@ description:
   Single outreach-loop pass. Reads team state (git log, peer memories, Zora's logs, CI runs, recent
   releases), scores recent events on a 0-10 substantive-score model, applies the time-since-last-post
   multiplier, and either posts to GitHub Discussions (Announcements ≥9 / Progress 5-8) or stays silent
-  (<5). Logs every tick to `pulse_log.md`. Trigger when the heartbeat scheduler invokes this (every 5min)
+  (<5). Logs every tick to `pulse_log.md`. Trigger when the heartbeat scheduler invokes this (every 15min)
   or when the user says "run a pulse" / "do your thing" / "fire team-pulse".
 version: 0.1.0
 ---
 
 # team-pulse
 
-One outreach-loop pass. Run by the heartbeat scheduler every 5 minutes (v1 dev cadence; will likely
-loosen to 15-30min once voice + filter stabilise).
+One outreach-loop pass. Run by the heartbeat scheduler every 15 minutes (loosened from 5min on
+2026-05-10 once voice + filter + Guard 0 moderation stabilised; matches Zora's decision-loop cadence).
 
 ## Inputs
 
@@ -73,7 +73,7 @@ moderated and never enters the reply path. See CLAUDE.md → "Moderation posture
 pattern table.
 
 Reply latency matters — you don't want a human comment sitting unanswered for hours just because no
-release shipped. By doing engagement first, every 5-min heartbeat is also a chance to engage. A tick
+release shipped. By doing engagement first, every 15-min heartbeat is also a chance to engage. A tick
 that posts no new content (silent stand-down on scoring) can still produce useful conversation if a
 human commented since the last tick.
 
@@ -296,7 +296,7 @@ unless the user reads `pulse_log.md`.
 
 ## When to invoke
 
-- **Heartbeat-driven** — every 5 min via `.witwave/HEARTBEAT.md`. Each tick = one team-pulse pass.
+- **Heartbeat-driven** — every 15 min via `.witwave/HEARTBEAT.md`. Each tick = one team-pulse pass.
 - **On demand** — user sends "run a pulse" / "do your thing" / "fire team-pulse". Same flow; the A2A reply
   carries the one-paragraph summary.
 - **After a major event the user knows about** — user might ping "Piper, post about the Go toolchain

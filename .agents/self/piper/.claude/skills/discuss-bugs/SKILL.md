@@ -33,7 +33,7 @@ regular pulse scoring walk:
 5. (Future Step 1.5c — `discuss-ideas`; 1.5d — `discuss-questions`.)
 6. `team-pulse` Step 2+ — regular pulse walk.
 
-Reply latency on bugs is bounded by the 5-min heartbeat. Investigation latency is multi-tick by
+Reply latency on bugs is bounded by the 15-min heartbeat. Investigation latency is multi-tick by
 design — most bug threads will run over several ticks as you gather context, ask clarifiers, and
 verify against the codebase.
 
@@ -440,6 +440,6 @@ You write `bugs-from-users.md`; Zora reads it. The contract:
 
 ## When to invoke
 
-- **Heartbeat-driven** — `team-pulse` Step 1.5b every 5 min via `.witwave/HEARTBEAT.md`.
+- **Heartbeat-driven** — `team-pulse` Step 1.5b every 15 min via `.witwave/HEARTBEAT.md`.
 - **On demand** — user sends "check bugs" / "look at bug reports" / "see what bugs came in". Same
   flow.

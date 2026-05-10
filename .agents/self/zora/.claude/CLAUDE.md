@@ -280,7 +280,7 @@ Apply in order:
      cadences.)
    - finn `gap-work` — every **6 hours** (gap detection is heavier LLM work than evan's analyzer-driven sweep, so slower
      default; risk-tier ladder makes early sweeps cheap regardless)
-   - **piper `team-pulse` — n/a (self-driven).** Piper has her own 5-min heartbeat firing her own outreach loop. You
+   - **piper `team-pulse` — n/a (self-driven).** Piper has her own 15-min heartbeat firing her own outreach loop. You
      do NOT dispatch her for cadence-floor reasons; she runs whether you ask or not. Skip her in the cadence-floor
      walk. The only A2A from you toward Piper is replying to her `ask-peer-clarification` calls when she has a
      question about your state.
