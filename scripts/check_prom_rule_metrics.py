@@ -82,7 +82,7 @@ def _extract_expressions_lines(rendered: str) -> list[str]:
             if expr_lines:
                 expressions.append("\n".join(expr_lines))
                 expr_lines = []
-            rest = stripped[len("expr:"):].strip()
+            rest = stripped[len("expr:") :].strip()
             if rest in ("|", ">"):
                 in_expr = True
             else:
@@ -190,9 +190,7 @@ def main() -> int:
         )
         return 1
 
-    print(
-        f"check_prom_rule_metrics: all {len(metrics)} witwave-prefixed metric(s) resolved"
-    )
+    print(f"check_prom_rule_metrics: all {len(metrics)} witwave-prefixed metric(s) resolved")
     return 0
 
 
