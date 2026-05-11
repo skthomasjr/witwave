@@ -110,3 +110,87 @@ func TestTable(t *testing.T) {
 		}
 	})
 }
+
+// TestKV pins the key/value emitter used by every `ww <verb> view`
+// subcommand to render the "single resource detail" block. The
+// contract: pairs emitted one per line, key + ':' + value separated
+// by tabwriter padding so the colons line up vertically across
+// uneven key widths. Empty input emits nothing.
+func TestKV(t *testing.T) {
+	cases := []struct {
+		name    string
+		pairs   [][2]string
+		wantSub []string
+		wantNot []string
+	}{
+		{
+			name:    "empty input emits no rows",
+			pairs:   nil,
+			wantNot: []string{":"},
+		},
+		{
+			name: "single pair emits one line with colon",
+			pairs: [][2]string{
+				{"Name", "witwave-operator-0"},
+			},
+			wantSub: []string{"Name:", "witwave-operator-0"},
+		},
+		{
+			name: "multiple pairs preserve order",
+			pairs: [][2]string{
+				{"Name", "first"},
+				{"Phase", "Running"},
+				{"Age", "5m"},
+			},
+			wantSub: []string{"Name:", "Phase:", "Age:", "first", "Running", "5m"},
+		},
+		{
+			name: "empty value still emits the key with colon",
+			pairs: [][2]string{
+				{"Name", ""},
+			},
+			wantSub: []string{"Name:"},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			KV(buf, tc.pairs)
+			got := buf.String()
+			for _, sub := range tc.wantSub {
+				if !strings.Contains(got, sub) {
+					t.Errorf("KV output missing substring %q\nfull output:\n%q", sub, got)
+				}
+			}
+			for _, sub := range tc.wantNot {
+				if strings.Contains(got, sub) {
+					t.Errorf("KV output should not contain %q\nfull output:\n%q", sub, got)
+				}
+			}
+		})
+	}
+
+	// Cross-check vertical value-column alignment: the value column
+	// must start at the same byte offset on both lines, even when the
+	// key widths differ (tabwriter's job — the colon is glued to the
+	// key by the "%s:\t%s" format, so it's values that align, not
+	// colons). Catches a future tabwriter setting drift that would
+	// mis-align the view-subcommand value column.
+	t.Run("values align across pairs of uneven key widths", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		KV(buf, [][2]string{
+			{"A", "short"},
+			{"LongerKey", "longer"},
+		})
+		lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 lines, got %d:\n%s", len(lines), buf.String())
+		}
+		v1 := strings.Index(lines[0], "short")
+		v2 := strings.Index(lines[1], "longer")
+		if v1 != v2 {
+			t.Errorf("values not aligned: line1 value at %d, line2 value at %d\n%q\n%q", v1, v2, lines[0], lines[1])
+		}
+	})
+}
