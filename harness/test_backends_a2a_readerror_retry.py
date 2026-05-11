@@ -99,8 +99,7 @@ def test_httpx_limits_keepalive_expiry_set() -> None:
         assert ke_match is not None, f"unable to parse keepalive_expiry value from {m}"
         value = float(ke_match.group(1))
         assert value <= 3.0, (
-            f"keepalive_expiry should be <=3.0s to safely undercut uvicorn's default 5s reaper. "
-            f"Got {value} in {m}"
+            f"keepalive_expiry should be <=3.0s to safely undercut uvicorn's default 5s reaper. Got {value} in {m}"
         )
 
 
