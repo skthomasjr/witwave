@@ -144,6 +144,132 @@ func TestFormatTime(t *testing.T) {
 	}
 }
 
+// TestPickField pins the variadic first-non-empty-stringified-field
+// helper used by the `ww jobs/tasks/triggers/continuations list`
+// row renderer (via printList). Contract:
+//   - tries each candidate key in order, first non-empty wins
+//   - string values: returned verbatim when non-empty, skipped when empty
+//   - nil values: skipped
+//   - non-string values: JSON-marshalled, then surrounding quotes
+//     stripped (so "42" not `"42"`), then "null" and empty-after-trim
+//     are skipped
+//   - returns "" when no candidate produces a non-empty stringification
+//
+// Drift here would silently change which key wins per column when an
+// entry has multiple aliases set (e.g. both "name" and "id"), or how
+// numeric / boolean fields appear in the table.
+func TestPickField(t *testing.T) {
+	t.Run("first non-empty string wins", func(t *testing.T) {
+		e := snapshotEntry{"a": "alpha", "b": "beta"}
+		got := e.pickField("a", "b")
+		if got != "alpha" {
+			t.Errorf("pickField(a,b) = %q, want %q", got, "alpha")
+		}
+	})
+
+	t.Run("empty string at first key falls through", func(t *testing.T) {
+		e := snapshotEntry{"a": "", "b": "beta"}
+		got := e.pickField("a", "b")
+		if got != "beta" {
+			t.Errorf("pickField(a,b) = %q, want %q", got, "beta")
+		}
+	})
+
+	t.Run("missing key skipped", func(t *testing.T) {
+		e := snapshotEntry{"b": "beta"}
+		got := e.pickField("a", "b")
+		if got != "beta" {
+			t.Errorf("pickField(a,b) = %q, want %q", got, "beta")
+		}
+	})
+
+	t.Run("nil value skipped", func(t *testing.T) {
+		e := snapshotEntry{"a": nil, "b": "beta"}
+		got := e.pickField("a", "b")
+		if got != "beta" {
+			t.Errorf("pickField(a,b) = %q, want %q (nil should fall through)", got, "beta")
+		}
+	})
+
+	t.Run("int value JSON-marshalled and unquoted", func(t *testing.T) {
+		e := snapshotEntry{"a": 42}
+		got := e.pickField("a")
+		if got != "42" {
+			t.Errorf("pickField(a) = %q, want %q", got, "42")
+		}
+	})
+
+	t.Run("float value JSON-marshalled", func(t *testing.T) {
+		e := snapshotEntry{"a": 3.14}
+		got := e.pickField("a")
+		if got != "3.14" {
+			t.Errorf("pickField(a) = %q, want %q", got, "3.14")
+		}
+	})
+
+	t.Run("bool value JSON-marshalled", func(t *testing.T) {
+		e := snapshotEntry{"a": true}
+		got := e.pickField("a")
+		if got != "true" {
+			t.Errorf("pickField(a) = %q, want %q", got, "true")
+		}
+	})
+
+	t.Run("zero-int value JSON-marshals to 0 not skipped", func(t *testing.T) {
+		// Subtle case: 0 is a "zero value" but the stringified "0"
+		// is non-empty so pickField returns it. Pin this so a future
+		// "skip zero-valued numbers" refactor is a deliberate choice.
+		e := snapshotEntry{"a": 0}
+		got := e.pickField("a")
+		if got != "0" {
+			t.Errorf("pickField(a) = %q, want %q", got, "0")
+		}
+	})
+
+	t.Run("no candidate matches returns empty", func(t *testing.T) {
+		e := snapshotEntry{"a": "", "b": nil}
+		got := e.pickField("a", "b", "c")
+		if got != "" {
+			t.Errorf("pickField(a,b,c) = %q, want empty", got)
+		}
+	})
+
+	t.Run("empty entry returns empty", func(t *testing.T) {
+		e := snapshotEntry{}
+		got := e.pickField("name")
+		if got != "" {
+			t.Errorf("pickField(name) on empty entry = %q, want empty", got)
+		}
+	})
+
+	t.Run("no candidate keys returns empty", func(t *testing.T) {
+		e := snapshotEntry{"a": "alpha"}
+		got := e.pickField()
+		if got != "" {
+			t.Errorf("pickField() = %q, want empty (no keys)", got)
+		}
+	})
+
+	t.Run("single-space string is non-empty (matches FirstNonEmpty semantics)", func(t *testing.T) {
+		e := snapshotEntry{"a": " "}
+		got := e.pickField("a")
+		if got != " " {
+			t.Errorf("pickField(a) = %q, want %q", got, " ")
+		}
+	})
+
+	t.Run("map value JSON-marshals to object literal", func(t *testing.T) {
+		e := snapshotEntry{"a": map[string]any{"k": "v"}}
+		got := e.pickField("a")
+		// json.Marshal of a map is `{"k":"v"}`; strings.Trim removes
+		// only leading/trailing double-quote chars, of which there
+		// are none on the outer braces — the full literal stays.
+		if got != `{"k":"v"}` {
+			t.Errorf("pickField(a) = %q, want %q", got, `{"k":"v"}`)
+		}
+	})
+}
+
 // TestFindEntryByName pins the snapshot-list lookup used by
 // `ww jobs view <name>` etc. to resolve a user-supplied name to a
 // single entry. Contract:
