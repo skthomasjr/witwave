@@ -373,6 +373,13 @@ _singleton: EventStream | None = None
 
 
 def get_event_stream() -> EventStream:
+    """Return the process-wide EventStream singleton, creating it on first call.
+
+    Production code reaches for the stream through this accessor so every
+    publisher and SSE subscriber share the same fan-out queue. Tests that
+    need isolation should call ``reset_event_stream_for_tests()`` to swap
+    in a fresh instance rather than touching ``_singleton`` directly.
+    """
     global _singleton
     if _singleton is None:
         _singleton = EventStream()

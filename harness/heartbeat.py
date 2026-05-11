@@ -70,6 +70,24 @@ def snapshot() -> dict[str, float | None]:
 
 
 def load_heartbeat() -> tuple[str, str, str | None, str | None, list[ConsensusEntry], int | None] | None:
+    """Load and parse the HEARTBEAT.md singleton.
+
+    Returns ``None`` when HEARTBEAT_PATH is missing, the file disables
+    itself via ``enabled: false`` in frontmatter, or has empty body
+    content. Otherwise returns a tuple of ``(schedule, content, model,
+    backend_id, consensus, max_tokens)``:
+
+    - ``schedule`` falls back to DEFAULT_SCHEDULE when the frontmatter
+      value is absent or fails ``croniter.is_valid``; the failure is
+      logged at WARNING.
+    - ``model`` / ``backend_id`` are taken verbatim from frontmatter
+      and may be None.
+    - ``consensus`` is parsed via ``parse_consensus`` from the raw
+      frontmatter so list-shaped values survive YAML scalar coercion.
+    - ``max_tokens`` accepts ``max-tokens`` or ``max_tokens``, is
+      clamped to ``>= 1``, and stays None when the value is missing or
+      fails int conversion (the parse failure is logged at WARNING).
+    """
     if not os.path.exists(HEARTBEAT_PATH):
         return None
     with open(HEARTBEAT_PATH) as f:

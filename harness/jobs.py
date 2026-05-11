@@ -81,6 +81,24 @@ _DISABLED = object()
 
 
 def parse_job_file(path: str) -> "JobItem | object | None":
+    """Parse a job markdown file into a JobItem.
+
+    Reads frontmatter via ``parse_frontmatter`` and extracts ``name``,
+    ``schedule``, ``session``, ``model``, ``agent``, ``consensus``, and
+    ``max-tokens`` / ``max_tokens``. ``session`` defaults to a UUIDv5
+    derived from ``AGENT_NAME + filename`` so reschedules across
+    restarts reuse the same session id without requiring the author to
+    pin one in frontmatter. ``enabled`` is parsed as a string-ish bool
+    (the literals "false"/"no"/"off"/"n"/"0"/"" all disable) and
+    stamped onto the returned JobItem; disabled jobs are still returned
+    (with ``enabled=False``) so the registry can list parked files
+    without grepping the filesystem.
+
+    Returns ``None`` when an enabled job has a non-empty ``schedule``
+    that fails ``croniter.is_valid``, or when any exception is raised
+    during parsing (the error is logged and
+    ``harness_job_parse_errors_total`` is incremented).
+    """
     try:
         with open(path) as f:
             raw = f.read()

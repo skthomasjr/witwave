@@ -70,6 +70,33 @@ class Message:
 
 
 class MessageBus:
+    """Async message queue with kind-level dedup.
+
+    Wraps an ``asyncio.Queue`` (capped at ``BUS_MAX_QUEUE_DEPTH``) plus a
+    ``_pending_kinds`` set so the bus worker can dedup re-fires of the
+    same scheduled job/task/trigger while a prior one is still
+    in-flight (#514).
+
+    Lifecycle for one message:
+
+    - ``send`` always enqueues, awaiting on the Message's result future;
+      a full queue surfaces as ``asyncio.QueueFull`` after
+      ``BUS_SEND_TIMEOUT``.
+    - ``try_send`` enqueues only if no message of the same ``kind`` is
+      currently pending; returns False otherwise (counted in
+      ``harness_bus_dedup_total``).
+    - ``receive`` blocks for the next queued message.
+    - The bus worker MUST call ``release_pending(kind)`` in a
+      ``finally`` after processing — otherwise a failed message
+      starves all future ``try_send`` calls for that kind.
+
+    Prometheus gauges (``harness_bus_queue_depth``,
+    ``harness_bus_pending_kinds``) are updated inline on every state
+    change so a stale value never persists across an error path; the
+    cleanup ``except BaseException`` in ``send`` covers timeout,
+    cancellation, and worker failure under a single discard branch.
+    """
+
     def __init__(self):
         self._queue: asyncio.Queue[Message] = asyncio.Queue(maxsize=BUS_MAX_QUEUE_DEPTH)
         self._pending_kinds: set[str] = set()
