@@ -152,11 +152,11 @@ deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
                                       ▼           └─────────────▶│  outreach   │
                             ghcr.io · oci · brew                 │  heartbeat  │
                                                                  ╰──┬───────▲──╯
-                                                            post   │       │ reply (discuss-*)
-                                                                   ▼       │
+                                                                    │       │
+                                                              post  │       │ reply
+                                                                    ▼       │
                                                               GitHub Discussions
-                                       Announcements · Progress · Bugs · Questions — all two-way
-                                       (Piper posts + replies via discuss-comments/-bugs/-questions)
+                                                                   (two-way)
 ```
 
 Piper sits OUTSIDE the work-coordination loop. She reads team state but doesn't dispatch peers for work; her only A2A
