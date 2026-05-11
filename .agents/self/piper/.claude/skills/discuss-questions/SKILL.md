@@ -88,6 +88,19 @@ query if the file is missing or the ID 404s.
 - **Skip discussions with `[deferred-thread-too-long]` marker** in your `pulse_log.md` (set when a thread exceeded
   context-window comfort).
 
+### 1.5. Pre-flight gates per Discussion (`hold` label + external-trigger check)
+
+Before walking guards on any candidate thread, apply the two pre-flight gates from CLAUDE.md → "Pre-flight gates":
+
+- **Gate A — `hold` label:** If the Discussion carries a `hold` label, SKIP entirely on this tick. Log to
+  `pulse_log.md`: `[skipped: hold-label on #<number>]`. Move to next.
+- **Gate B — External trigger:** If your last action on this thread was a reply AND no non-Piper comment has landed
+  since, there is no external trigger this tick. SKIP. Log: `[skipped: no-external-trigger on #<number>]`. (For
+  General-category threads, the trigger is almost always a new non-Piper comment; substantive-work-event triggers
+  are rarer here than in `discuss-bugs`.)
+
+If both gates pass, proceed to Step 2.
+
 ### 2. For each in-scope thread, apply the guards (0 first — terminal; then 1-4)
 
 Apply in order to BOTH the post body itself AND each comment in the thread. Guard 0 is terminal — matched content gets

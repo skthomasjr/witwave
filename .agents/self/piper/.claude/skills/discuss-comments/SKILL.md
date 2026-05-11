@@ -90,6 +90,19 @@ gh api graphql -f query='
 Filter to discussions where `author.login == "piper-agent-witwave"` (your posts only). Filter out any post older than 7
 days. Carry the rest forward as the candidate set.
 
+### 1.5. Pre-flight gates per Discussion (`hold` label + external-trigger check)
+
+Before walking comments on any candidate post, apply the two pre-flight gates from CLAUDE.md → "Pre-flight gates":
+
+- **Gate A — `hold` label:** Pull `labels.nodes[].name` from the discussion (already in the GraphQL response above —
+  add `labels(first:20){nodes{name}}` to the query if missing). If `"hold"` is in the label set, SKIP this Discussion
+  entirely on this tick. Log to `pulse_log.md`: `[skipped: hold-label on #<number>]`. Move to next candidate.
+- **Gate B — External trigger:** If the most recent comment on this Discussion is your own (no non-self activity since
+  your last reply), there is NO external trigger here. SKIP. Log: `[skipped: no-external-trigger on #<number>]`. Do
+  not post self-followup. Replies only happen in response to a non-Piper comment that lands AFTER your last reply.
+
+If both gates pass, proceed to Step 2.
+
 ### 2. For each candidate post, identify reply-eligible comments
 
 Walk every comment + every nested reply inside each post. For each one, apply the guards in order (0 first, then 1-5).
