@@ -1,10 +1,10 @@
 # social/
 
-Outward-facing published content. Whitepapers, blog drafts, and posts destined for
-public channels (X / LinkedIn / Mastodon / Threads / the team's eventual blog).
+Outward-facing published content. Whitepapers, blog drafts, and posts destined for public channels (X / LinkedIn /
+Mastodon / Threads / the team's eventual blog).
 
-This folder sits outside `docs/` deliberately. `docs/` is project-internal reference
-read by contributors; `social/` is content the team publishes to the world.
+This folder sits outside `docs/` deliberately. `docs/` is project-internal reference read by contributors; `social/` is
+content the team publishes to the world.
 
 ## Folder layout
 
@@ -22,19 +22,17 @@ social/
 
 ## What lives here
 
-- **Posts** (`posts/`) — short or medium-form content destined for one or more social channels.
-  These follow the spec below.
-- **Whitepapers** (`papers/`) — long-form framework pieces (e.g.,
-  `papers/four-phases-of-ai-adoption.md`). These don't follow the post spec; they're
-  standalone publications. Treat them as source material that posts can reference.
-- **Drafts** — work-in-progress in either shape, marked `status: draft` in
-  frontmatter (posts) or simply unfinished (papers).
+- **Posts** (`posts/`) — short or medium-form content destined for one or more social channels. These follow the spec
+  below.
+- **Whitepapers** (`papers/`) — long-form framework pieces (e.g., `papers/four-phases-of-ai-adoption.md`). These don't
+  follow the post spec; they're standalone publications. Treat them as source material that posts can reference.
+- **Drafts** — work-in-progress in either shape, marked `status: draft` in frontmatter (posts) or simply unfinished
+  (papers).
 
 ## Post specification
 
-Every post is a single `.md` file with YAML frontmatter and a markdown body. One
-file per logical post, even when it ships to multiple surfaces — keeps voice and
-facts in sync across variants.
+Every post is a single `.md` file with YAML frontmatter and a markdown body. One file per logical post, even when it
+ships to multiple surfaces — keeps voice and facts in sync across variants.
 
 ### Frontmatter schema
 
@@ -92,19 +90,16 @@ tone: conversational # formal | conversational | casual | technical
 
 ### Body — multi-surface convention
 
-The body is markdown, organised by surface. One H2 section per surface in
-`surfaces`. An empty section means "this surface is in scope but the variant
-hasn't been written yet." A missing section means "this surface is not in
-scope" (and the entry should be removed from `surfaces`).
+The body is markdown, organised by surface. One H2 section per surface in `surfaces`. An empty section means "this
+surface is in scope but the variant hasn't been written yet." A missing section means "this surface is not in scope"
+(and the entry should be removed from `surfaces`).
 
 ```markdown
 ## Twitter
 
 Headline: <hook post, ≤280 chars>
 
-1/ <opening, ≤280>
-2/ <continues, ≤280>
-3/ <CTA + link, ≤280>
+1/ <opening, ≤280> 2/ <continues, ≤280> 3/ <CTA + link, ≤280>
 
 ## LinkedIn
 
@@ -117,32 +112,30 @@ CTA: <call-to-action line>
 <long-form treatment, no length cap; markdown freeform>
 ```
 
-For posts that don't multi-surface, just use the one section that applies. The
-file shape is the same.
+For posts that don't multi-surface, just use the one section that applies. The file shape is the same.
 
 ### Tracked surfaces
 
-Canonical list of values accepted in the `surfaces` field and the corresponding
-keys in `published_urls`. Add a row here before adding a new value in a post.
+Canonical list of values accepted in the `surfaces` field and the corresponding keys in `published_urls`. Add a row here
+before adding a new value in a post.
 
-| Surface             | `surfaces` enum     | URL pattern (filled in `published_urls` once live)         | Char limit                                  | Notes                                                                                                                                       |
-| ------------------- | ------------------- | ---------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| X (Twitter)         | `twitter`           | `https://x.com/<user>/status/<id>`                         | 280 (Free); 25,000 (Premium)                | Threads are multiple posts. Number each `N/` for orientation. URLs count as 23 chars regardless of actual length.                           |
-| LinkedIn            | `linkedin`          | `https://linkedin.com/posts/<slug>`                        | 3,000                                       | First ~140 chars are the visible preview before "see more" — treat them as the hook.                                                        |
-| Mastodon            | `mastodon`          | `https://<instance>/@<user>/<id>`                          | 500 (default; instance-dependent)           | Federation-compatible across instances. 500 is the safe ceiling.                                                                            |
-| Threads             | `threads`           | `https://threads.net/@<user>/post/<id>`                    | 500                                         | Meta's. Similar shape to X.                                                                                                                 |
-| Bluesky             | `bluesky`           | `https://bsky.app/profile/<handle>/post/<id>`              | 300                                         | AT Protocol; federation in progress.                                                                                                        |
-| Blog                | `blog`              | `https://witwave.ai/blog/<slug>` (eventual)                | No cap                                      | Project-owned long-form. Surface is forthcoming; until then, `published_urls.blog` stays `null`.                                            |
-| GitHub Discussions  | `github-discussion` | `https://github.com/witwave-ai/witwave/discussions/<n>`    | No hard cap (practical: ~10,000 chars)      | Already in active use. For community-facing announcements that warrant a thread, not a shortform post.                                      |
-| HackerNews          | `hn`                | `https://news.ycombinator.com/item?id=<n>`                 | Title only (80 chars)                       | Submission is a title + URL; no body. Body in the post file is the link-target text, usually the whitepaper or blog post being submitted.   |
-| Newsletter          | `newsletter`        | `https://<provider>/issues/<id>` (Substack/Beehiiv/etc.)   | No cap                                      | Provider TBD; reserve enum value for future use.                                                                                            |
+| Surface            | `surfaces` enum     | URL pattern (filled in `published_urls` once live)       | Char limit                             | Notes                                                                                                                                     |
+| ------------------ | ------------------- | -------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| X (Twitter)        | `twitter`           | `https://x.com/<user>/status/<id>`                       | 280 (Free); 25,000 (Premium)           | Threads are multiple posts. Number each `N/` for orientation. URLs count as 23 chars regardless of actual length.                         |
+| LinkedIn           | `linkedin`          | `https://linkedin.com/posts/<slug>`                      | 3,000                                  | First ~140 chars are the visible preview before "see more" — treat them as the hook.                                                      |
+| Mastodon           | `mastodon`          | `https://<instance>/@<user>/<id>`                        | 500 (default; instance-dependent)      | Federation-compatible across instances. 500 is the safe ceiling.                                                                          |
+| Threads            | `threads`           | `https://threads.net/@<user>/post/<id>`                  | 500                                    | Meta's. Similar shape to X.                                                                                                               |
+| Bluesky            | `bluesky`           | `https://bsky.app/profile/<handle>/post/<id>`            | 300                                    | AT Protocol; federation in progress.                                                                                                      |
+| Blog               | `blog`              | `https://witwave.ai/blog/<slug>` (eventual)              | No cap                                 | Project-owned long-form. Surface is forthcoming; until then, `published_urls.blog` stays `null`.                                          |
+| GitHub Discussions | `github-discussion` | `https://github.com/witwave-ai/witwave/discussions/<n>`  | No hard cap (practical: ~10,000 chars) | Already in active use. For community-facing announcements that warrant a thread, not a shortform post.                                    |
+| HackerNews         | `hn`                | `https://news.ycombinator.com/item?id=<n>`               | Title only (80 chars)                  | Submission is a title + URL; no body. Body in the post file is the link-target text, usually the whitepaper or blog post being submitted. |
+| Newsletter         | `newsletter`        | `https://<provider>/issues/<id>` (Substack/Beehiiv/etc.) | No cap                                 | Provider TBD; reserve enum value for future use.                                                                                          |
 
 #### Per-post distribution snapshot
 
-Posts may optionally include a `## Distribution` section at the bottom of the
-body that mirrors `published_urls` in human-readable form. Useful when scanning
-the file directly without parsing YAML. Example:
-       
+Posts may optionally include a `## Distribution` section at the bottom of the body that mirrors `published_urls` in
+human-readable form. Useful when scanning the file directly without parsing YAML. Example:
+
 ```markdown
 ## Distribution
 
@@ -152,17 +145,16 @@ the file directly without parsing YAML. Example:
 - ❌ **Mastodon** — not posting (decision: too niche for this content)
 ```
 
-The `## Distribution` section is optional. The frontmatter `published_urls` map
-is the authoritative source; the body section is a reading aid.
+The `## Distribution` section is optional. The frontmatter `published_urls` map is the authoritative source; the body
+section is a reading aid.
 
 ### Filename convention
 
-- **Slug-style, lowercase, hyphenated:** `four-phases-launch.md`,
-  `phase-2-cliff-thread.md`, `release-v0.24-announcement.md`
-- **No date prefix.** Frontmatter has `created`; the filename stays clean so
-  it can become a future URL slug (`/blog/four-phases-launch`).
-- **Action-or-topic naming, not chronological.** `four-phases-launch.md` reads
-  better than `2026-05-11-post.md`.
+- **Slug-style, lowercase, hyphenated:** `four-phases-launch.md`, `phase-2-cliff-thread.md`,
+  `release-v0.24-announcement.md`
+- **No date prefix.** Frontmatter has `created`; the filename stays clean so it can become a future URL slug
+  (`/blog/four-phases-launch`).
+- **Action-or-topic naming, not chronological.** `four-phases-launch.md` reads better than `2026-05-11-post.md`.
 
 ### Status lifecycle
 
@@ -170,13 +162,13 @@ is the authoritative source; the body section is a reading aid.
 draft → ready → scheduled → published → archived
 ```
 
-| Status      | Meaning                                                                                                                                                                                                                                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `draft`     | Being written. Body may be incomplete; no schedule yet. Default starting state.                                                                                                                                                                                                                                                                    |
-| `ready`     | Voice and content approved by the author. Awaiting a scheduling decision. A reviewer (Piper or human) might still want a final pass before scheduling.                                                                                                                                                                                             |
-| `scheduled` | `scheduled_for` is set. Either a human or a future automation will publish it at that timestamp. Don't edit body content after `scheduled` without bumping back to `ready`.                                                                                                                                                                        |
-| `published` | The post is live. `published_at` and `published_urls` are filled. Body should not change after this point — corrections happen via follow-up posts.                                                                                                                                                                                                |
-| `archived`  | Post was retired before publishing (decision changed, no longer timely, voice didn't land) OR was published and is being kept for reference but no longer active. Body is frozen.                                                                                                                                                                  |
+| Status      | Meaning                                                                                                                                                                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `draft`     | Being written. Body may be incomplete; no schedule yet. Default starting state.                                                                                                   |
+| `ready`     | Voice and content approved by the author. Awaiting a scheduling decision. A reviewer (Piper or human) might still want a final pass before scheduling.                            |
+| `scheduled` | `scheduled_for` is set. Either a human or a future automation will publish it at that timestamp. Don't edit body content after `scheduled` without bumping back to `ready`.       |
+| `published` | The post is live. `published_at` and `published_urls` are filled. Body should not change after this point — corrections happen via follow-up posts.                               |
+| `archived`  | Post was retired before publishing (decision changed, no longer timely, voice didn't land) OR was published and is being kept for reference but no longer active. Body is frozen. |
 
 ### Worked example
 
@@ -209,26 +201,27 @@ tone: conversational
 
 Headline: New whitepaper on AI adoption — and why most teams will plateau at Phase 2.
 
-1/ Most engineering teams adopting AI follow a four-phase progression: Co-Pilot →
-Agent-Augmented → Agent-Native → Self-Improving. Most won't get past Phase 2.
+1/ Most engineering teams adopting AI follow a four-phase progression: Co-Pilot → Agent-Augmented → Agent-Native →
+Self-Improving. Most won't get past Phase 2.
 
-2/ The cliff isn't technical. It's organizational. Phase 2 → 3 demolishes the
-process scaffolding the team is built on — sprints, tickets, status meetings,
-review queues. Nobody volunteers for that.
+2/ The cliff isn't technical. It's organizational. Phase 2 → 3 demolishes the process scaffolding the team is built on —
+sprints, tickets, status meetings, review queues. Nobody volunteers for that.
 
-3/ Phase 3 → 4 by contrast is natural — same scaffolding pointed at the agents'
-own codebase. The hard work was already done in the 2 → 3 cliff.
+3/ Phase 3 → 4 by contrast is natural — same scaffolding pointed at the agents' own codebase. The hard work was already
+done in the 2 → 3 cliff.
 
-4/ Wrote up the framework + a 10-question self-assessment for where your team
-sits. Link below. ⬇️
+4/ Wrote up the framework + a 10-question self-assessment for where your team sits. Link below. ⬇️
 
 🔗 <whitepaper URL>
 
 ## LinkedIn
 
-Most engineering teams adopting AI will plateau at Phase 2 — not because the tech blocks them, but because the process redesign required to reach Phase 3 demolishes the operational scaffolding their culture is built around.
+Most engineering teams adopting AI will plateau at Phase 2 — not because the tech blocks them, but because the process
+redesign required to reach Phase 3 demolishes the operational scaffolding their culture is built around.
 
-I wrote up a four-phase framework (Co-Pilot → Agent-Augmented → Agent-Native → Self-Improving) and the asymmetric-transition insight that explains why the cliff between Phase 2 and 3 is real, why Phase 3 → 4 is natural by contrast, and what the rational positions are for teams currently at Phase 2.
+I wrote up a four-phase framework (Co-Pilot → Agent-Augmented → Agent-Native → Self-Improving) and the
+asymmetric-transition insight that explains why the cliff between Phase 2 and 3 is real, why Phase 3 → 4 is natural by
+contrast, and what the rational positions are for teams currently at Phase 2.
 
 Includes a 10-question self-assessment for where your team sits today.
 
@@ -237,22 +230,21 @@ Includes a 10-question self-assessment for where your team sits today.
 
 ## Whitepapers and longer pieces
 
-Standalone publications (whitepapers, framework essays, long-form thought pieces)
-don't follow the post spec — they're standalone documents that live under
-`social/papers/`. Conventions:
+Standalone publications (whitepapers, framework essays, long-form thought pieces) don't follow the post spec — they're
+standalone documents that live under `social/papers/`. Conventions:
 
 - File at `social/papers/<slug>.md` — same slug-style convention as posts.
 - H1 title, executive summary, body sections, conclusion.
 - Optional frontmatter (just `title:` and `created:` for minimal tracking).
-- Posts can link to them via `related:` in the post's frontmatter — full path,
-  e.g. `related: [social/papers/four-phases-of-ai-adoption.md]`.
-- Whitepapers don't have a status lifecycle. They're either drafts or published;
-  once a paper goes public, edits are corrections rather than revisions.
+- Posts can link to them via `related:` in the post's frontmatter — full path, e.g.
+  `related: [social/papers/four-phases-of-ai-adoption.md]`.
+- Whitepapers don't have a status lifecycle. They're either drafts or published; once a paper goes public, edits are
+  corrections rather than revisions.
 
 ## Assets
 
-Image / video / audio files referenced by posts and papers live under
-`social/assets/<slug>/`. Keeps each piece's media co-located and prunable.
+Image / video / audio files referenced by posts and papers live under `social/assets/<slug>/`. Keeps each piece's media
+co-located and prunable.
 
 ```
 social/
@@ -272,12 +264,9 @@ social/
 
 ## Out of scope for this folder
 
-- **Project-internal reference docs** — those live in `docs/`. If a file's primary
-  audience is contributors reading the repo to understand witwave, it belongs in
-  `docs/`, not `social/`.
-- **Agent identity / behavior files** — those live in `.agents/`. Even though
-  Piper engages on the public surfaces this folder publishes to, her CLAUDE.md
-  and skills are not "social content."
-- **Code samples or working examples** — those live in `docs/examples.md` or in
-  the relevant source tree. `social/` content references code; it doesn't host
-  it.
+- **Project-internal reference docs** — those live in `docs/`. If a file's primary audience is contributors reading the
+  repo to understand witwave, it belongs in `docs/`, not `social/`.
+- **Agent identity / behavior files** — those live in `.agents/`. Even though Piper engages on the public surfaces this
+  folder publishes to, her CLAUDE.md and skills are not "social content."
+- **Code samples or working examples** — those live in `docs/examples.md` or in the relevant source tree. `social/`
+  content references code; it doesn't host it.

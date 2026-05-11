@@ -22,7 +22,7 @@ content — two whitepapers and a reorganised `social/` tree.
 - **charts**: Add helm-docs-style comments to chart values for downstream `helm-docs` consumption.
 - **Python sources**: Add docstrings to public Python symbols across the shared surface.
 - **Go sources**: Add godoc comments to undocumented exports.
-- **social**: Add the *Four Phases of AI Adoption* and *Anatomy of an Agentic Team* whitepapers, and reorganise the
+- **social**: Add the _Four Phases of AI Adoption_ and _Anatomy of an Agentic Team_ whitepapers, and reorganise the
   `social/` tree by content type (`papers/` + `posts/` subfolders), with a README spec for the new layout.
 
 ## [0.23.10] — 2026-05-11
