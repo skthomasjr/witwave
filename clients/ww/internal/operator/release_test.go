@@ -7,7 +7,10 @@
 // table-driven shape in status_test.go::TestSkewLabel.
 package operator
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // TestParseRevisionLabel pins the int-ordering contract: empty + any
 // non-decimal value resolves to -1 so a stray Secret with a malformed
@@ -38,6 +41,39 @@ func TestParseRevisionLabel(t *testing.T) {
 			got := parseRevisionLabel(tc.in)
 			if got != tc.want {
 				t.Errorf("parseRevisionLabel(%q) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIsCRDNotFound pins the substring-match contract that CountCRs
+// relies on to distinguish "CRD absent" (report count=0, no error)
+// from any other dynamic-client error (propagate as a real failure).
+// The phrases come from the discovery client and aren't always
+// wrapped with apierrors.IsNotFound, so the matcher is the safety
+// net before the error escapes.
+func TestIsCRDNotFound(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"unrelated error", errors.New("connection refused"), false},
+		{"empty message", errors.New(""), false},
+		{"no matches for kind phrase", errors.New(`no matches for kind "WitwaveAgent" in version "witwave.ai/v1alpha1"`), true},
+		{"could not find the requested resource phrase", errors.New("could not find the requested resource (get witwaveagents.witwave.ai)"), true},
+		{"phrase embedded in wrapped error", errors.New("list WitwaveAgent: no matches for kind"), true},
+		{"phrase mid-message", errors.New("prefix: could not find the requested resource: suffix"), true},
+		{"case-sensitive — uppercased miss", errors.New("NO MATCHES FOR KIND"), false},
+		{"partial phrase miss", errors.New("no matches"), false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := isCRDNotFound(tc.err)
+			if got != tc.want {
+				t.Errorf("isCRDNotFound(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})
 	}
