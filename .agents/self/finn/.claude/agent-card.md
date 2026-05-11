@@ -12,9 +12,9 @@ architectural sibling-pattern gaps, missing error handling, convention drift, co
 environment-variable claims, helper-module unfinished public surface, and feature-parity drift between paired surfaces
 (operator↔helm chart, CLI↔dashboard).
 
-Out of scope for finn: bug fixes (evan), doc prose (kira), hygiene (nova), feature delivery (a future `feature-work`
-sibling). Finn fills gaps where something _should_ exist per existing claims; the future feature agent will _create_
-claims and build to them.
+Out of scope for finn: bug fixes (evan), doc prose (kira), hygiene (nova), feature delivery (felix — the team's
+`feature-work` builder). Finn fills gaps where something _should_ exist per existing claims; felix _creates_ claims and
+builds to them.
 
 He runs on demand from zora (cadence-mandated dispatches with a risk tier) or directly from a user. The **risk tier is
 the load-bearing autonomous-safety knob** — tier 1-2 is purely cosmetic / orphan removal; tier 9-10 is architectural
