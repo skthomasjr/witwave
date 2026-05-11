@@ -8,8 +8,8 @@ Each agent owns one substrate. **Zora** decides what work happens when. **Evan**
 risks (across all five risk categories: security, reliability, performance, observability, and maintainability).
 **Nova** keeps the code internally clean. **Kira** keeps the documentation accurate and current. **Finn** finds and
 fills functionality gaps — what's missing relative to what should be there. **Felix** authors new features end-to-end —
-the team's only generative agent, gated by a strict tier ladder so the highest-blast-radius work stays safe. **Iris**
-is the team's git plumber — she pushes everyone's work and drives the release pipeline. **Piper** is the only
+the team's only generative agent, gated by a strict tier ladder so the highest-blast-radius work stays safe. **Iris** is
+the team's git plumber — she pushes everyone's work and drives the release pipeline. **Piper** is the only
 outward-facing agent — she narrates the team's progress to humans on GitHub Discussions (scoring events on a substantive
 bar so the public surface stays signal-rich) and engages two-way across the Bugs, Questions, and Comments categories,
 routing confirmed bugs back to Zora and recurring misconceptions to Kira's docs queue.

@@ -1,31 +1,29 @@
 ---
 name: feature-work
 description:
-  Author a new feature end-to-end in the primary repo. Reads the request (from user A2A, zora
-  dispatch, or piper-routed Discussion), tiers the work against the 1-10 risk-tier ladder, plans the
-  implementation, executes if within the autonomous ceiling, commits atomically with the non-waivable
-  fix-bar, and delegates push + CI watch to iris. Single-pass shape — one feature request per
-  invocation. Trigger when the user says "build X", "implement Y", "add a Z" (run mode); or "plan a
-  feature for X" (plan-only mode); or specifies tier / scope ("build Q at tier 2", "plan a feature in
-  the harness").
+  Author a new feature end-to-end in the primary repo. Reads the request (from user A2A, zora dispatch, or piper-routed
+  Discussion), tiers the work against the 1-10 risk-tier ladder, plans the implementation, executes if within the
+  autonomous ceiling, commits atomically with the non-waivable fix-bar, and delegates push + CI watch to iris.
+  Single-pass shape — one feature request per invocation. Trigger when the user says "build X", "implement Y", "add a Z"
+  (run mode); or "plan a feature for X" (plan-only mode); or specifies tier / scope ("build Q at tier 2", "plan a
+  feature in the harness").
 version: 0.1.0
 ---
 
 # feature-work
 
-One feature, one pass. Read request → tier → plan → (if approved) implement → test → commit →
-delegate push → watch CI → fix-forward → log.
+One feature, one pass. Read request → tier → plan → (if approved) implement → test → commit → delegate push → watch CI →
+fix-forward → log.
 
 ## Inputs
 
-- **`request`** — the feature description. Free-text prompt or a structured reference (Discussion
-  number, roadmap item, A2A text). Required.
-- **`mode`** _(optional)_ — `run` (plan + implement; default) or `plan` (plan only, no
-  implementation; produces draft in `drafts/` for human review).
-- **`tier_hint`** _(optional)_ — user's hint at the expected tier. You compute your own; this is for
-  cross-check.
-- **`source`** _(optional)_ — origin of the request: `user-a2a` / `zora-dispatch` /
-  `piper-routed-discussion` / `roadmap-derived`. For audit logging.
+- **`request`** — the feature description. Free-text prompt or a structured reference (Discussion number, roadmap item,
+  A2A text). Required.
+- **`mode`** _(optional)_ — `run` (plan + implement; default) or `plan` (plan only, no implementation; produces draft in
+  `drafts/` for human review).
+- **`tier_hint`** _(optional)_ — user's hint at the expected tier. You compute your own; this is for cross-check.
+- **`source`** _(optional)_ — origin of the request: `user-a2a` / `zora-dispatch` / `piper-routed-discussion` /
+  `roadmap-derived`. For audit logging.
 
 ## Pre-flight (skip directly to Step 1 if any fails)
 
@@ -37,8 +35,8 @@ git -C <checkout> status --short
 ```
 
 - Missing checkout → log "source tree absent" and stand down. Don't try to clone.
-- Dirty tree → stand down. Iris owns the tree state; if there's dirty WIP, surface to
-  `escalations.md` and exit. Don't commit on top of dirty state.
+- Dirty tree → stand down. Iris owns the tree state; if there's dirty WIP, surface to `escalations.md` and exit. Don't
+  commit on top of dirty state.
 
 ### 0b. Verify CI is green on main HEAD
 
@@ -46,9 +44,9 @@ git -C <checkout> status --short
 gh run list --branch main --limit 5 --json status,conclusion,name,headSha
 ```
 
-If any concluded `failure` since `v<latest-tag>` → stand down. Red CI is evan's lane (red CI on main
-is the team's highest-priority state per CLAUDE.md → "Never leave a broken build"). Surface a note
-to `feature_plans.md` and exit. Don't ship features on top of red.
+If any concluded `failure` since `v<latest-tag>` → stand down. Red CI is evan's lane (red CI on main is the team's
+highest-priority state per CLAUDE.md → "Never leave a broken build"). Surface a note to `feature_plans.md` and exit.
+Don't ship features on top of red.
 
 ### 0c. Verify your own in-flight work
 
@@ -56,9 +54,8 @@ to `feature_plans.md` and exit. Don't ship features on top of red.
 ls /workspaces/witwave-self/memory/agents/felix/drafts/ 2>/dev/null
 ```
 
-If a tier-3+ feature is awaiting human approval (`drafts/<slug>.md` with
-`status: awaiting-human-approval`), pause new tier-3+ work until approval lands. Lower-tier work
-can still proceed in parallel.
+If a tier-3+ feature is awaiting human approval (`drafts/<slug>.md` with `status: awaiting-human-approval`), pause new
+tier-3+ work until approval lands. Lower-tier work can still proceed in parallel.
 
 ### 0d. Pin git identity
 
@@ -101,36 +98,35 @@ You should be able to articulate, before planning, what currently exists and wha
 
 Apply the tier ladder from CLAUDE.md → "The tier ladder":
 
-| Tier | Shape | Required gates |
-|---|---|---|
-| 1 | ≤30 lines, no new deps, single-file | Tests + existing tests pass |
-| 2 | Single-file new helper, bounded | Tests + docs |
-| 3 | Multi-file within existing subsystem | Tests + docs + chart values + **human approval (v1)** |
-| 4 | New shared helper module | Tests + docs + cross-peer review + **human approval** |
-| 5 | New harness endpoint / MCP tool / chart capability | Tests + docs + chart + dashboard + **human approval** |
-| 6+ | Cross-cutting / architectural / breaking | **Human approval; not autonomous** |
+| Tier | Shape                                              | Required gates                                        |
+| ---- | -------------------------------------------------- | ----------------------------------------------------- |
+| 1    | ≤30 lines, no new deps, single-file                | Tests + existing tests pass                           |
+| 2    | Single-file new helper, bounded                    | Tests + docs                                          |
+| 3    | Multi-file within existing subsystem               | Tests + docs + chart values + **human approval (v1)** |
+| 4    | New shared helper module                           | Tests + docs + cross-peer review + **human approval** |
+| 5    | New harness endpoint / MCP tool / chart capability | Tests + docs + chart + dashboard + **human approval** |
+| 6+   | Cross-cutting / architectural / breaking           | **Human approval; not autonomous**                    |
 
-**v1 autonomous ceiling: tier 3.** Until 30 days of clean tier-1/2 output, tier 3+ requires
-explicit per-commit human approval.
+**v1 autonomous ceiling: tier 3.** Until 30 days of clean tier-1/2 output, tier 3+ requires explicit per-commit human
+approval.
 
 **Tier-reset state** lives in `/workspaces/witwave-self/memory/agents/felix/team_state.md`:
 
 ```yaml
-tier_ceiling: 3       # autonomous ceiling; demoted by 1 on triggered fix-forward
+tier_ceiling: 3 # autonomous ceiling; demoted by 1 on triggered fix-forward
 last_demotion_at: null
-clean_streak_days: 0  # days since last triggered fix-forward
+clean_streak_days: 0 # days since last triggered fix-forward
 ```
 
-If your computed tier > `tier_ceiling`, route to plan-only mode for that work (Step 3 produces
-draft; no implementation). If `tier_ceiling > computed_tier`, proceed.
+If your computed tier > `tier_ceiling`, route to plan-only mode for that work (Step 3 produces draft; no
+implementation). If `tier_ceiling > computed_tier`, proceed.
 
-Record your tier classification with reasoning in `feature_plans.md`. Future audits should be able
-to second-guess your tiering.
+Record your tier classification with reasoning in `feature_plans.md`. Future audits should be able to second-guess your
+tiering.
 
 ### 3. Plan the implementation
 
-Write a structured plan to `feature_plans.md` (append) AND to `drafts/<slug>.md` (new file). The
-plan must include:
+Write a structured plan to `feature_plans.md` (append) AND to `drafts/<slug>.md` (new file). The plan must include:
 
 ```markdown
 ---
@@ -187,8 +183,8 @@ created_at: <RFC3339>
 <what this PR explicitly does NOT do, and why>
 ```
 
-If `mode == plan-only` OR `computed_tier > tier_ceiling`, set `status: awaiting-human-approval`,
-write the draft, and exit Step 3. Return the draft URL/path to the caller.
+If `mode == plan-only` OR `computed_tier > tier_ceiling`, set `status: awaiting-human-approval`, write the draft, and
+exit Step 3. Return the draft URL/path to the caller.
 
 Otherwise set `status: approved` (you tiered within ceiling; no external gate) and proceed.
 
@@ -198,19 +194,18 @@ Walk the commit shape from your plan, one commit at a time. Per commit:
 
 #### 4a. Apply the edits
 
-Use the Edit / Write tools. Stick to the file list in the plan; if you realize you need a file not
-in the plan, STOP and update the plan first. Scope creep is a fix-bar fail (#6 below).
+Use the Edit / Write tools. Stick to the file list in the plan; if you realize you need a file not in the plan, STOP and
+update the plan first. Scope creep is a fix-bar fail (#6 below).
 
 #### 4b. Write the tests in the same commit
 
-Test coverage is non-waivable. The test must demonstrate the new behavior, not just exist. Tests
-that only assert "the function returns without error" are insufficient — the test must verify the
-specific behavior change.
+Test coverage is non-waivable. The test must demonstrate the new behavior, not just exist. Tests that only assert "the
+function returns without error" are insufficient — the test must verify the specific behavior change.
 
 #### 4c. Update docs in the same commit (if applicable)
 
-User-visible features ship with matching docs. The doc update lands in the same commit as the code
-change so a future bisect doesn't show a window where code+docs disagree.
+User-visible features ship with matching docs. The doc update lands in the same commit as the code change so a future
+bisect doesn't show a window where code+docs disagree.
 
 #### 4d. Run the local test suite for the affected scope
 
@@ -225,9 +220,8 @@ cd <relevant-subproject> && go test ./<package>/...
 cd clients/dashboard && npm run test
 ```
 
-If red → fix-forward in the same commit (re-edit, re-test). If you can't fix-forward in the
-session, surface to `feature_plans.md` with `[deferred: tests-red-during-implementation]` and exit
-without committing.
+If red → fix-forward in the same commit (re-edit, re-test). If you can't fix-forward in the session, surface to
+`feature_plans.md` with `[deferred: tests-red-during-implementation]` and exit without committing.
 
 #### 4e. Lint + format
 
@@ -258,8 +252,8 @@ Before committing, walk every rule from CLAUDE.md → "The fix-bar":
 6. No scope creep beyond the plan? ✓
 7. Commit is atomic + revertable? ✓
 
-If any fails → revert the working-tree changes for that commit, mark `feature_plans.md` entry as
-`status: blocked`, surface to memory, exit.
+If any fails → revert the working-tree changes for that commit, mark `feature_plans.md` entry as `status: blocked`,
+surface to memory, exit.
 
 #### 4g. Commit
 
@@ -277,8 +271,8 @@ EOF
 )"
 ```
 
-Use `feat:` or `feat(<scope>):` prefix. Conventional commits are how zora's release-warranted check
-identifies feature work (weighted 2.0 — substantive).
+Use `feat:` or `feat(<scope>):` prefix. Conventional commits are how zora's release-warranted check identifies feature
+work (weighted 2.0 — substantive).
 
 ### 5. Delegate push + CI watch to iris
 
@@ -294,13 +288,12 @@ Don't push yourself. Don't go around iris.
 
 ### 6. Handle iris's reply
 
-- **CI green** → mutate `feature_plans.md` entry to `status: shipped` with the commit range and
-  reply timestamp. Done.
-- **CI red** → enter fix-forward mode. Read iris's reply for the failing-job logs. Diagnose the
-  failure. Apply the fix in a NEW commit (not amending). Re-run the affected test scope locally.
-  Re-apply the fix-bar. Commit. Ask iris to push again. Repeat up to 2 fix-forward attempts.
-- **2 fix-forward attempts failed** → revert all your feature commits via batch-revert; mark
-  `feature_plans.md` `status: reverted`; surface to `escalations.md` for human review.
+- **CI green** → mutate `feature_plans.md` entry to `status: shipped` with the commit range and reply timestamp. Done.
+- **CI red** → enter fix-forward mode. Read iris's reply for the failing-job logs. Diagnose the failure. Apply the fix
+  in a NEW commit (not amending). Re-run the affected test scope locally. Re-apply the fix-bar. Commit. Ask iris to push
+  again. Repeat up to 2 fix-forward attempts.
+- **2 fix-forward attempts failed** → revert all your feature commits via batch-revert; mark `feature_plans.md`
+  `status: reverted`; surface to `escalations.md` for human review.
 
 ### 7. Log the run
 
@@ -315,31 +308,30 @@ Append a final block to `feature_plans.md` summarizing:
 - **ci_outcome:** <green-first-try | green-after-fix | red-2-attempts-reverted>
 - **notes:** <one-line — anything surprising>
 
-If `status == shipped`, also increment the `clean_streak_days` counter in `team_state.md`. If
-`status == reverted` AND the revert was triggered by your own commit (not external), reset
-`clean_streak_days` to 0 AND demote `tier_ceiling` by 1 with a 7-day countdown to re-promotion.
+If `status == shipped`, also increment the `clean_streak_days` counter in `team_state.md`. If `status == reverted` AND
+the revert was triggered by your own commit (not external), reset `clean_streak_days` to 0 AND demote `tier_ceiling` by
+1 with a 7-day countdown to re-promotion.
 
 ### 8. Return a one-paragraph summary
 
 To the caller:
 
-> Feature `<slug>` at tier `<N>`: <shipped|reverted|blocked|deferred>. <Commit range>.
-> CI: <outcome>. Plan in `feature_plans.md`; <one-line context>.
+> Feature `<slug>` at tier `<N>`: <shipped|reverted|blocked|deferred>. <Commit range>. CI: <outcome>. Plan in
+> `feature_plans.md`; <one-line context>.
 
 ## Failure modes worth surfacing explicitly
 
-- **Request straddles the line.** If the request is ambiguously a feature vs gap vs bug — surface
-  to user via memory, defer. Don't guess. The peer-boundary clarity is load-bearing.
-- **Tier is genuinely uncertain.** Tier reasoning belongs in the plan. If you can't argue confidently
-  for one tier, default to the higher tier and route through human approval.
-- **A peer has surfaced a conflicting finding.** If evan has flagged a risk in the same area, OR
-  finn has marked a gap, AND your feature touches that file — ask the peer (via `call-peer`) before
-  committing. Don't land work on top of an unresolved peer finding.
-- **The request references an architectural change** ("rewrite the harness scheduler", "split the
-  backend into N services"). That's tier 7+; produce a plan-only draft and exit. Architecture is a
-  human decision.
-- **`call-peer iris` times out / 5xx's repeatedly.** Iris may be in stuck-peer escalation. Surface
-  to `escalations.md`; don't auto-push around iris.
+- **Request straddles the line.** If the request is ambiguously a feature vs gap vs bug — surface to user via memory,
+  defer. Don't guess. The peer-boundary clarity is load-bearing.
+- **Tier is genuinely uncertain.** Tier reasoning belongs in the plan. If you can't argue confidently for one tier,
+  default to the higher tier and route through human approval.
+- **A peer has surfaced a conflicting finding.** If evan has flagged a risk in the same area, OR finn has marked a gap,
+  AND your feature touches that file — ask the peer (via `call-peer`) before committing. Don't land work on top of an
+  unresolved peer finding.
+- **The request references an architectural change** ("rewrite the harness scheduler", "split the backend into N
+  services"). That's tier 7+; produce a plan-only draft and exit. Architecture is a human decision.
+- **`call-peer iris` times out / 5xx's repeatedly.** Iris may be in stuck-peer escalation. Surface to `escalations.md`;
+  don't auto-push around iris.
 
 ## Out of scope for this skill
 
@@ -356,5 +348,5 @@ To the caller:
 - **User A2A** — "felix, build X", "felix, implement Y", "felix, plan a feature for Z".
 - **Zora dispatch** — she may route a feature request from the team inbox to you.
 - **Piper-routed Discussion** — when a feature request lands in GitHub Discussions, Piper logs to
-  `feature-requests-from-users.md` (parallel to her `bugs-from-users.md`); zora reads that file
-  each tick and dispatches felix when there's an unrouted entry.
+  `feature-requests-from-users.md` (parallel to her `bugs-from-users.md`); zora reads that file each tick and dispatches
+  felix when there's an unrouted entry.

@@ -413,9 +413,11 @@ Walk these in order. The first match wins; act and exit (after logging).
     plumber — she's the right surface for "investigate, decide, unblock."
   - **T+1h** — if still stuck after iris's recovery attempt: **harder escalation** to user with explicit recovery
     commands. Append a hardened entry to `escalations.md` with `[NEEDS-HUMAN]` prefix that includes:
+
     - The stuck-peer identity, the task scope, and the diagnostic snapshot (probe state, pod generation, memory mtime,
       reply-file size, last claude session ID)
-    - **The exact commands** the user runs to perform each of the three recovery paths. Verbatim, copy-pasteable. Format:
+    - **The exact commands** the user runs to perform each of the three recovery paths. Verbatim, copy-pasteable.
+      Format:
 
       ```
       Path (a) — INSPECT FIRST (safest):
@@ -434,14 +436,15 @@ Walk these in order. The first match wins; act and exit (after logging).
 
     The explicit commands eliminate the per-incident "how do I do this?" round-trip. The user should see this on their
     next `ww escalations` and be able to execute one of the three paths without further context-gathering.
+
   - **T+2h** — automatic pause-mode entry. Touch `pause_mode.flag`; emit `[escalation: auto-paused]` log entry. Continue
     ticking but log-only until the user clears the flag.
   - **Post-recovery (user signals via `recover <peer>` directive — see CLAUDE.md → "Recovery directives"):** clear the
     pause flag if set, verify the named peer's pod is healthy via A2A probe (pod-generation increment is the canonical
     "kill step completed" signal if you can read it), and fire a fresh dispatch to that peer ON THE SAME TICK with the
-    task preserved in the escalations.md entry. Log the re-dispatch with `[recovery-redispatch: <peer> per user
-    directive]`. Mark the prior `[NEEDS-HUMAN]` escalation as `[RESOLVED-PENDING]`; promote to `CLOSED` when the
-    re-dispatched peer returns success.
+    task preserved in the escalations.md entry. Log the re-dispatch with
+    `[recovery-redispatch: <peer> per user directive]`. Mark the prior `[NEEDS-HUMAN]` escalation as
+    `[RESOLVED-PENDING]`; promote to `CLOSED` when the re-dispatched peer returns success.
 
   Cadence floors continue counting throughout — when the escalation resolves, breached cadences fire immediately on the
   recovery tick (after the recovery re-dispatch, if one was triggered).

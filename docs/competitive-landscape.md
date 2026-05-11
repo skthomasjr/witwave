@@ -8,13 +8,12 @@ underlying **Kubernetes SIG Apps subproject** with its three new primitives (`Sa
 kernel-level isolation, ~300 sandboxes/sec throughput, and the explicit posture that any Kubernetes cluster can run it
 (not GKE-only) (sources: <https://github.com/openclaw/openclaw/releases> and
 <https://www.infoq.com/news/2026/05/gke-agent-sandbox-hypercluster/>, accessed 2026-05-11). Fourteenth pass (earlier on
-2026-05-11) was a focused SDK/protocol-axis refresh per zora dispatch:
-added new Reference Products entry for **OpenAI Agents SDK** (MIT, **26,200+** GitHub stars, latest `v0.17.1` per the
-releases page, provider-agnostic via LiteLLM / any-llm — supports OpenAI Responses + Chat Completions APIs and 100+
-other LLMs; sandbox agents, sessions, handoffs, MCP, guardrails, tracing all first-class), filling a long-standing gap
-given OpenAI's April 15 2026 evolution announcement is now ~four weeks old (sources:
-<https://github.com/openai/openai-agents-python>, <https://github.com/openai/openai-agents-python/releases>,
-<https://openai.github.io/openai-agents-python/>, and
+2026-05-11) was a focused SDK/protocol-axis refresh per zora dispatch: added new Reference Products entry for **OpenAI
+Agents SDK** (MIT, **26,200+** GitHub stars, latest `v0.17.1` per the releases page, provider-agnostic via LiteLLM /
+any-llm — supports OpenAI Responses + Chat Completions APIs and 100+ other LLMs; sandbox agents, sessions, handoffs,
+MCP, guardrails, tracing all first-class), filling a long-standing gap given OpenAI's April 15 2026 evolution
+announcement is now ~four weeks old (sources: <https://github.com/openai/openai-agents-python>,
+<https://github.com/openai/openai-agents-python/releases>, <https://openai.github.io/openai-agents-python/>, and
 <https://techcrunch.com/2026/04/15/openai-updates-its-agents-sdk-to-help-enterprises-build-safer-more-capable-agents/>,
 accessed 2026-05-11). Refreshed Claude Agent SDK entry with Q2 2026 additions (latest `v0.1.80` on 2026-05-09):
 `session_store_flush="eager"` (0.1.73), deferred tool use + `updatedToolOutput` in PostToolUse + strict MCP config +
@@ -771,16 +770,15 @@ _Last updated: 2026-04-07 by local-agent_
   support, and the **Agent Sandbox** Kubernetes SIG Apps subproject (with Google's hosted GKE Agent Sandbox variant
   announced at Cloud Next '26 — gVisor isolation, ~300 sandboxes/sec, three new primitives `Sandbox` / `SandboxTemplate`
   / `SandboxClaim`; source: <https://www.infoq.com/news/2026/05/gke-agent-sandbox-hypercluster/>, accessed 2026-05-11)
-  all now occupy the same lane. Differentiators that _do_ hold up
-  head-to-head with these: (1) **multi-backend routing under one named agent identity** — Claude / Codex / Gemini behind
-  `backend.yaml` routing rules with per-concern dispatch (heartbeat to claude, jobs to codex, etc.) is unique in the
-  Kubernetes-native OSS set; competitors are mostly single-framework (kagent on AutoGen) or single-model. (2)
-  **Scheduler primitive breadth** — jobs, tasks, heartbeats, triggers, continuations, webhooks as first-class
-  `.witwave/` frontmatter files. kagent and OpenClaw don't ship equivalents. (3) **Per-agent cross-pod topology** —
-  harness + backends + shared MCP tools is a production-ready shape that OpenClaw's single-agent framing doesn't match.
-  (4) **Declarative CRD lifecycle via `WitwaveAgent` + `WitwavePrompt`** going through a dedicated operator with status
-  phases, finalizers, and multi-tenant manifest ConfigMaps. kagent is closer to ours on this axis but uses CRDs only for
-  agent definition, not prompt lifecycle.
+  all now occupy the same lane. Differentiators that _do_ hold up head-to-head with these: (1) **multi-backend routing
+  under one named agent identity** — Claude / Codex / Gemini behind `backend.yaml` routing rules with per-concern
+  dispatch (heartbeat to claude, jobs to codex, etc.) is unique in the Kubernetes-native OSS set; competitors are mostly
+  single-framework (kagent on AutoGen) or single-model. (2) **Scheduler primitive breadth** — jobs, tasks, heartbeats,
+  triggers, continuations, webhooks as first-class `.witwave/` frontmatter files. kagent and OpenClaw don't ship
+  equivalents. (3) **Per-agent cross-pod topology** — harness + backends + shared MCP tools is a production-ready shape
+  that OpenClaw's single-agent framing doesn't match. (4) **Declarative CRD lifecycle via `WitwaveAgent` +
+  `WitwavePrompt`** going through a dedicated operator with status phases, finalizers, and multi-tenant manifest
+  ConfigMaps. kagent is closer to ours on this axis but uses CRDs only for agent definition, not prompt lifecycle.
 
 - **Cost and resource management:** `task_budget` env var is proposed (#69, open) but not implemented. Industry finding:
   90% of production agents are over-resourced in 2026; cost control is treated as a first-class architectural concern.

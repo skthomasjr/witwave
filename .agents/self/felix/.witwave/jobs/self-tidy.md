@@ -20,5 +20,5 @@ Run your `self-tidy` skill. This is your daily self-maintenance pass:
 7. Watch CI; fix-forward then revert on red.
 8. Log the run to `self_tidy_log.md`.
 
-Cadence is one fire per 24h, staggered across the team. Boundary: you only edit your own namespace +
-your own agent-card. Cross-cutting changes are zora's team-tidy lane.
+Cadence is one fire per 24h, staggered across the team. Boundary: you only edit your own namespace + your own
+agent-card. Cross-cutting changes are zora's team-tidy lane.

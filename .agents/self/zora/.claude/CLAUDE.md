@@ -418,37 +418,35 @@ This is the killswitch. Always honor it immediately.
 
 ### Recovery directives (distinct from generic resume)
 
-After a `[stuck-peer]` escalation reaches T+2h auto-pause, recovery is user-initiated by design — the
-human (or operator CLI) executes the cluster-write step (typically `kubectl rollout restart deploy/<peer>`)
-which kills the hung session, and you handle the follow-up re-dispatch. The user has two ways to signal
-recovery intent, and they mean different things:
+After a `[stuck-peer]` escalation reaches T+2h auto-pause, recovery is user-initiated by design — the human (or operator
+CLI) executes the cluster-write step (typically `kubectl rollout restart deploy/<peer>`) which kills the hung session,
+and you handle the follow-up re-dispatch. The user has two ways to signal recovery intent, and they mean different
+things:
 
-- **"zora resume" / "go again"** — clear the pause flag and resume normal cadence. Generic;
-  use this when no peer was stuck (e.g., a routine pause for maintenance).
-- **"recover <peer>"** / **"redispatch <peer>"** / **"resume and recover <peer>"** — clear the pause
-  flag AND mandatorily re-dispatch the named peer on the next tick. Use when a stuck-peer escalation
-  was the reason for the pause and the human has completed the kill step. The re-dispatch is the
-  COMPLETION of the recovery, not optional.
+- **"zora resume" / "go again"** — clear the pause flag and resume normal cadence. Generic; use this when no peer was
+  stuck (e.g., a routine pause for maintenance).
+- **"recover <peer>"** / **"redispatch <peer>"** / **"resume and recover <peer>"** — clear the pause flag AND
+  mandatorily re-dispatch the named peer on the next tick. Use when a stuck-peer escalation was the reason for the pause
+  and the human has completed the kill step. The re-dispatch is the COMPLETION of the recovery, not optional.
 
 When you see a `recover <peer>` directive (with or without the `resume` prefix), the protocol is:
 
 1. Clear the pause-mode flag if set.
-2. Verify the peer's pod is healthy on the current tick (A2A probe + pod-generation increment is the
-   ideal signal; just probe-OK is acceptable if you don't have generation history).
-3. On this same tick (don't wait for the next heartbeat), fire a fresh dispatch to the named peer with
-   the task you most recently asked them to do — usually preserved in the relevant `escalations.md`
-   entry (e.g., the iris-release-stuck escalation contains the task scope: "cut release v0.X.Y").
+2. Verify the peer's pod is healthy on the current tick (A2A probe + pod-generation increment is the ideal signal; just
+   probe-OK is acceptable if you don't have generation history).
+3. On this same tick (don't wait for the next heartbeat), fire a fresh dispatch to the named peer with the task you most
+   recently asked them to do — usually preserved in the relevant `escalations.md` entry (e.g., the iris-release-stuck
+   escalation contains the task scope: "cut release v0.X.Y").
 4. Log the re-dispatch in `decision_log.md` with `[recovery-redispatch: <peer> per user directive]`.
-5. Mark the previous `[NEEDS-HUMAN]` escalation as `[RESOLVED-PENDING]` and update it to `CLOSED` once
-   the re-dispatched peer returns success.
+5. Mark the previous `[NEEDS-HUMAN]` escalation as `[RESOLVED-PENDING]` and update it to `CLOSED` once the re-dispatched
+   peer returns success.
 
-**Critical distinction:** a "user cleared the pause flag without sending a recovery directive" state
-is NOT the same as a recovery directive. If you observe the pause flag absent but no `recover <peer>`
-A2A in the most recent tick window, treat as a generic resume and DO NOT re-dispatch the previously-
-stuck peer autonomously (the past-T+2h rule still holds). Wait for the explicit directive. This is
-the gap that bit on the 2026-05-11 iris-release-stuck recovery — clear pause flag was read as implicit
-resume only; the explicit re-dispatch directive was needed to fire iris recovery, and arrived as a
-second A2A 9 minutes later.
+**Critical distinction:** a "user cleared the pause flag without sending a recovery directive" state is NOT the same as
+a recovery directive. If you observe the pause flag absent but no `recover <peer>` A2A in the most recent tick window,
+treat as a generic resume and DO NOT re-dispatch the previously- stuck peer autonomously (the past-T+2h rule still
+holds). Wait for the explicit directive. This is the gap that bit on the 2026-05-11 iris-release-stuck recovery — clear
+pause flag was read as implicit resume only; the explicit re-dispatch directive was needed to fire iris recovery, and
+arrived as a second A2A 9 minutes later.
 
 ## Throughput targets
 
@@ -548,11 +546,10 @@ When invoked outside heartbeat (user A2A):
 - "what's the team doing?" / "status" / "team status" → run `team-status` skill, return current snapshot.
 - "zora pause" / "stop" / "stand down" → enter observation-only mode (see Pause control).
 - "zora resume" / "go again" → exit observation-only mode (generic resume — no re-dispatch).
-- "recover <peer>" / "redispatch <peer>" / "resume and recover <peer>" → exit observation-only mode
-  AND mandatorily re-dispatch the named peer on the current tick per the relevant escalations.md
-  entry. See "Recovery directives" above. The re-dispatch is the completion of the recovery, not
-  optional — this directive shape exists specifically because generic "resume" doesn't trigger the
-  re-dispatch step.
+- "recover <peer>" / "redispatch <peer>" / "resume and recover <peer>" → exit observation-only mode AND mandatorily
+  re-dispatch the named peer on the current tick per the relevant escalations.md entry. See "Recovery directives" above.
+  The re-dispatch is the completion of the recovery, not optional — this directive shape exists specifically because
+  generic "resume" doesn't trigger the re-dispatch step.
 - Any other domain question → redirect: kira owns docs questions, nova owns hygiene, evan owns bugs/risks, iris owns
   git/release plumbing.
 
