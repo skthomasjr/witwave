@@ -422,9 +422,9 @@ ww agent list \
   --namespace witwave-self
 ```
 
-`ww agent list` should now show six rows (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`) all in state `Ready`.
-`ww workspace status witwave-self` should report all six under the bound-agents section. zora's heartbeat fires every 15
-minutes; her first tick will discover the team and start dispatching cadence-floor work.
+`ww agent list` should now show seven rows (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `piper`) all in state
+`Ready`. `ww workspace status witwave-self` should report all seven under the bound-agents section. zora's heartbeat
+fires every 15 minutes; her first tick will discover the team and start dispatching cadence-floor work.
 
 ## Tear it down
 
