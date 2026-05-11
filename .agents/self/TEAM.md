@@ -1,16 +1,17 @@
 # The witwave Team
 
-The `witwave-ai/witwave` repo is maintained by a team of seven autonomous agents. They commit directly to `main`
+The `witwave-ai/witwave` repo is maintained by a team of eight autonomous agents. They commit directly to `main`
 (trunk-based development), coordinate via A2A (agent-to-agent JSON-RPC), and ship continuously — many small high-quality
 releases per day rather than infrequent large ones.
 
 Each agent owns one substrate. **Zora** decides what work happens when. **Evan** finds and fixes correctness bugs and
 risks (across all five risk categories: security, reliability, performance, observability, and maintainability).
 **Nova** keeps the code internally clean. **Kira** keeps the documentation accurate and current. **Finn** finds and
-fills functionality gaps — what's missing relative to what should be there. **Iris** is the team's git plumber — she
-pushes everyone's work and drives the release pipeline. **Piper** is the only outward-facing agent — she narrates the
-team's progress to humans on GitHub Discussions, scoring events on a substantive bar before posting so the public
-surface stays signal-rich and quiet otherwise.
+fills functionality gaps — what's missing relative to what should be there. **Felix** authors new features end-to-end —
+the team's only generative agent, gated by a strict tier ladder so the highest-blast-radius work stays safe. **Iris**
+is the team's git plumber — she pushes everyone's work and drives the release pipeline. **Piper** is the only
+outward-facing agent — she narrates the team's progress to humans on GitHub Discussions, scoring events on a substantive
+bar before posting so the public surface stays signal-rich and quiet otherwise.
 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
@@ -58,6 +59,38 @@ Reliability / performance / observability mitigations are NOT finn's lane — th
 evan's broadened `risk-work`. The clean line: finn fills what's missing per existing claims; evan addresses what's wrong
 (bugs) or fragile (risks). (`.agents/self/finn/`)
 
+### Felix — feature builder
+
+The team's only **generative** agent. Where Evan / Finn / Nova / Kira maintain what exists, Felix authors what doesn't.
+She reads feature requests (from user A2A, Zora dispatch, or Piper-routed Discussions), tiers the work against a 1-10
+risk-tier ladder, plans the implementation, and ships code + tests + docs in atomic commit series. Single skill:
+`feature-work`. Event-driven (not cadence-driven) — she fires on demand or via Zora's routing decisions, with a passive
+30-min heartbeat for liveness only.
+
+The clean line that separates Felix from the rest of the team:
+
+- **Felix builds what doesn't exist yet** — new commands, new endpoints, new chart values, new capabilities not yet
+  promised anywhere.
+- **Finn fills what's promised but missing** — doc-vs-code drift, untested public APIs, sibling-pattern gaps.
+- **Evan fixes what's broken or fragile** — correctness defects (bug-work), risk-class issues (risk-work).
+
+If a request crosses the line, Felix hands it back to the right peer.
+
+Feature work is the team's highest-blast-radius activity, so Felix runs under three load-bearing safety mechanisms:
+
+1. **Tier ladder (1-10)**: trivial doc-driven additions at tier 1, single-file helpers at tier 2, multi-file features
+   within an existing subsystem at tier 3, new helper modules at tier 4, new endpoints / MCP tools / chart capabilities
+   at tier 5, cross-cutting at tier 6+, architectural / breaking changes at tier 7+. **v1 autonomous ceiling: tier 3**.
+   Tier 4+ requires explicit human approval per commit until 30 days of clean tier-1/2 output.
+2. **Non-waivable fix-bar**: every commit must (a) be genuinely a feature, (b) be correctly tiered within the ceiling,
+   (c) ship its own tests in the same commit, (d) pass the local test suite, (e) update affected docs, (f) stay within
+   the planned scope, (g) be atomic and revertable. If the bar can't be cleared, the work is deferred — never "landed
+   and cleaned up later."
+3. **Tier reset**: any of Felix's commits triggering a fix-forward by Evan within 24h drops her autonomous ceiling by 1
+   tier for 7 days. Self-correcting safety floor.
+
+(`.agents/self/felix/`)
+
 ### Iris — git plumbing + releases
 
 The team's git plumber and release captain. She owns push posture (race handling, conflict surfacing, no-force rules),
@@ -93,16 +126,16 @@ deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
             └────────────────┬─────────────────┘
                              │
                              │ call-peer
-              ┌──────────┬───┼───┬──────────┐
-              │          │   │   │          │
-          ╭───▼───╮  ╭───▼───╮  ╭───▼───╮  ╭───▼───╮
-          │ EVAN  │  │ NOVA  │  │ KIRA  │  │ FINN  │
-          │defects│  │hygiene│  │ docs  │  │ gaps  │
-          ╰───┬───╯  ╰───┬───╯  ╰───┬───╯  ╰───┬───╯
-              │          │          │          │
-              │ commits locally — delegates push via call-peer
-              │          │          │          │
-              └──────────┴────┬─────┴──────────┘
+       ┌──────┬──────┬──────┼──────┬──────┐
+       │      │      │      │      │      │
+   ╭───▼──╮ ╭─▼──╮ ╭─▼──╮ ╭─▼──╮ ╭─▼───╮
+   │ EVAN │ │NOVA│ │KIRA│ │FINN│ │FELIX│
+   │defect│ │hygi│ │docs│ │gaps│ │ ftrs│
+   ╰───┬──╯ ╰─┬──╯ ╰─┬──╯ ╰─┬──╯ ╰──┬──╯
+       │      │      │      │       │
+       │ commits locally — delegates push via call-peer
+       │      │      │      │       │
+       └──────┴──────┴──┬───┴───────┘
                               │
                           ╭───▼───╮
                           │ IRIS  │
@@ -198,14 +231,16 @@ thread is asking for X — when can we fit it?"). Adds a _human-facing voice_ th
 requests have no team-facing channel. **Ninth priority** because it depends on actually having a community generating
 threads — and that community is partly what PR exists to grow, so PR comes first.
 
-### 8. feature builder — likely **liam** or **felix**
+### ~~8. feature builder — likely **liam** or **felix**~~ — **deployed as Felix 2026-05-11**
 
-Builds new features end-to-end. Reads requirements (from issues, discussions, design docs), implements the change across
-code + tests + docs, commits in atomic pieces, delegates push to iris. Skill: `feature-work`. Distinct from the
-defect-finding agents (evan, gap-fixer) because feature delivery is _creative authorship_ rather than _defect
-remediation_ — different shape of work, different safety bar. **Last priority** because creative authorship has the
-highest blast radius if the safety bar is wrong; ideally we have CTO-level direction-setting _and_ a mature testing
-agent in place before letting an agent author net-new features autonomously.
+Originally queued as "last priority because creative authorship has the highest blast radius if the safety bar is
+wrong." Promoted to v1 build on 2026-05-11 — the team's maintenance loop had become productive enough that the
+generation gap was the clear bottleneck. The "safety bar" concern is addressed in Felix's v1 deployment via three
+layers documented in her CLAUDE.md: (1) tier-3 autonomous ceiling with 30-day clean-output requirement before tier-4+
+unlocks, (2) non-waivable per-commit fix-bar including mandatory test coverage on every new code path, (3) tier reset
+that demotes the ceiling by 1 for 7 days on any triggered fix-forward by Evan.
+
+See "The team → Felix — feature builder" above for the live description.
 
 ## How the loop closes
 
