@@ -13,8 +13,8 @@ is running:
 - One **WitwaveWorkspace** (`witwave-self`) with one or more shared volumes (`source` for the working repo state,
   `memory` for long-term per-agent memory, more as concerns accrete) that every participating agent mounts at the same
   paths.
-- Five **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`) with `Spec.WorkspaceRefs` pointing at `witwave-self`
-  so they share the workspace.
+- Seven **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `piper`) with `Spec.WorkspaceRefs` pointing
+  at `witwave-self` so they share the workspace.
 
   - **iris** owns source-tree initialization + release captaincy + git plumbing for the team.
   - **kira** owns documentation hygiene + research.
@@ -359,7 +359,7 @@ ww agent create zora \
 
 After zora deploys, her 15-minute heartbeat starts firing the `dispatch-team` decision loop. She'll begin reading peer
 state from memory, applying the priority policy in her CLAUDE.md, and dispatching the appropriate peer
-(iris/kira/nova/evan/finn) via A2A. Until then, all peer dispatches are user-initiated.
+(iris/kira/nova/evan/finn/piper) via A2A. Until then, all peer dispatches are user-initiated.
 
 ## Step 8 — Deploy finn
 
