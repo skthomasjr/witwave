@@ -223,35 +223,6 @@ then execute against. **Seventh priority** because direction-setting is highest-
 accumulated context — better once the team has months of state to reason over and the platform has real users with real
 friction points.
 
-### ~~7. community liaison — likely **sage** or **ezra**~~ — **absorbed by Piper 2026-05-10/11**
-
-Originally scoped as a separate agent whose job would be "talks with humans on GitHub Discussions, reads new threads,
-answers questions, surfaces actionable bugs/features back to the team." That scope is now fully covered by **Piper**'s
-discuss-\* skill family:
-
-- **`discuss-comments`** — replies to humans on Piper-authored Announcements/Progress posts
-- **`discuss-bugs`** — investigates bug reports in the Bugs category, routes confirmed bugs to Zora via
-  `bugs-from-users.md` (the team-prioritisation handoff the community-liaison role would have done)
-- **`discuss-questions`** — answers open-ended Q&A in the General category, including deep code-reading investigation
-- **(future)** `discuss-ideas` — engagement on the Ideas category, planned
-
-Guard 0 (autonomous moderation via `minimizeComment` + `lockLockable`) and the recurring-misconception routing to Kira's
-docs queue close the remaining "community liaison" responsibilities. Piper's outreach + engagement role now spans both
-the original outward-narration scope and the originally-future community-facing scope as one cohesive agent.
-
-A separate community-liaison agent is not currently planned — Piper covers the full surface.
-
-### ~~8. feature builder — likely **liam** or **felix**~~ — **deployed as Felix 2026-05-11**
-
-Originally queued as "last priority because creative authorship has the highest blast radius if the safety bar is
-wrong." Promoted to v1 build on 2026-05-11 — the team's maintenance loop had become productive enough that the
-generation gap was the clear bottleneck. The "safety bar" concern is addressed in Felix's v1 deployment via three
-layers documented in her CLAUDE.md: (1) tier-3 autonomous ceiling with 30-day clean-output requirement before tier-4+
-unlocks, (2) non-waivable per-commit fix-bar including mandatory test coverage on every new code path, (3) tier reset
-that demotes the ceiling by 1 for 7 days on any triggered fix-forward by Evan.
-
-See "The team → Felix — feature builder" above for the live description.
-
 ## How the loop closes
 
 1. **Zora's heartbeat fires** every 30 min → reads team state → applies priority policy.
