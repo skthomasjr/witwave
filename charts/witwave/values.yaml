@@ -140,6 +140,18 @@ certManager:
     name: ""
     kind: "" # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
 
+# Dashboard ingress (#528, #1626). When enabled, the chart renders an
+# Ingress resource fronting the dashboard Service and (optionally) a
+# Secret + nginx auth-* annotations driving basic auth. Requires
+# `dashboard.enabled=true` for the dashboard-specific routing block to
+# render anything; templates/ingress.yaml fails fast at template time
+# if `ingress.enabled=true` AND `ingress.auth.enabled=true` (basic)
+# while both `auth.basic.htpasswd` and `auth.basic.existingSecret` are
+# empty, so misconfigured auth surfaces during `helm install`/`upgrade`
+# rather than at request time. TLS can be populated manually via the
+# `tls` list, or auto-synthesised when `certManager.enabled=true` and
+# `ingress.tlsEnabled=true` (the chart then emits a cert-manager
+# Certificate and a `tls:` entry pointing at it).
 ingress:
   enabled: false
   # # Ingress class name (e.g. nginx, traefik).
