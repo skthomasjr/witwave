@@ -61,7 +61,7 @@ RUN apt-get update && apt-get install -y shellcheck \
 # ineffassign, controller-gen drift check), and evan's risk-class
 # scanners (govulncheck, gosec). Every version pinned for
 # reproducibility.
-ARG GO_VERSION=1.26.2
+ARG GO_VERSION=1.26.3
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
         amd64) GO_ARCH=amd64 ;; \
@@ -156,7 +156,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm
 # backend Dockerfile.
 #
 # The Go toolchain installed above (matches clients/ww/go.mod's
-# `go 1.26.2`) is reused for this build. GOPATH/GOCACHE are scoped to
+# `go 1.26.3`) is reused for this build. GOPATH/GOCACHE are scoped to
 # /tmp and cleaned after the build so the layer adds only the binary
 # (~12 MB), not module cache.
 COPY clients/ww/go.mod clients/ww/go.sum /tmp/ww-src/
