@@ -112,9 +112,11 @@ _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 502, 503, 504})
 #   * never               — never retry 5xx; surface immediately.
 #                           Strictest no-double-bill posture for
 #                           cost-sensitive deployments.
-# Network-level errors (ConnectTimeout, ReadTimeout, ConnectError) are
-# retried regardless of policy — they almost never indicate server-side
-# LLM work happened.
+# Network-level errors (ConnectTimeout, ReadTimeout, ReadError,
+# ConnectError) are retried regardless of policy — they almost never
+# indicate server-side LLM work happened. `ReadError` covers the
+# keepalive-pool reaper race documented in the 2026-05-11 incident
+# where iris's release replies were silently dropped at the A2A layer.
 def _resolve_retry_policy() -> str:
     """Read A2A_RETRY_POLICY with validation + clear warning on bad input."""
     _log = logging.getLogger(__name__)
@@ -226,7 +228,7 @@ class A2ABackend:
         # a lazy None-check (#398).
         self._client: httpx.AsyncClient = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=_HTTP_TIMEOUT_SECONDS, write=30.0, pool=5.0),
-            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5, keepalive_expiry=2.0),
         )
 
         # Circuit-breaker state (#609). Starts closed; transitions to `open`
@@ -265,7 +267,7 @@ class A2ABackend:
         if self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(connect=10.0, read=_HTTP_TIMEOUT_SECONDS, write=30.0, pool=5.0),
-                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5, keepalive_expiry=2.0),
             )
         return self._client
 
@@ -681,7 +683,7 @@ class A2ABackend:
                             return b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
                         await resp.aread()
                         return resp.text
-            except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+            except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout, httpx.ReadError) as exc:
                 logger.warning(
                     f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
                 )
