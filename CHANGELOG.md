@@ -6,6 +6,24 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.13] — 2026-05-11
+
+Patch release continuing the finn-driven `untested-api` gap-class sweep on the `ww` CLI — eight more pure helpers gain
+coverage across flag parsers, column formatters, GitOps URL parsing, backend-spec resolution, snapshot column rendering,
+events-row rendering, and helm-release status defense.
+
+### Fixed
+
+- **ww**: Cover eight previously-untested pure helpers — `--gitsync-map` / `--gitsync-secret` flag parsers, `--persist` /
+  `--persist-mount` flag parsers + defaults resolver, `FormatAge` duration column formatter, `ParseGitOps` +
+  `splitURLBranch` SSH-aware parsing, `ParseBackendSpecs` / `PrimaryBackend` flag contract,
+  `snapshotEntry.pickField` column-render contract, `events.go` row-renderer pure helpers, and `helmReleaseStatus`
+  nil-`Info` defense (#1550) — closing more `untested-api` gap-class findings finn surfaced.
+
+### Documentation
+
+- **research**: Refresh the competitive-landscape brief against the current SDK / protocol state.
+
 ## [0.23.12] — 2026-05-11
 
 Patch release continuing the finn-driven `untested-pure-helper` gap-class sweep on the `ww` CLI — nine more pure helpers
