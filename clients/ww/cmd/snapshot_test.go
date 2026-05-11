@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -203,4 +204,80 @@ func TestFindEntryByName(t *testing.T) {
 			t.Errorf("findEntryByName(nil, %q) = %v, want nil", "alpha", got)
 		}
 	})
+}
+
+// TestParseSnapshot pins the shape-normaliser the snapshot fetch path
+// (fetchSnapshot -> parseSnapshot) uses to coerce every variant the
+// harness can return into the canonical []snapshotEntry slice.
+// Production callers are the `ww jobs/tasks/triggers/continuations
+// list|view` commands; drift here would silently change which
+// envelopes render as a one-row table versus a list versus a
+// "schema mismatch" error.
+//
+// The contract has six recognised shapes plus two error branches:
+//  1. empty input (after whitespace trim) → (nil, nil) — no error.
+//  2. JSON list `[ {...}, {...} ]` → entries verbatim.
+//  3. Object with "items": [...] → unwrap into entries.
+//  4. Object with one of "jobs"/"tasks"/"triggers"/"continuations"/
+//     "heartbeat" → unwrap (array form OR single-object form).
+//  5. Unknown top-level keys → error mentioning observed keys (#1244).
+//  6. Malformed JSON → error wrapped with "parse list:" or "parse
+//     object:" prefix depending on whether the input started with
+//     '[' or not.
+func TestParseSnapshot(t *testing.T) {
+	cases := []struct {
+		name      string
+		in        string
+		wantLen   int
+		wantErr   bool
+		wantErrIn string // substring required in err.Error() when wantErr
+	}{
+		// Shape 1 — empty / whitespace-only input is not an error.
+		{"empty input returns nil-nil", "", 0, false, ""},
+		{"whitespace-only returns nil-nil", "   \n\t  ", 0, false, ""},
+		// Shape 2 — top-level JSON list.
+		{"empty list returns empty slice", "[]", 0, false, ""},
+		{"list of one entry", `[{"name":"a"}]`, 1, false, ""},
+		{"list of three entries", `[{"name":"a"},{"name":"b"},{"name":"c"}]`, 3, false, ""},
+		// Shape 3 — object with "items".
+		{"items empty", `{"items":[]}`, 0, false, ""},
+		{"items with two", `{"items":[{"id":"x"},{"id":"y"}]}`, 2, false, ""},
+		// Shape 4 — known-key array variant.
+		{"jobs array", `{"jobs":[{"name":"j1"},{"name":"j2"}]}`, 2, false, ""},
+		{"tasks array", `{"tasks":[{"name":"t1"}]}`, 1, false, ""},
+		{"triggers array", `{"triggers":[{"name":"tr"}]}`, 1, false, ""},
+		{"continuations array", `{"continuations":[{"name":"c"}]}`, 1, false, ""},
+		{"heartbeat array", `{"heartbeat":[{"name":"h1"}]}`, 1, false, ""},
+		// Shape 4 (cont) — known-key single-object variant (heartbeat).
+		{"heartbeat single-object", `{"heartbeat":{"name":"hb","status":"ok"}}`, 1, false, ""},
+		// Shape 5 — unknown envelope produces a descriptive error that
+		// surfaces the observed top-level keys (#1244).
+		{"unknown envelope lists keys", `{"data":[],"meta":{}}`, 0, true, "data, meta"},
+		{"unknown envelope mentions expected shapes", `{"foo":1}`, 0, true, "expected a JSON list"},
+		// Shape 6 — malformed JSON wraps with prefix that names which
+		// branch the parser took.
+		{"malformed list prefix", `[`, 0, true, "parse list:"},
+		{"malformed object prefix", `{`, 0, true, "parse object:"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseSnapshot([]byte(tc.in))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseSnapshot(%q) err = nil, want non-nil", tc.in)
+				}
+				if tc.wantErrIn != "" && !strings.Contains(err.Error(), tc.wantErrIn) {
+					t.Errorf("parseSnapshot(%q) err = %q, want substring %q", tc.in, err.Error(), tc.wantErrIn)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseSnapshot(%q) err = %v, want nil", tc.in, err)
+			}
+			if len(got) != tc.wantLen {
+				t.Errorf("parseSnapshot(%q) len = %d, want %d (got %v)", tc.in, len(got), tc.wantLen, got)
+			}
+		})
+	}
 }
