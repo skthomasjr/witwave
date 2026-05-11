@@ -78,3 +78,59 @@ func TestIsCRDNotFound(t *testing.T) {
 		})
 	}
 }
+
+// TestUnstructuredSlice pins the deep-map walker behaviour InspectCRDs
+// uses to extract spec.versions[] from an unstructured CRD. The
+// contract has three failure modes (empty path → error, broken-path →
+// (nil,false,nil), non-slice leaf → (nil,false,nil)) plus the happy
+// path. Pin each so a future map-shape change in the operator schema
+// fails the test rather than silently returning an empty versions
+// list.
+func TestUnstructuredSlice(t *testing.T) {
+	good := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"versions": []interface{}{
+				map[string]interface{}{"name": "v1alpha1"},
+				map[string]interface{}{"name": "v1"},
+			},
+			"scope": "Namespaced",
+		},
+	}
+	cases := []struct {
+		name      string
+		obj       map[string]interface{}
+		path      []string
+		wantLen   int // -1 means expect "not found / wrong type" (slice == nil, found == false)
+		wantFound bool
+		wantErr   bool
+	}{
+		{"empty path returns error", good, nil, -1, false, true},
+		{"happy path returns slice", good, []string{"spec", "versions"}, 2, true, false},
+		{"missing top-level key returns not-found", good, []string{"status"}, -1, false, false},
+		{"missing intermediate key returns not-found", good, []string{"spec", "missing", "versions"}, -1, false, false},
+		{"non-map intermediate returns not-found", good, []string{"spec", "scope", "name"}, -1, false, false},
+		{"non-slice leaf returns not-found", good, []string{"spec", "scope"}, -1, false, false},
+		{"empty map + happy-shape path returns not-found", map[string]interface{}{}, []string{"spec", "versions"}, -1, false, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got, found, err := unstructuredSlice(tc.obj, tc.path...)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("err: want=%v, got=%v", tc.wantErr, err)
+			}
+			if found != tc.wantFound {
+				t.Errorf("found: want=%v, got=%v", tc.wantFound, found)
+			}
+			if tc.wantLen >= 0 {
+				if len(got) != tc.wantLen {
+					t.Errorf("len(slice): want=%d, got=%d (slice=%v)", tc.wantLen, len(got), got)
+				}
+			} else {
+				if got != nil {
+					t.Errorf("slice should be nil for not-found/error case, got=%v", got)
+				}
+			}
+		})
+	}
+}
