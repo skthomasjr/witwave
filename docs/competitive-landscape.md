@@ -1,10 +1,16 @@
 # Competitive Landscape
 
-Last updated: 2026-05-09 by kira-agent-witwave (twelfth pass — narrow refresh against current upstream state: bumped
-OpenClaw to `v2026.5.7` (2026-05-07), Microsoft Agent Framework to `python-1.3.0` / `dotnet-1.5.0` (both 2026-05-08),
-and rewrote stale `All-Hands-AI/OpenHands` URLs to the post-rename canonical `OpenHands/OpenHands` (the GitHub redirect
-still resolves but the org has been renamed; sources verified via og:title on the live release pages, accessed
-2026-05-09). Eleventh pass (2026-04-20) rewrote the OpenClaw entry with fresh research from <https://openclaw.ai/> and
+Last updated: 2026-05-11 by kira-agent-witwave (thirteenth pass — verification-heavy pass with no material upstream
+changes: re-checked OpenClaw, Microsoft Agent Framework, OpenHands, CrewAI, LangGraph, and A2A — every version pin from
+the twelfth pass is still current (OpenClaw `v2026.5.7` remains latest stable with only beta releases after; Microsoft
+Agent Framework still `python-1.3.0` / `dotnet-1.5.0`; OpenHands still `1.7.0`; CrewAI still `1.14.4`; LangGraph still
+`1.1.10`; A2A still `v1.0.0`). Only re-pinned drift-prone metrics: OpenClaw to `371,000+` stars / `76,600+` forks (was
+`368,700+` / `75,900+`) and A2A to `23,700+` stars (was `23,600+`) (sources: <https://github.com/openclaw/openclaw> and
+<https://github.com/a2aproject/A2A>, accessed 2026-05-11). Twelfth pass (2026-05-09) bumped OpenClaw to `v2026.5.7`
+(2026-05-07), Microsoft Agent Framework to `python-1.3.0` / `dotnet-1.5.0` (both 2026-05-08), and rewrote stale
+`All-Hands-AI/OpenHands` URLs to the post-rename canonical `OpenHands/OpenHands` (the GitHub redirect still resolves but
+the org has been renamed; sources verified via og:title on the live release pages, accessed 2026-05-09). Eleventh pass
+(2026-04-20) rewrote the OpenClaw entry with fresh research from <https://openclaw.ai/> and
 <https://github.com/openclaw/openclaw> pulled during a session-end strategic discussion. Captured owner's "witwave is
 OpenClaw for teams with Kubernetes clusters" positioning frame and listed OpenClaw's 20+ chat-platform integrations,
 menu-bar voice-wake companion, workspace skills system with agent-written-skill loop, and MIT + calendar-versioned
@@ -324,9 +330,9 @@ it as the coordination layer between autonomous agents)
 
 **A2A v1.0 is now the stable version (tagged 2026-03-12).** Governance has been donated to the **Linux Foundation** as
 an official project; one-year anniversary milestone (2026-04-09) reports 150+ participating organizations. Star count at
-the `a2aproject/A2A` repo continues to grow — **23,600+ as of 2026-05-06**, up from the 22k+ figure quoted in the April
+the `a2aproject/A2A` repo continues to grow — **23,700+ as of 2026-05-11**, up from the 22k+ figure quoted in the April
 pass (sources: <https://github.com/a2aproject/A2A/releases/tag/v1.0.0> and <https://github.com/a2aproject/A2A>, accessed
-2026-05-06). Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as
+2026-05-11). Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as
 their native cross-agent protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to
 prevent forgery and card-redirect attacks, closing a real multi-tenant security gap.
 
@@ -352,13 +358,14 @@ platform rather than a personal local daemon. OpenClaw targets the individual ru
 this project targets the team running coordinated agents as cluster workloads.
 
 OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
-pressure, and three days later settled on **OpenClaw**. Category-leading install base — **368,700+ GitHub stars and
-75,900+ forks as of 2026-05-06**, with a very active commit cadence (latest release `v2026.5.7` on 2026-05-07) — the
-exact number drifts fast, so re-pin before quoting in marketing or external docs (sources:
-<https://github.com/openclaw/openclaw> and <https://github.com/openclaw/openclaw/releases/tag/v2026.5.7>, accessed
-2026-05-09). Runs on user-controlled infrastructure (notable community trend: a Mac Mini hardware rush for 24/7
-hosting). Connects to Claude, OpenAI, DeepSeek, and local models. **MIT licensed; calendar-versioned releases
-(`vYYYY.M.D`) with beta and dev channels; very active development cadence.**
+pressure, and three days later settled on **OpenClaw**. Category-leading install base — **371,000+ GitHub stars and
+76,600+ forks as of 2026-05-11**, with a very active commit cadence (latest stable release `v2026.5.7` on 2026-05-07,
+with `v2026.5.9-beta.1` and `v2026.5.10-beta.{1,2}` shipped after as pre-releases) — the exact number drifts fast, so
+re-pin before quoting in marketing or external docs (sources: <https://github.com/openclaw/openclaw> and
+<https://github.com/openclaw/openclaw/releases/tag/v2026.5.7>, accessed 2026-05-11). Runs on user-controlled
+infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Connects to Claude, OpenAI,
+DeepSeek, and local models. **MIT licensed; calendar-versioned releases (`vYYYY.M.D`) with beta and dev channels; very
+active development cadence.**
 
 **Implementation + architecture:** TypeScript / Node.js (v22.16+, v24 recommended). The Gateway is a local control plane
 deployed on user machines (macOS, Linux, Windows via WSL2). No cloud requirement; runs entirely on user infrastructure.
