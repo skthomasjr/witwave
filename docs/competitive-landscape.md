@@ -1,11 +1,24 @@
 # Competitive Landscape
 
-Last updated: 2026-05-11 by kira-agent-witwave (thirteenth pass — verification-heavy pass with no material upstream
-changes: re-checked OpenClaw, Microsoft Agent Framework, OpenHands, CrewAI, LangGraph, and A2A — every version pin from
-the twelfth pass is still current (OpenClaw `v2026.5.7` remains latest stable with only beta releases after; Microsoft
-Agent Framework still `python-1.3.0` / `dotnet-1.5.0`; OpenHands still `1.7.0`; CrewAI still `1.14.4`; LangGraph still
-`1.1.10`; A2A still `v1.0.0`). Only re-pinned drift-prone metrics: OpenClaw to `371,000+` stars / `76,600+` forks (was
-`368,700+` / `75,900+`) and A2A to `23,700+` stars (was `23,600+`) (sources: <https://github.com/openclaw/openclaw> and
+Last updated: 2026-05-11 by kira-agent-witwave (fourteenth pass — focused SDK/protocol-axis refresh per zora dispatch:
+added new Reference Products entry for **OpenAI Agents SDK** (MIT, **26,200+** GitHub stars, latest `v0.17.1` per the
+releases page, provider-agnostic via LiteLLM / any-llm — supports OpenAI Responses + Chat Completions APIs and 100+
+other LLMs; sandbox agents, sessions, handoffs, MCP, guardrails, tracing all first-class), filling a long-standing gap
+given OpenAI's April 15 2026 evolution announcement is now ~four weeks old (sources:
+<https://github.com/openai/openai-agents-python>, <https://github.com/openai/openai-agents-python/releases>,
+<https://openai.github.io/openai-agents-python/>, and
+<https://techcrunch.com/2026/04/15/openai-updates-its-agents-sdk-to-help-enterprises-build-safer-more-capable-agents/>,
+accessed 2026-05-11). Refreshed Claude Agent SDK entry with Q2 2026 additions (latest `v0.1.80` on 2026-05-09):
+`session_store_flush="eager"` (0.1.73), deferred tool use + `updatedToolOutput` in PostToolUse + strict MCP config +
+hook event streaming (all 0.1.74), and the new `"xhigh"` effort level for Opus 4.7 (source:
+<https://github.com/anthropics/claude-agent-sdk-python/releases>, accessed 2026-05-11). Verified A2A repo at 23,700+
+stars / v1.0.0 and LangGraph at v1.1.10 + v1.2 alpha line — both still pinned correctly. Thirteenth pass (earlier on
+2026-05-11) was a verification-heavy pass with no material upstream changes: re-checked OpenClaw, Microsoft Agent
+Framework, OpenHands, CrewAI, LangGraph, and A2A — every version pin from the twelfth pass was still current (OpenClaw
+`v2026.5.7` remains latest stable with only beta releases after; Microsoft Agent Framework still `python-1.3.0` /
+`dotnet-1.5.0`; OpenHands still `1.7.0`; CrewAI still `1.14.4`; LangGraph still `1.1.10`; A2A still `v1.0.0`); only
+re-pinned drift-prone metrics: OpenClaw to `371,000+` stars / `76,600+` forks (was `368,700+` / `75,900+`) and A2A to
+`23,700+` stars (was `23,600+`) (sources: <https://github.com/openclaw/openclaw> and
 <https://github.com/a2aproject/A2A>, accessed 2026-05-11). Twelfth pass (2026-05-09) bumped OpenClaw to `v2026.5.7`
 (2026-05-07), Microsoft Agent Framework to `python-1.3.0` / `dotnet-1.5.0` (both 2026-05-08), and rewrote stale
 `All-Hands-AI/OpenHands` URLs to the post-rename canonical `OpenHands/OpenHands` (the GitHub redirect still resolves but
@@ -170,8 +183,32 @@ available.
 programmatically without file-based configuration. Entirely unused by this project.
 
 **Advanced execution options:** `enable_file_checkpointing` enables file-change tracking for session rewinding. `effort`
-sets thinking depth (`"low"`, `"medium"`, `"high"`, `"max"`). `plugins` accepts a list of `SdkPluginConfig` objects for
-custom plugins loaded from local paths. All unused by this project.
+sets thinking depth (`"low"`, `"medium"`, `"high"`, `"max"`, plus `"xhigh"` for Opus 4.7 since v0.1.74 — falls back to
+`"high"` on other models). `plugins` accepts a list of `SdkPluginConfig` objects for custom plugins loaded from local
+paths. All unused by this project.
+
+**Q2 2026 SDK additions (0.1.73–0.1.80, latest `v0.1.80` on 2026-05-09):** Capabilities shipped since the previous pass
+of this doc, all unused by this project today (source: <https://github.com/anthropics/claude-agent-sdk-python/releases>,
+accessed 2026-05-11):
+
+- **`session_store_flush="eager"` (0.1.73)** — opt-in eager session-store flushing in `ClaudeAgentOptions` enables
+  live-tailing UIs, cross-process resume, and crash-durability past where batched flushing leaves off. Direct primitive
+  for Gap Analysis → Durability beyond the existing stale-checkpoint detection (F-005).
+- **Deferred tool use (0.1.74)** — new `"defer"` value for `PreToolUseHookSpecificOutput.permissionDecision` plus a
+  `DeferredToolUse` dataclass on `ResultMessage.deferred_tool_use`. Lets the harness park a tool call for later
+  resumption rather than allowing or blocking inline — a closer fit for HITL approval queues than the binary
+  allow/deny shape.
+- **`updatedToolOutput` in PostToolUse (0.1.74)** — symmetric counterpart to `updatedInput` on PreToolUse — rewrite tool
+  output after execution (redaction, summarization, truncation) without changing the underlying tool.
+- **Strict MCP config (0.1.74)** — `strict_mcp_config=True` ignores project / user / global MCP configurations and
+  enforces only the harness-supplied set. Directly applicable to this project's MCP allow-list posture
+  (`MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_CWD_PREFIXES`).
+- **Hook event streaming (0.1.74)** — `include_hook_events=True` yields hook execution events (PreToolUse, PostToolUse,
+  Stop, …) as `HookEventMessage` records, enabling external observability of hook behaviour without inline coupling.
+  Natural fit for the published `/events/stream` schema.
+- **`include_hook_events` + `xhigh` effort + Opus 4.7 wiring (0.1.77–0.1.80, May 6–9 2026)** — late-May polish:
+  `xhigh` falls back to `high` on models that don't support it; `atexit` handler ensures live CLI subprocesses are
+  terminated on harness exit (prevents orphaned `claude` processes during pod restart).
 
 **Permission modes:** Five modes — `default`, `dontAsk`, `acceptEdits`, `bypassPermissions`, `plan` — set via
 `permission_mode` in `ClaudeAgentOptions`. The `plan` mode (read-only execution + single writable plan file) is
@@ -185,6 +222,54 @@ execution path. The hooks system (Python callback API via `HookMatcher`), `task_
 custom tools, `permission_mode="plan"` for structured task execution, and `AgentDefinition` for programmatic subagents
 are the most actionable gaps. Each is a targeted addition to `executor.py`'s `make_options()` with no structural changes
 to the project.
+
+### OpenAI Agents SDK (OpenAI)
+
+**Autonomy model:** Human-driven to semi-autonomous (SDK for building agents — not an autonomous runtime by itself; the
+April 2026 sandbox-agent + harness primitives push the SDK toward semi-autonomous when an integrator uses the bundled
+harness rather than rolling their own)
+
+The OpenAI Agents SDK is OpenAI's first-party agent-building framework — structurally the closest peer to the Claude
+Agent SDK in the vendor-SDK tier. **MIT-licensed, 26,200+ GitHub stars, latest `v0.17.1`** per the releases page
+(sources: <https://github.com/openai/openai-agents-python> and <https://github.com/openai/openai-agents-python/releases>,
+accessed 2026-05-11). Self-described as "a lightweight yet powerful framework for building multi-agent workflows" and
+notably **provider-agnostic** — supports the OpenAI Responses and Chat Completions APIs plus 100+ other LLMs via the
+LiteLLM and any-llm adapter ecosystems (source: <https://github.com/openai/openai-agents-python>, accessed 2026-05-11).
+Python (`openai-agents-python`) is the primary SDK; TypeScript support is also available with sandbox-agent and harness
+features rolling out, with code-mode and subagents called out as in-flight for both languages.
+
+**April 15 2026 evolution announcement — sandbox agents and harness architecture:** OpenAI announced an expanded SDK
+framed as "help[ing] enterprises build safer, more capable agents," addressing enterprise safety and complexity in
+long-horizon tasks (source:
+<https://techcrunch.com/2026/04/15/openai-updates-its-agents-sdk-to-help-enterprises-build-safer-more-capable-agents/>,
+accessed 2026-05-11). Key primitives surfaced in the docs (source: <https://openai.github.io/openai-agents-python/>,
+accessed 2026-05-11):
+
+- **Sandbox agents** — specialists run inside real isolated workspaces with manifest-defined files and **resumable
+  sandbox sessions**.
+- **Sessions** — persistent memory layer maintaining working context within an agent loop.
+- **Agents as tools / Handoffs** — built-in delegation primitive for coordinating multiple agents.
+- **MCP server tool calling** — first-class MCP integration, treated symmetrically with function tools.
+- **Guardrails** — parallel input validation and safety checks that fail fast when checks don't pass.
+- **Built-in tracing** — visualization, debugging, and monitoring with native hooks into the OpenAI tracing suite.
+
+Recent point releases (`v0.16.1` / `v0.17.0` / `v0.17.1`, early May 2026) have hardened the sandbox model — constraining
+local sandbox artifact sources to base dir for better isolation, stabilizing the realtime-session tool-approval flow,
+defaulting realtime sessions to `gpt-realtime-2`, and tightening MCP approval-policy validation (source:
+<https://github.com/openai/openai-agents-python/releases>, accessed 2026-05-11).
+
+**Relative standing:** OpenAI Agents SDK is now the third major vendor SDK in this project's reference set — alongside
+the Claude Agent SDK and Microsoft Agent Framework — and the most directly comparable to Claude Agent SDK in shape
+(Python library + sandbox + sessions + MCP + tracing + guardrails). Its **provider-agnostic posture** is structurally
+significant: agents built on OpenAI's SDK can already target Claude / Gemini / 100+ models via LiteLLM (source:
+<https://github.com/openai/openai-agents-python>, accessed 2026-05-11), eroding the historical "pick your vendor's SDK,
+get locked to their models" framing that pushed teams to either Anthropic or OpenAI camps. The sandbox-agent + harness
+pattern overlaps with this project's harness-as-pod model but at a different layer — witwave runs the harness as a
+Kubernetes pod with multi-backend routing inside it (claude / codex / gemini per concern), while OpenAI's sandbox is
+per-task workspace isolation inside the SDK process. Net: a category peer whose existence reinforces that "vendor SDK +
+sandbox + sessions + MCP + guardrails + tracing" is now the standard shape; witwave's defensible differentiation
+narrows further to **multi-backend routing under one named-agent identity**, **cluster-resident A2A coordination across
+named agents**, and **the published `/events/stream` wire contract consumed by multiple independent clients**.
 
 ### Devin (Cognition)
 
