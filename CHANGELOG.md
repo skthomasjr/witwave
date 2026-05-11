@@ -6,6 +6,23 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.10] — 2026-05-11
+
+Patch release continuing the finn-driven gap-class sweeps on the `ww` CLI — three more rounds of `convention-drift`
+Long-help additions plus a small `untested-cobra-helper` test fill — alongside a zora cadence tightening and a new
+autonomous autotune loop.
+
+### Fixed
+
+- **ww**: Add `Long` help to the `version`, `config path`, `config list-keys`, and four remaining `agent.go` cobra
+  subcommands, continuing the `convention-drift` sweep across the CLI surface.
+- **ww**: Cover the previously-untested `status.go::sameOrigin` cobra helper, closing the `untested-cobra-helper`
+  gap-class finding finn surfaced.
+
+### Agent identity
+
+- **zora**: Tighten cadences and add an autonomous autotune loop.
+
 ## [0.23.9] — 2026-05-10
 
 Patch release closing a finn-surfaced `convention-drift` gap-class sweep — six `ww` cobra subcommand groups were missing
