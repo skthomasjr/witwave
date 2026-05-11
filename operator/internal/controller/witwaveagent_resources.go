@@ -1693,6 +1693,11 @@ type PVCBuildError struct {
 	Err         error
 }
 
+// Error formats the PVCBuildError as
+// `backend "<name>": invalid storage.size "<size>": <underlying>` so
+// the controller's log + Event surfaces name the offending backend,
+// the rejected size value, and the underlying resource.Quantity parse
+// failure in a single line.
 func (e *PVCBuildError) Error() string {
 	return fmt.Sprintf("backend %q: invalid storage.size %q: %v", e.BackendName, e.Size, e.Err)
 }

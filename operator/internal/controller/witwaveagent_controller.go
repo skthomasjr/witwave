@@ -703,6 +703,13 @@ var fieldIndexMissingRe = regexp.MustCompile(
 	`(?i)\b(?:(?:index with name \S+|indexer "\S+")\s+(?:does not exist|is not registered|not registered)|field label not supported:\s*\S+)\b`,
 )
 
+// IsFieldIndexMissing reports whether err — or any error in its wrap
+// chain — is a controller-runtime "field index does not exist" /
+// "indexer not registered" / "field label not supported" error from
+// the cached client. The matcher uses the anchored
+// fieldIndexMissingRe regex above so unrelated errors that happen to
+// mention "index" + "exist" no longer trip the fallback path; see the
+// comment block above fieldIndexMissingRe for the historical context.
 func IsFieldIndexMissing(err error) bool {
 	if err == nil {
 		return false

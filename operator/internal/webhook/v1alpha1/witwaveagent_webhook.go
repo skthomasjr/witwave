@@ -88,6 +88,12 @@ type WitwaveAgentCustomValidator struct {
 
 var _ webhook.CustomValidator = &WitwaveAgentCustomValidator{}
 
+// ValidateCreate is the admission handler for CREATE requests on
+// WitwaveAgent. It runs validateWitwaveAgent for spec-shape invariants
+// and validateLiveCredentials for apiserver-backed checks
+// (existingSecret resolution, inline-credentials RBAC posture), then
+// surfaces inlineCredentialsRBACWarnings as admission warnings so
+// operators see RBAC caveats without admission being blocked.
 func (v *WitwaveAgentCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	agent, ok := obj.(*witwavev1alpha1.WitwaveAgent)
 	if !ok {
@@ -102,6 +108,11 @@ func (v *WitwaveAgentCustomValidator) ValidateCreate(ctx context.Context, obj ru
 	return inlineCredentialsRBACWarnings(agent), nil
 }
 
+// ValidateUpdate is the admission handler for UPDATE requests on
+// WitwaveAgent. The check is symmetric with ValidateCreate: the same
+// validateWitwaveAgent + validateLiveCredentials gates run on the new
+// object. The prior object is not inspected — every UPDATE is
+// re-validated from scratch.
 func (v *WitwaveAgentCustomValidator) ValidateUpdate(ctx context.Context, _ runtime.Object, newObj runtime.Object) (admission.Warnings, error) {
 	agent, ok := newObj.(*witwavev1alpha1.WitwaveAgent)
 	if !ok {
@@ -595,6 +606,9 @@ func validateInlineCredentialsAck(agent *witwavev1alpha1.WitwaveAgent) error {
 	return nil
 }
 
+// ValidateDelete is the admission handler for DELETE requests on
+// WitwaveAgent. The CR carries no delete-time invariants, so the
+// handler returns (nil, nil) unconditionally.
 func (v *WitwaveAgentCustomValidator) ValidateDelete(ctx context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

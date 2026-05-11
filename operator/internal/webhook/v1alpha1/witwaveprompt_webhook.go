@@ -90,6 +90,9 @@ func (v *WitwavePromptCustomValidator) ValidateUpdate(ctx context.Context, _ run
 	return nil, nil
 }
 
+// ValidateDelete is the admission handler for DELETE requests on
+// WitwavePrompt. The CR carries no delete-time invariants, so the
+// handler returns (nil, nil) unconditionally.
 func (v *WitwavePromptCustomValidator) ValidateDelete(ctx context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

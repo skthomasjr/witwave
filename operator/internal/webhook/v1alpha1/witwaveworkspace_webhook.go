@@ -79,6 +79,11 @@ func (v *WitwaveWorkspaceCustomValidator) ValidateUpdate(ctx context.Context, _ 
 	return nil, nil
 }
 
+// ValidateDelete is the admission handler for DELETE requests on
+// WitwaveWorkspace. The refuse-delete finalizer (cleared only when no
+// agent still references the workspace) carries the live-state
+// invariants here, so this webhook handler has nothing to check and
+// returns (nil, nil) unconditionally.
 func (v *WitwaveWorkspaceCustomValidator) ValidateDelete(ctx context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

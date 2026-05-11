@@ -397,6 +397,11 @@ type HTTPError struct {
 	Body       string
 }
 
+// Error formats the HTTPError as "<METHOD> <URL>: <status>" with an
+// optional " (<body>)" suffix when the response body was non-empty.
+// The body segment is passed through truncate() with a 256-byte cap so
+// a pathological upstream payload doesn't blow up log lines that
+// embed the formatted error.
 func (e *HTTPError) Error() string {
 	body := truncate(e.Body, 256)
 	return fmt.Sprintf("%s %s: %s%s", e.Method, e.URL, e.Status, func() string {
