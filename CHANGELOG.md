@@ -14,11 +14,11 @@ events-row rendering, and helm-release status defense.
 
 ### Fixed
 
-- **ww**: Cover eight previously-untested pure helpers — `--gitsync-map` / `--gitsync-secret` flag parsers, `--persist` /
-  `--persist-mount` flag parsers + defaults resolver, `FormatAge` duration column formatter, `ParseGitOps` +
-  `splitURLBranch` SSH-aware parsing, `ParseBackendSpecs` / `PrimaryBackend` flag contract,
-  `snapshotEntry.pickField` column-render contract, `events.go` row-renderer pure helpers, and `helmReleaseStatus`
-  nil-`Info` defense (#1550) — closing more `untested-api` gap-class findings finn surfaced.
+- **ww**: Cover eight previously-untested pure helpers — `--gitsync-map` / `--gitsync-secret` flag parsers, `--persist`
+  / `--persist-mount` flag parsers + defaults resolver, `FormatAge` duration column formatter, `ParseGitOps` +
+  `splitURLBranch` SSH-aware parsing, `ParseBackendSpecs` / `PrimaryBackend` flag contract, `snapshotEntry.pickField`
+  column-render contract, `events.go` row-renderer pure helpers, and `helmReleaseStatus` nil-`Info` defense (#1550) —
+  closing more `untested-api` gap-class findings finn surfaced.
 
 ### Documentation
 

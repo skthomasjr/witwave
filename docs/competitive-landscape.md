@@ -196,8 +196,8 @@ accessed 2026-05-11):
   for Gap Analysis → Durability beyond the existing stale-checkpoint detection (F-005).
 - **Deferred tool use (0.1.74)** — new `"defer"` value for `PreToolUseHookSpecificOutput.permissionDecision` plus a
   `DeferredToolUse` dataclass on `ResultMessage.deferred_tool_use`. Lets the harness park a tool call for later
-  resumption rather than allowing or blocking inline — a closer fit for HITL approval queues than the binary
-  allow/deny shape.
+  resumption rather than allowing or blocking inline — a closer fit for HITL approval queues than the binary allow/deny
+  shape.
 - **`updatedToolOutput` in PostToolUse (0.1.74)** — symmetric counterpart to `updatedInput` on PreToolUse — rewrite tool
   output after execution (redaction, summarization, truncation) without changing the underlying tool.
 - **Strict MCP config (0.1.74)** — `strict_mcp_config=True` ignores project / user / global MCP configurations and
@@ -206,9 +206,9 @@ accessed 2026-05-11):
 - **Hook event streaming (0.1.74)** — `include_hook_events=True` yields hook execution events (PreToolUse, PostToolUse,
   Stop, …) as `HookEventMessage` records, enabling external observability of hook behaviour without inline coupling.
   Natural fit for the published `/events/stream` schema.
-- **`include_hook_events` + `xhigh` effort + Opus 4.7 wiring (0.1.77–0.1.80, May 6–9 2026)** — late-May polish:
-  `xhigh` falls back to `high` on models that don't support it; `atexit` handler ensures live CLI subprocesses are
-  terminated on harness exit (prevents orphaned `claude` processes during pod restart).
+- **`include_hook_events` + `xhigh` effort + Opus 4.7 wiring (0.1.77–0.1.80, May 6–9 2026)** — late-May polish: `xhigh`
+  falls back to `high` on models that don't support it; `atexit` handler ensures live CLI subprocesses are terminated on
+  harness exit (prevents orphaned `claude` processes during pod restart).
 
 **Permission modes:** Five modes — `default`, `dontAsk`, `acceptEdits`, `bypassPermissions`, `plan` — set via
 `permission_mode` in `ClaudeAgentOptions`. The `plan` mode (read-only execution + single writable plan file) is
@@ -231,12 +231,13 @@ harness rather than rolling their own)
 
 The OpenAI Agents SDK is OpenAI's first-party agent-building framework — structurally the closest peer to the Claude
 Agent SDK in the vendor-SDK tier. **MIT-licensed, 26,200+ GitHub stars, latest `v0.17.1`** per the releases page
-(sources: <https://github.com/openai/openai-agents-python> and <https://github.com/openai/openai-agents-python/releases>,
-accessed 2026-05-11). Self-described as "a lightweight yet powerful framework for building multi-agent workflows" and
-notably **provider-agnostic** — supports the OpenAI Responses and Chat Completions APIs plus 100+ other LLMs via the
-LiteLLM and any-llm adapter ecosystems (source: <https://github.com/openai/openai-agents-python>, accessed 2026-05-11).
-Python (`openai-agents-python`) is the primary SDK; TypeScript support is also available with sandbox-agent and harness
-features rolling out, with code-mode and subagents called out as in-flight for both languages.
+(sources: <https://github.com/openai/openai-agents-python> and
+<https://github.com/openai/openai-agents-python/releases>, accessed 2026-05-11). Self-described as "a lightweight yet
+powerful framework for building multi-agent workflows" and notably **provider-agnostic** — supports the OpenAI Responses
+and Chat Completions APIs plus 100+ other LLMs via the LiteLLM and any-llm adapter ecosystems (source:
+<https://github.com/openai/openai-agents-python>, accessed 2026-05-11). Python (`openai-agents-python`) is the primary
+SDK; TypeScript support is also available with sandbox-agent and harness features rolling out, with code-mode and
+subagents called out as in-flight for both languages.
 
 **April 15 2026 evolution announcement — sandbox agents and harness architecture:** OpenAI announced an expanded SDK
 framed as "help[ing] enterprises build safer, more capable agents," addressing enterprise safety and complexity in
@@ -267,9 +268,9 @@ get locked to their models" framing that pushed teams to either Anthropic or Ope
 pattern overlaps with this project's harness-as-pod model but at a different layer — witwave runs the harness as a
 Kubernetes pod with multi-backend routing inside it (claude / codex / gemini per concern), while OpenAI's sandbox is
 per-task workspace isolation inside the SDK process. Net: a category peer whose existence reinforces that "vendor SDK +
-sandbox + sessions + MCP + guardrails + tracing" is now the standard shape; witwave's defensible differentiation
-narrows further to **multi-backend routing under one named-agent identity**, **cluster-resident A2A coordination across
-named agents**, and **the published `/events/stream` wire contract consumed by multiple independent clients**.
+sandbox + sessions + MCP + guardrails + tracing" is now the standard shape; witwave's defensible differentiation narrows
+further to **multi-backend routing under one named-agent identity**, **cluster-resident A2A coordination across named
+agents**, and **the published `/events/stream` wire contract consumed by multiple independent clients**.
 
 ### Devin (Cognition)
 
