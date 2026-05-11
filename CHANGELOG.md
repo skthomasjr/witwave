@@ -14,9 +14,10 @@ gain coverage across `tabwriter.go`, `stream.go`, `preflight.go`, and `release.g
 
 ### Fixed
 
-- **ww**: Cover nine previously-untested pure helpers — `tabwriter.go::{KV,Table}`, `stream.go::{FormatTS,FormatTSCompact}`,
-  `preflight.go::{FormatMissingRBAC,InstallRBACRequirements}`, and `release.go::{unstructuredSlice,isCRDNotFound,parseRevisionLabel}` —
-  closing the `untested-pure-helper` gap-class findings finn surfaced.
+- **ww**: Cover nine previously-untested pure helpers — `tabwriter.go::{KV,Table}`,
+  `stream.go::{FormatTS,FormatTSCompact}`, `preflight.go::{FormatMissingRBAC,InstallRBACRequirements}`, and
+  `release.go::{unstructuredSlice,isCRDNotFound,parseRevisionLabel}` — closing the `untested-pure-helper` gap-class
+  findings finn surfaced.
 
 ### Changed
 
