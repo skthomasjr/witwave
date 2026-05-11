@@ -6,6 +6,30 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.12] — 2026-05-11
+
+Patch release continuing the finn-driven `untested-pure-helper` gap-class sweep on the `ww` CLI — nine more pure helpers
+gain coverage across `tabwriter.go`, `stream.go`, `preflight.go`, and `release.go` — alongside phase 1 of embedding the
+`ww` CLI inside the claude backend image and a piper post-twitter skill scaffold.
+
+### Fixed
+
+- **ww**: Cover nine previously-untested pure helpers — `tabwriter.go::{KV,Table}`, `stream.go::{FormatTS,FormatTSCompact}`,
+  `preflight.go::{FormatMissingRBAC,InstallRBACRequirements}`, and `release.go::{unstructuredSlice,isCRDNotFound,parseRevisionLabel}` —
+  closing the `untested-pure-helper` gap-class findings finn surfaced.
+
+### Changed
+
+- **backends/claude**: Embed the `ww` CLI binary in the claude backend image (phase 1 — binary only).
+
+### Agent identity
+
+- **piper**: Scaffold the `post-twitter` skill; dormant until X credentials are wired.
+
+### Documentation
+
+- **research**: Refresh the competitive-landscape brief against the current industry state.
+
 ## [0.23.11] — 2026-05-11
 
 Patch release bundling two more finn-driven `untested-cobra-helper` gap-class fills on the `ww` CLI, a nova-style sweep
