@@ -6,15 +6,29 @@ public channels (X / LinkedIn / Mastodon / Threads / the team's eventual blog).
 This folder sits outside `docs/` deliberately. `docs/` is project-internal reference
 read by contributors; `social/` is content the team publishes to the world.
 
+## Folder layout
+
+```
+social/
+├── README.md                  (this file — the spec)
+├── papers/                    long-form whitepapers; standalone publications
+│   ├── four-phases-of-ai-adoption.md
+│   └── anatomy-of-an-agentic-team.md
+├── posts/                     short / medium-form posts that follow the spec
+│   └── (post files here)
+└── assets/                    images, video, audio referenced by posts/papers
+    └── <slug>/                one folder per post or paper that has media
+```
+
 ## What lives here
 
-- **Posts** — short or medium-form content destined for one or more social channels.
+- **Posts** (`posts/`) — short or medium-form content destined for one or more social channels.
   These follow the spec below.
-- **Whitepapers** — long-form framework pieces (e.g.,
-  `four-phases-of-ai-adoption.md`). These don't follow the post spec; they're
+- **Whitepapers** (`papers/`) — long-form framework pieces (e.g.,
+  `papers/four-phases-of-ai-adoption.md`). These don't follow the post spec; they're
   standalone publications. Treat them as source material that posts can reference.
 - **Drafts** — work-in-progress in either shape, marked `status: draft` in
-  frontmatter.
+  frontmatter (posts) or simply unfinished (papers).
 
 ## Post specification
 
@@ -47,7 +61,7 @@ published_urls:
 # Context (optional but encouraged)
 tags: [] # topical tags, lowercase-kebab-case, e.g. [ai-adoption, framework]
 audience: tech-leader # tech-leader | founder | community | mixed
-related: [] # paths to related files in the repo, e.g. [social/four-phases-of-ai-adoption.md]
+related: [] # paths to related files in the repo, e.g. [social/papers/four-phases-of-ai-adoption.md]
 source: null # commit SHA, GitHub discussion #, escalation ref, or "organic"
 thread_parent: null # path to parent post file if this is a follow-up
 assets: [] # paths to image/video files referenced by this post
@@ -183,7 +197,7 @@ published_urls:
 tags: [ai-adoption, framework, launch]
 audience: tech-leader
 related:
-  - social/four-phases-of-ai-adoption.md
+  - social/papers/four-phases-of-ai-adoption.md
 source: organic
 thread_parent: null
 assets: []
@@ -224,24 +238,33 @@ Includes a 10-question self-assessment for where your team sits today.
 ## Whitepapers and longer pieces
 
 Standalone publications (whitepapers, framework essays, long-form thought pieces)
-don't follow the post spec — they're standalone documents. Conventions:
+don't follow the post spec — they're standalone documents that live under
+`social/papers/`. Conventions:
 
-- File at the folder root: `social/four-phases-of-ai-adoption.md`
-- H1 title, executive summary, body sections, conclusion
-- Optional frontmatter (just `title:` and `created:` for minimal tracking)
-- Posts can link to them via `related:` in the post's frontmatter
+- File at `social/papers/<slug>.md` — same slug-style convention as posts.
+- H1 title, executive summary, body sections, conclusion.
+- Optional frontmatter (just `title:` and `created:` for minimal tracking).
+- Posts can link to them via `related:` in the post's frontmatter — full path,
+  e.g. `related: [social/papers/four-phases-of-ai-adoption.md]`.
+- Whitepapers don't have a status lifecycle. They're either drafts or published;
+  once a paper goes public, edits are corrections rather than revisions.
 
 ## Assets
 
-Image / video / audio files referenced by posts live under
-`social/assets/<post-slug>/`. Keeps each post's media co-located and prunable.
+Image / video / audio files referenced by posts and papers live under
+`social/assets/<slug>/`. Keeps each piece's media co-located and prunable.
 
 ```
 social/
 ├── README.md
-├── four-phases-of-ai-adoption.md         (whitepaper)
-├── four-phases-launch.md                  (post; status: draft)
+├── papers/
+│   ├── four-phases-of-ai-adoption.md
+│   └── anatomy-of-an-agentic-team.md
+├── posts/
+│   └── four-phases-launch.md             (post; status: draft)
 └── assets/
+    ├── four-phases-of-ai-adoption/
+    │   └── transition-diagram.png
     └── four-phases-launch/
         ├── header.png
         └── thread-diagram.png
