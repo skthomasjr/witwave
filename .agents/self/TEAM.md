@@ -10,8 +10,9 @@ risks (across all five risk categories: security, reliability, performance, obse
 fills functionality gaps — what's missing relative to what should be there. **Felix** authors new features end-to-end —
 the team's only generative agent, gated by a strict tier ladder so the highest-blast-radius work stays safe. **Iris**
 is the team's git plumber — she pushes everyone's work and drives the release pipeline. **Piper** is the only
-outward-facing agent — she narrates the team's progress to humans on GitHub Discussions, scoring events on a substantive
-bar before posting so the public surface stays signal-rich and quiet otherwise.
+outward-facing agent — she narrates the team's progress to humans on GitHub Discussions (scoring events on a substantive
+bar so the public surface stays signal-rich) and engages two-way across the Bugs, Questions, and Comments categories,
+routing confirmed bugs back to Zora and recurring misconceptions to Kira's docs queue.
 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
@@ -150,11 +151,12 @@ deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
                                       │           │              │    PIPER    │
                                       ▼           └─────────────▶│  outreach   │
                             ghcr.io · oci · brew                 │  heartbeat  │
-                                                                 ╰──────┬──────╯
-                                                                        │ post (when score ≥5)
-                                                                        ▼
+                                                                 ╰──┬───────▲──╯
+                                                            post   │       │ reply (discuss-*)
+                                                                   ▼       │
                                                               GitHub Discussions
-                                                              (Announcements / Progress)
+                                       Announcements · Progress · Bugs · Questions — all two-way
+                                       (Piper posts + replies via discuss-comments/-bugs/-questions)
 ```
 
 Piper sits OUTSIDE the work-coordination loop. She reads team state but doesn't dispatch peers for work; her only A2A
