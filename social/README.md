@@ -142,7 +142,7 @@ keys in `published_urls`. Add a row here before adding a new value in a post.
 Posts may optionally include a `## Distribution` section at the bottom of the
 body that mirrors `published_urls` in human-readable form. Useful when scanning
 the file directly without parsing YAML. Example:
-
+       
 ```markdown
 ## Distribution
 
