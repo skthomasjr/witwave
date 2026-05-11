@@ -6,7 +6,10 @@
 // in status_test.go::TestSkewLabel.
 package operator
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestInstallRBACRequirements pins the requirement-set shape that
 // `ww operator install` checks at preflight. A future addition to
@@ -97,4 +100,91 @@ func containsCheck(set []RBACCheck, want RBACCheck) bool {
 		}
 	}
 	return false
+}
+
+// TestFormatMissingRBAC pins the user-facing string format emitted
+// when CheckRBAC reports missing permissions. The format is part of
+// the install command's error contract — drift would break operator
+// runbooks + downstream log scrapers.
+func TestFormatMissingRBAC(t *testing.T) {
+	cases := []struct {
+		name    string
+		missing []RBACCheck
+		want    string // empty for "expect empty string"; otherwise substring(s) joined by "\n" to assert
+		wantSub []string
+	}{
+		{
+			name:    "empty list returns empty string",
+			missing: nil,
+			want:    "",
+		},
+		{
+			name:    "empty slice returns empty string",
+			missing: []RBACCheck{},
+			want:    "",
+		},
+		{
+			name: "single namespaced entry renders namespace scope",
+			missing: []RBACCheck{
+				{Group: "apps", Resource: "deployments", Verb: "create", Namespace: "witwave-system"},
+			},
+			wantSub: []string{
+				"missing Kubernetes permissions:",
+				"apps/deployments",
+				"create",
+				"namespace=witwave-system",
+			},
+		},
+		{
+			name: "single cluster-wide entry renders cluster-wide scope",
+			missing: []RBACCheck{
+				{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Verb: "create"},
+			},
+			wantSub: []string{
+				"missing Kubernetes permissions:",
+				"rbac.authorization.k8s.io/clusterroles",
+				"create",
+				"cluster-wide",
+			},
+		},
+		{
+			name: "core API group renders as 'core'",
+			missing: []RBACCheck{
+				{Group: "", Resource: "namespaces", Verb: "create"},
+			},
+			wantSub: []string{
+				"core/namespaces",
+				"cluster-wide",
+			},
+		},
+		{
+			name: "multiple entries each get their own line",
+			missing: []RBACCheck{
+				{Group: "", Resource: "secrets", Verb: "create", Namespace: "witwave-system"},
+				{Group: "apiextensions.k8s.io", Resource: "customresourcedefinitions", Verb: "create"},
+			},
+			wantSub: []string{
+				"core/secrets",
+				"namespace=witwave-system",
+				"apiextensions.k8s.io/customresourcedefinitions",
+				"cluster-wide",
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatMissingRBAC(tc.missing)
+			if tc.want != "" || (tc.want == "" && len(tc.wantSub) == 0) {
+				if got != tc.want {
+					t.Errorf("FormatMissingRBAC = %q, want %q", got, tc.want)
+				}
+			}
+			for _, sub := range tc.wantSub {
+				if !strings.Contains(got, sub) {
+					t.Errorf("FormatMissingRBAC output missing substring %q\nfull output:\n%s", sub, got)
+				}
+			}
+		})
+	}
 }
