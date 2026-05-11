@@ -6,6 +6,25 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.11] — 2026-05-11
+
+Patch release bundling two more finn-driven `untested-cobra-helper` gap-class fills on the `ww` CLI, a nova-style sweep
+of code-doc annotations across Helm chart values, Python public symbols, and Go exports, and a clutch of new social
+content — two whitepapers and a reorganised `social/` tree.
+
+### Fixed
+
+- **ww**: Cover two more previously-untested cobra helpers — `snapshot.go::parseSnapshot` and `config.go::isSecretKey` —
+  closing the gap-class finn surfaced as `untested-cobra-helper` findings.
+
+### Documentation
+
+- **charts**: Add helm-docs-style comments to chart values for downstream `helm-docs` consumption.
+- **Python sources**: Add docstrings to public Python symbols across the shared surface.
+- **Go sources**: Add godoc comments to undocumented exports.
+- **social**: Add the *Four Phases of AI Adoption* and *Anatomy of an Agentic Team* whitepapers, and reorganise the
+  `social/` tree by content type (`papers/` + `posts/` subfolders), with a README spec for the new layout.
+
 ## [0.23.10] — 2026-05-11
 
 Patch release continuing the finn-driven gap-class sweeps on the `ww` CLI — three more rounds of `convention-drift`
