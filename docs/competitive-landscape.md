@@ -1,6 +1,14 @@
 # Competitive Landscape
 
-Last updated: 2026-05-11 by kira-agent-witwave (fourteenth pass — focused SDK/protocol-axis refresh per zora dispatch:
+Last updated: 2026-05-11 by kira-agent-witwave (fifteenth pass — light verification-and-refinement pass per zora ADVANCE
+dispatch (P2 cadence-floor breach, +4h15m / 3h floor): bumped OpenClaw latest beta to **v2026.5.10-beta.3** (released
+2026-05-11, after the fourteenth pass landed earlier today) and sharpened the "Agent Sandbox" reference to name the
+underlying **Kubernetes SIG Apps subproject** with its three new primitives (`Sandbox`, `SandboxTemplate`,
+`SandboxClaim`) — Google additionally announced a hosted **GKE Agent Sandbox** variant at Cloud Next '26 with gVisor
+kernel-level isolation, ~300 sandboxes/sec throughput, and the explicit posture that any Kubernetes cluster can run it
+(not GKE-only) (sources: <https://github.com/openclaw/openclaw/releases> and
+<https://www.infoq.com/news/2026/05/gke-agent-sandbox-hypercluster/>, accessed 2026-05-11). Fourteenth pass (earlier on
+2026-05-11) was a focused SDK/protocol-axis refresh per zora dispatch:
 added new Reference Products entry for **OpenAI Agents SDK** (MIT, **26,200+** GitHub stars, latest `v0.17.1` per the
 releases page, provider-agnostic via LiteLLM / any-llm — supports OpenAI Responses + Chat Completions APIs and 100+
 other LLMs; sandbox agents, sessions, handoffs, MCP, guardrails, tracing all first-class), filling a long-standing gap
@@ -75,9 +83,13 @@ differentiator.
    harness + A2A + multi-backend routing sits squarely in that category architecturally, though the project's
    positioning language is still "autonomous-agent infrastructure."
 2. **Kubernetes-native agent infrastructure is no longer empty space.** kagent is in the CNCF sandbox, OpenClaw has a
-   dedicated operator, OpenHands v1.6 added Kubernetes deployment + RBAC (March 2026), and kubernetes.io published an
-   "Agent Sandbox" post. What was a wide lane is now contested — differentiation moves to specifics (multi-backend
-   routing under one identity, scheduler-primitives breadth, etc.).
+   dedicated operator, OpenHands v1.6 added Kubernetes deployment + RBAC (March 2026), and the **Agent Sandbox**
+   Kubernetes SIG Apps subproject (launched at KubeCon NA 2025) introduces three new primitives — `Sandbox`,
+   `SandboxTemplate`, `SandboxClaim` — runnable on any Kubernetes cluster. Google additionally announced a hosted **GKE
+   Agent Sandbox** at Cloud Next '26 with gVisor kernel-level isolation and ~300 sandboxes/sec throughput (source:
+   <https://www.infoq.com/news/2026/05/gke-agent-sandbox-hypercluster/>, accessed 2026-05-11). What was a wide lane is
+   now contested — differentiation moves to specifics (multi-backend routing under one identity, scheduler-primitives
+   breadth, etc.).
 3. **A2A + MCP + OpenTelemetry are now the assumed baseline tripod.** Every 2026 launch — Microsoft Agent Framework,
    kagent, Bedrock AgentCore Gateway, Cloudflare Agent Cloud — leads with all three. Shipping them is no longer a
    differentiator; _how_ they compose (cross-pod topology, per-named-agent routing, published event schema) is where the
@@ -446,8 +458,9 @@ this project targets the team running coordinated agents as cluster workloads.
 OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
 pressure, and three days later settled on **OpenClaw**. Category-leading install base — **371,000+ GitHub stars and
 76,600+ forks as of 2026-05-11**, with a very active commit cadence (latest stable release `v2026.5.7` on 2026-05-07,
-with `v2026.5.9-beta.1` and `v2026.5.10-beta.{1,2}` shipped after as pre-releases) — the exact number drifts fast, so
-re-pin before quoting in marketing or external docs (sources: <https://github.com/openclaw/openclaw> and
+with `v2026.5.9-beta.1` and `v2026.5.10-beta.{1,2,3}` shipped after as pre-releases — latest beta `v2026.5.10-beta.3` on
+2026-05-11) — the exact number drifts fast, so re-pin before quoting in marketing or external docs (sources:
+<https://github.com/openclaw/openclaw>, <https://github.com/openclaw/openclaw/releases>, and
 <https://github.com/openclaw/openclaw/releases/tag/v2026.5.7>, accessed 2026-05-11). Runs on user-controlled
 infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Connects to Claude, OpenAI,
 DeepSeek, and local models. **MIT licensed; calendar-versioned releases (`vYYYY.M.D`) with beta and dev channels; very
@@ -753,9 +766,12 @@ _Last updated: 2026-04-07 by local-agent_
   tool search — loading only the tools relevant to the current prompt rather than the full allow-list) is still the open
   frontier.
 
-- **Kubernetes-native agent infrastructure (contested lane, April 2026):** The position this project has held is no
+- **Kubernetes-native agent infrastructure (contested lane, April–May 2026):** The position this project has held is no
   longer uncontested. kagent (CNCF sandbox, Solo.io), OpenClaw's dedicated operator, OpenHands v1.6 Kubernetes + RBAC
-  support, and kubernetes.io's "Agent Sandbox" blog all now occupy the same lane. Differentiators that _do_ hold up
+  support, and the **Agent Sandbox** Kubernetes SIG Apps subproject (with Google's hosted GKE Agent Sandbox variant
+  announced at Cloud Next '26 — gVisor isolation, ~300 sandboxes/sec, three new primitives `Sandbox` / `SandboxTemplate`
+  / `SandboxClaim`; source: <https://www.infoq.com/news/2026/05/gke-agent-sandbox-hypercluster/>, accessed 2026-05-11)
+  all now occupy the same lane. Differentiators that _do_ hold up
   head-to-head with these: (1) **multi-backend routing under one named agent identity** — Claude / Codex / Gemini behind
   `backend.yaml` routing rules with per-concern dispatch (heartbeat to claude, jobs to codex, etc.) is unique in the
   Kubernetes-native OSS set; competitors are mostly single-framework (kagent on AutoGen) or single-model. (2)
