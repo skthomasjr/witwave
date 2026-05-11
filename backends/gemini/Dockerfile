@@ -141,6 +141,27 @@ RUN ARCH=$(dpkg --print-architecture) \
 RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
       | DESIRED_VERSION=v3.16.3 USE_SUDO=false HELM_INSTALL_DIR=/usr/local/bin bash
 
+# witwave CLI (`ww`) — build from source so agents speak the same surface
+# humans do. Stays in lockstep with main: built from the in-repo source
+# tree at image build. Phase 1 of `ww` agent embedding extension to
+# gemini (2026-05-11) — binary lands in PATH now; no skill takes a
+# runtime dependency yet. Mirrors the same block already in the claude
+# backend Dockerfile.
+#
+# The Go toolchain installed above (matches clients/ww/go.mod's
+# `go 1.26.2`) is reused for this build. GOPATH/GOCACHE are scoped to
+# /tmp and cleaned after the build so the layer adds only the binary
+# (~12 MB), not module cache.
+COPY clients/ww/go.mod clients/ww/go.sum /tmp/ww-src/
+RUN cd /tmp/ww-src \
+    && GOPATH=/tmp/gopath GOCACHE=/tmp/gocache go mod download
+COPY clients/ww/ /tmp/ww-src/
+RUN cd /tmp/ww-src \
+    && GOPATH=/tmp/gopath GOCACHE=/tmp/gocache CGO_ENABLED=0 \
+       go build -trimpath -ldflags="-s -w" -o /usr/local/bin/ww . \
+    && rm -rf /tmp/ww-src /tmp/gopath /tmp/gocache \
+    && /usr/local/bin/ww version
+
 RUN useradd -m -s /usr/bin/zsh -u 1000 agent
 
 USER agent
