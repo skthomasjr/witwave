@@ -223,13 +223,23 @@ then execute against. **Seventh priority** because direction-setting is highest-
 accumulated context — better once the team has months of state to reason over and the platform has real users with real
 friction points.
 
-### 7. community liaison — likely **sage** or **ezra**
+### ~~7. community liaison — likely **sage** or **ezra**~~ — **absorbed by Piper 2026-05-10/11**
 
-Talks with humans on GitHub Discussions. Reads new threads, answers questions, negotiates feature scope with external
-requesters, surfaces actionable bugs/features back to the team. Coordinates with zora on prioritisation ("a discussion
-thread is asking for X — when can we fit it?"). Adds a _human-facing voice_ the team currently lacks; today external
-requests have no team-facing channel. **Ninth priority** because it depends on actually having a community generating
-threads — and that community is partly what PR exists to grow, so PR comes first.
+Originally scoped as a separate agent whose job would be "talks with humans on GitHub Discussions, reads new threads,
+answers questions, surfaces actionable bugs/features back to the team." That scope is now fully covered by **Piper**'s
+discuss-\* skill family:
+
+- **`discuss-comments`** — replies to humans on Piper-authored Announcements/Progress posts
+- **`discuss-bugs`** — investigates bug reports in the Bugs category, routes confirmed bugs to Zora via
+  `bugs-from-users.md` (the team-prioritisation handoff the community-liaison role would have done)
+- **`discuss-questions`** — answers open-ended Q&A in the General category, including deep code-reading investigation
+- **(future)** `discuss-ideas` — engagement on the Ideas category, planned
+
+Guard 0 (autonomous moderation via `minimizeComment` + `lockLockable`) and the recurring-misconception routing to Kira's
+docs queue close the remaining "community liaison" responsibilities. Piper's outreach + engagement role now spans both
+the original outward-narration scope and the originally-future community-facing scope as one cohesive agent.
+
+A separate community-liaison agent is not currently planned — Piper covers the full surface.
 
 ### ~~8. feature builder — likely **liam** or **felix**~~ — **deployed as Felix 2026-05-11**
 
