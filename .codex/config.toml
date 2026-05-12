@@ -1,17 +1,27 @@
-model = "gpt-5.3-codex"
-model_reasoning_effort = "high"
+# Repo-scoped Codex config for witwave.
+# Default to the strongest model available in this Codex account.
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
 model_reasoning_summary = "auto"
-plan_mode_reasoning_effort = "high"
+plan_mode_reasoning_effort = "xhigh"
 
 [profiles.plan]
-model_reasoning_effort = "high"
+# Keep the explicit plan profile aligned with the repo default so `-p plan`
+# does not silently downgrade model quality.
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
 model_reasoning_summary = "auto"
-plan_mode_reasoning_effort = "high"
+plan_mode_reasoning_effort = "xhigh"
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+ANTHROPIC_DEFAULT_HAIKU_MODEL = "claude-haiku-4-5"
+ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-opus-4-7"
+ANTHROPIC_DEFAULT_SONNET_MODEL = "claude-sonnet-4-6"
 
 [tools]
+computer = true
 shell = true
 web_search = true
-computer = true
-
-# Repo-scoped Codex config (takes precedence over ~/.codex/config.toml in this repo)
-# Add more settings as needed. Reference: https://developers.openai.com/codex/config-reference
