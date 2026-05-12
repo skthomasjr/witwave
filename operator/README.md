@@ -254,7 +254,7 @@ Each kind maps to one of the harness scheduler directories (or the singleton hea
 | `spec.kind`    | Target path                                                  | Required frontmatter               |
 | -------------- | ------------------------------------------------------------ | ---------------------------------- |
 | `job`          | `/home/agent/.witwave/jobs/witwaveprompt-<name>.md`          | `schedule` (cron)                  |
-| `task`         | `/home/agent/.witwave/tasks/witwaveprompt-<name>.md`         | `schedule` (cron)                  |
+| `task`         | `/home/agent/.witwave/tasks/witwaveprompt-<name>.md`         | none (`window-start` enables calendar scheduling; omitted means run-once) |
 | `trigger`      | `/home/agent/.witwave/triggers/witwaveprompt-<name>.md`      | `endpoint`                         |
 | `continuation` | `/home/agent/.witwave/continuations/witwaveprompt-<name>.md` | `continues-after` (string or list) |
 | `webhook`      | `/home/agent/.witwave/webhooks/witwaveprompt-<name>.md`      | `url`                              |

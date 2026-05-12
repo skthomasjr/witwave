@@ -60,7 +60,8 @@ The same codebase should serve both audiences. Complexity is opt-in.
 compatibility:
 
 - Health endpoints follow the Kubernetes three-probe model (`/health/start`, `/health/live`, `/health/ready`)
-- Containers are stateless and horizontally scalable
+- Containers should move toward stateless, horizontally scalable operation where the runtime semantics allow it; today's
+  named-agent pods intentionally run as singletons until scheduler state and backend session storage are externalized.
 - Configuration is injected via environment variables and mounted volumes — never baked into the image
 - Agents expose standard HTTP endpoints suitable for Kubernetes `Service` and `Ingress` resources
 

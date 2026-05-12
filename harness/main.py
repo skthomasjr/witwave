@@ -71,6 +71,7 @@ try:
 except Exception:
     pass
 from conversations import (
+    auth_disabled_escape_hatch,
     make_proxy_conversations_handler,
     make_proxy_trace_handler,
 )
@@ -926,6 +927,16 @@ async def main():
 
     _conversations_auth_token = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
     _backend_conversations_auth_token = os.environ.get("BACKEND_CONVERSATIONS_AUTH_TOKEN", "")
+
+    def _require_conversations_auth(request: Request) -> JSONResponse | None:
+        if not _conversations_auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
+            return None
+        header = request.headers.get("Authorization", "")
+        if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return None
 
     async def _fetch_conversations(since: str | None, limit: int | None) -> list[dict]:
         # Use the live executor backends (consistent with metrics_handler, fixed in #288).
@@ -1798,7 +1809,10 @@ async def main():
 
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
-                r = await client.get(f"{url.rstrip('/')}/api/traces", params={"limit": 500})
+                headers: dict[str, str] = {}
+                if _backend_conversations_auth_token:
+                    headers["Authorization"] = f"Bearer {_backend_conversations_auth_token}"
+                r = await client.get(f"{url.rstrip('/')}/api/traces", params={"limit": 500}, headers=headers)
                 if r.status_code != 200:
                     return []
                 return (r.json() or {}).get("data") or []
@@ -1816,7 +1830,10 @@ async def main():
 
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
-                r = await client.get(f"{url.rstrip('/')}/api/traces/{trace_id}")
+                headers: dict[str, str] = {}
+                if _backend_conversations_auth_token:
+                    headers["Authorization"] = f"Bearer {_backend_conversations_auth_token}"
+                r = await client.get(f"{url.rstrip('/')}/api/traces/{trace_id}", headers=headers)
                 if r.status_code != 200:
                     return []
                 return (r.json() or {}).get("data") or []
@@ -1874,10 +1891,9 @@ async def main():
     async def otel_traces_list_handler(request: Request) -> JSONResponse:
         # #1267: bearer-gate parity with /conversations + /trace + sibling
         # backend /api/traces endpoints (CONVERSATIONS_AUTH_TOKEN).
-        if _conversations_auth_token:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        unauthorized = _require_conversations_auth(request)
+        if unauthorized is not None:
+            return unauthorized
         nonlocal _otel_traces_list_cache
         try:
             limit_raw = request.query_params.get("limit")
@@ -1948,10 +1964,9 @@ async def main():
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
         # #1267: bearer-gate parity.
-        if _conversations_auth_token:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        unauthorized = _require_conversations_auth(request)
+        if unauthorized is not None:
+            return unauthorized
         trace_id = request.path_params.get("trace_id") or ""
         # #1268: refuse anything that isn't a 32-hex W3C trace_id to close
         # the path-smuggling surface that otherwise lets callers inject

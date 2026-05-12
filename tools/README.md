@@ -15,6 +15,7 @@ serves every agent in the cluster rather than being replicated per-agent.
 | ---------------- | -------------------------- | ----------------------- |
 | `mcp-kubernetes` | [kubernetes/](kubernetes/) | `mcp-kubernetes:latest` |
 | `mcp-helm`       | [helm/](helm/)             | `mcp-helm:latest`       |
+| `mcp-prometheus` | [prometheus/](prometheus/) | `mcp-prometheus:latest` |
 
 ## Conventions
 

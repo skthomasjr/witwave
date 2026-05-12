@@ -51,9 +51,10 @@ are denying tool calls at unusual volume.
 # Which agent + backend?
 # The {agent, backend} labels are on the metric.
 
-# Recent trace shows WHICH tools are being denied:
+# Recent trace rows include tool_audit entries; filter locally for denials:
 curl -H "Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN" \
-  "$BACKEND_URL/trace?decision=deny&limit=20"
+  "$BACKEND_URL/trace?limit=200" \
+  | jq '[.[] | select(.event_type == "tool_audit" and .decision == "deny")] | .[:20]'
 ```
 
 **Remediation.**

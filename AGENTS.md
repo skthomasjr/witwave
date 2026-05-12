@@ -284,7 +284,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 
 ```text
 .agents/
-├── self/                    # Self-managing agents (maintain this repo): iris, nova, kira
+├── self/                    # Self-managing agents (see .agents/self/TEAM.md)
 │   └── <name>/              # Per-agent directory (see layout above)
 └── test/                    # Test agents: bob, fred (deployed); jack, luke (scaffolds only, see port table below)
     └── <name>/
@@ -439,10 +439,11 @@ the request internally to its configured backend. Never target backend services 
 | bob   | 8099    | 8090   | 8091  | 8092   |
 | fred  | 8098    | 8089   | —     | —      |
 
-Active agents (iris/nova/kira) each run in their own pod with their own localhost, so the backend ports are uniform
-across them (8010/8011/8012). The harness port differs per agent only because multiple active agents may share a host
-via `hostPort`/`NodePort` mappings. Test agents (bob/fred) still use agent-unique backend ports because they're deployed
-together in `values-test.yaml` with `hostPort` exposed on the same host.
+Self-managing agents run in their own pods with their own localhost, so backend ports can be uniform within that pod.
+The table above lists the long-lived local examples still used in the repo docs; newer self-managing agents are
+operator-managed from `.agents/self/<name>/` and do not require a unique backend port assignment in this static table.
+Test agents (bob/fred) still use agent-unique backend ports because they're deployed together in `values-test.yaml` with
+`hostPort` exposed on the same host.
 
 Test agents `jack` (codex-only) and `luke` (gemini-only) exist as filesystem scaffolds under `.agents/test/` but are not
 wired into `charts/witwave/values-test.yaml` yet. Port assignments will land when they're deployed.

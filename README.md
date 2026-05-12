@@ -274,12 +274,19 @@ own directory containing witwave config, backend instances, logs, and memory.
 ```text
 .agents/
 ├── self/
-│   ├── iris/          # Iris (witwave: 8000 | claude: 8010 | codex: 8011 | gemini: 8012)
-│   ├── nova/          # Nova (witwave: 8001 | claude: 8010 | codex: 8011 | gemini: 8012)
-│   └── kira/          # Kira (witwave: 8002 | claude: 8010 | codex: 8011 | gemini: 8012)
+│   ├── iris/          # Git plumbing + releases
+│   ├── kira/          # Documentation hygiene + research
+│   ├── nova/          # Code-internal hygiene
+│   ├── evan/          # Bugs + security-oriented risk work
+│   ├── finn/          # Gap-filling work
+│   ├── felix/         # Feature work
+│   ├── piper/         # Outreach
+│   └── zora/          # Team coordination
 └── test/
     ├── bob/           # Bob  (witwave: 8099 | claude: 8090 | codex: 8091 | gemini: 8092)
-    └── fred/          # Fred (witwave: 8098 | claude: 8089 — single-backend test agent)
+    ├── fred/          # Fred (witwave: 8098 | claude: 8089 — single-backend test agent)
+    ├── jack/          # Codex-only scaffold
+    └── luke/          # Gemini-only scaffold
 ```
 
 Port numbers above are example assignments from the bundled `values-test.yaml` and the default `values.yaml` layout —
@@ -519,7 +526,7 @@ conversation-log redaction rules (idempotent merge-spans with UUID / OTel-trace 
 | `METRICS_AUTH_TOKEN`                        | _(unset)_                           | Bearer token required to access `/metrics` (recommended in production)                                                                                                                                                                   |
 | `METRICS_CACHE_TTL`                         | `15`                                | Seconds to cache aggregated backend metrics between scrapes                                                                                                                                                                              |
 | `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                           | Bearer token required to access `/conversations` and `/trace` (inbound)                                                                                                                                                                  |
-| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                                                                                                                                 |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations`, `/trace`, and `/api/traces` endpoints (set if backends require auth)                                                                                                                 |
 | `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                           | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                                                                                                                     |
 | `HOOK_EVENTS_AUTH_TOKEN`                    | _(unset)_                           | Canonical bearer token on `/internal/events/hook-decision` (bound to the metrics listener, #924). `HARNESS_EVENTS_AUTH_TOKEN` is a back-compat alias that logs a deprecation warning when used alone (#859). Unset = refuse (#712, #933) |
 | `SESSION_ID_SECRET`                         | _(unset — permissive)_              | HMAC key for `shared/session_binding.derive_session_id` used on `/mcp` session-id binding across all three backends (#867/#929/#935/#941). Leave unset only in single-tenant dev; set to a 256-bit random value in production            |
@@ -554,7 +561,7 @@ conversation-log redaction rules (idempotent merge-spans with UUID / OTel-trace 
 | `BACKEND_PORT`                 | `8000`                    | HTTP port the backend listens on (internal)                                                                                                          |
 | `METRICS_ENABLED`              | _(unset)_                 | Set to any non-empty value to expose `/metrics`                                                                                                      |
 | `METRICS_PORT`                 | `9000`                    | Dedicated port the metrics listener binds to (#643; same semantics as harness)                                                                       |
-| `CONVERSATIONS_AUTH_TOKEN`     | _(unset — warn on empty)_ | Bearer token required to access `/conversations`, `/trace`, `/mcp`, and claude's `/api/traces[/<id>]` on all three backends (#510, #516, #517, #518) |
+| `CONVERSATIONS_AUTH_TOKEN`     | _(unset — warn on empty)_ | Bearer token required to access `/conversations`, `/trace`, `/mcp`, and `/api/traces[/<id>]` on all three LLM-backed backends (#510, #516, #517, #518) |
 | `CONVERSATIONS_AUTH_DISABLED`  | _(unset)_                 | Explicit escape hatch to run without the auth guard; loud startup log for visibility (#718). Intended for local dev only.                            |
 | `LOG_REDACT`                   | _(unset)_                 | When truthy, conversation and response logs redact user-prompt / agent-response content (#714)                                                       |
 | `GEMINI_MAX_HISTORY_BYTES`     | _(gemini only)_           | Byte ceiling on the JSON session-history file gemini persists per session; older turns are truncated to fit                                          |

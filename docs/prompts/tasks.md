@@ -1,9 +1,10 @@
 # Tasks
 
-Tasks are calendar-driven scheduled prompts. Unlike jobs (which repeat on a simple cron interval indefinitely), tasks
-are bounded by a daily time window, optional days-of-week selection, and optional start/end date bounds — modeled after
-recurring calendar events. Tasks can optionally loop within their window, pausing between iterations and stopping early
-when the agent signals completion.
+Tasks are calendar-driven scheduled prompts. Unlike jobs (which repeat on a simple cron interval indefinitely), tasks can
+be bounded by a daily time window, optional days-of-week selection, and optional start/end date bounds — modeled after
+recurring calendar events. When `window-start` is omitted, the task runs once immediately after registration and exits.
+Tasks can optionally loop within their window, pausing between iterations and stopping early when the agent signals
+completion.
 
 **Minimal test task** (fires once daily at midnight UTC, no window close, no loop):
 
@@ -48,7 +49,7 @@ highest-priority item for today. When done, respond with STANDUP_DONE.
 | `end`             | No       | Last date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no expiry.                                             |
 | `days`            | No       | Cron weekday expression — numeric (`1-5`, `1,3,5`) or abbreviation (`Mon-Fri`, `Mon,Wed,Fri`). Default: `*` (every day).         |
 | `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start`. Default: `UTC`.                                             |
-| `window-start`    | Yes      | Start of the daily run window (`HH:MM` in the task's time zone).                                                                 |
+| `window-start`    | No       | Start of the daily run window (`HH:MM` in the task's time zone). Omit for run-once mode.                                           |
 | `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Required to enable looping.                        |
 | `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-duration`. Default: `false`.                         |
 | `loop-gap`        | No       | Pause after a run completes before the next iteration. Format: `30s`, `15m`, `1h`, `1h30m`. Default: no pause.                   |

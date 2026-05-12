@@ -27,7 +27,8 @@ At the top level, the repo is split into two buckets plus shared infrastructure:
   `kubernetes`, `helm`, `prometheus`), `charts/{witwave,witwave-operator}/`, `shared/`.
 - **Client surfaces** (under `clients/`) — `clients/dashboard/` (Vue 3 web UI), `clients/ww/` (Go CLI).
 - **Agent configs** (`.agents/`) — per-named-agent filesystem config that gets mounted into the platform containers.
-  `active/` for production-like (`iris`, `nova`, `kira`); `test/` for disposable test fixtures (`bob`, `fred`).
+  `self/` for the self-managing agents that maintain this repo; `test/` for disposable test fixtures (`bob`, `fred`,
+  plus scaffold-only agents such as `jack` and `luke`).
 - **Docs + skills** — `docs/` (this document + product-vision + competitive-landscape + event wire contract + smoke
   tests + prompt-type reference), `.claude/skills/` (user-invokable Claude Code skills that drive discovery / refinement
   / implementation loops), `.github/ISSUE_TEMPLATE/`.
@@ -218,8 +219,8 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `METRICS_ENABLED`                           | _(unset)_                           | Enable Prometheus `/metrics`                                                                                                   |
 | `METRICS_AUTH_TOKEN`                        | _(unset)_                           | Bearer token required to access `/metrics`                                                                                     |
 | `METRICS_CACHE_TTL`                         | `15`                                | Seconds to cache aggregated backend metrics between scrapes                                                                    |
-| `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                           | Bearer token required to access `/conversations` and `/trace` (inbound)                                                        |
-| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                       |
+| `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                           | Bearer token required to access harness read/observe endpoints such as `/conversations`, `/trace`, `/api/traces`, and `/events/stream` |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations`, `/trace`, and `/api/traces` endpoints (set if backends require auth)       |
 | `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                           | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                    |
 | `CORS_ALLOW_ORIGINS`                        | _(unset)_                           | Comma-separated allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                        |
 | `TASK_STORE_PATH`                           | _(unset)_                           | Path for SQLite A2A task store; defaults to in-memory                                                                          |
@@ -247,7 +248,7 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `AGENT_URL`                | `http://localhost:8000/`      | Public A2A endpoint URL reported in agent card                               |
 | `BACKEND_PORT`             | `8000`                        | HTTP port the backend listens on (internal)                                  |
 | `METRICS_ENABLED`          | _(unset)_                     | Enable Prometheus `/metrics`                                                 |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                     | Bearer token required to access `/conversations` and `/trace`                |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                     | Bearer token required to access `/conversations`, `/trace`, `/mcp`, and `/api/traces[/<id>]` |
 | `TASK_STORE_PATH`          | _(unset)_                     | Path for SQLite A2A task store; defaults to in-memory                        |
 | `WORKER_MAX_RESTARTS`      | `5`                           | Consecutive crash limit before a critical worker marks the backend not-ready |
 | `LOG_PROMPT_MAX_BYTES`     | `200`                         | Max bytes of the prompt logged at INFO level; `0` suppresses it entirely     |
@@ -296,9 +297,10 @@ Each backend exposes the same A2A surface plus:
 
 ### Internal Message Bus (harness)
 
-All internal work — heartbeat ticks, job/task fires, trigger dispatches, continuation fires, and A2A-inbound tasks —
-flows through the `MessageBus`. The bus serializes execution: one message processed at a time, deduplicated by kind.
-This prevents concurrent outbound backend calls from the same harness process.
+Most internally scheduled work — heartbeat ticks, job/task fires, continuations, and A2A-inbound tasks — flows through
+the `MessageBus`. The bus serializes execution: one message processed at a time, deduplicated by kind. HTTP triggers are
+the exception: they dispatch through bounded background tasks and return `202 Accepted` immediately, so concurrent
+webhook-style deliveries do not wait behind the singleton scheduler lane.
 
 ---
 
@@ -400,8 +402,10 @@ continuation) to a named backend id. Routing is deterministic and explicit — n
 **Per-backend URL override.** The `A2A_URL_<ID>` env var allows the same `backend.yaml` config file to work across
 Kubernetes sidecar and separate-pod deployment shapes.
 
-**Message bus serialization.** All work flows through a single async queue per harness process. Prevents concurrent
-outbound backend calls, enforces deduplication, and provides a single instrumentation point for latency and throughput.
+**Message bus serialization.** Scheduled work and A2A-inbound tasks flow through a single async queue per harness
+process. This prevents concurrent outbound backend calls for those lanes, enforces deduplication, and provides a single
+instrumentation point for scheduler latency and throughput. HTTP triggers intentionally bypass the bus and use bounded
+background dispatch so inbound delivery endpoints can acknowledge quickly.
 
 **Guarded restart loop.** Every background task (heartbeat, jobs, tasks, triggers, continuations, webhooks, bus worker)
 runs inside `_guarded()` — a crash-restart wrapper that logs the failure, increments a metric, and restarts after a

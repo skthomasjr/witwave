@@ -13,8 +13,8 @@ is running:
 - One **WitwaveWorkspace** (`witwave-self`) with one or more shared volumes (`source` for the working repo state,
   `memory` for long-term per-agent memory, more as concerns accrete) that every participating agent mounts at the same
   paths.
-- Seven **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `piper`) with `Spec.WorkspaceRefs` pointing
-  at `witwave-self` so they share the workspace.
+- Eight **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `felix`, `piper`) with
+  `Spec.WorkspaceRefs` pointing at `witwave-self` so they share the workspace.
 
   - **iris** owns source-tree initialization + release captaincy + git plumbing for the team.
   - **kira** owns documentation hygiene + research.
@@ -22,14 +22,16 @@ is running:
   - **evan** owns code defects — `bug-work` for correctness bugs (logic-defect lens), `risk-work` for security risks
     (CVE / secrets / insecure-pattern lens). The verb "work" is the forward-compatible naming convention for
     product-engineering siblings (future: `gap-work`, `feature-work`).
-  - **zora** is the team's manager — she dispatches the other peers based on a continuous decision loop driven by a
-    30-min heartbeat. She reads team state (git, peer memories, CI), applies a priority policy (urgency → cadence floor
-    → backlog → release-warranted check), and dispatches via `call-peer`. She doesn't write code; she coordinates. The
-    peers stay autonomous within their domain.
+  - **zora** is the team's manager — she dispatches the other peers from a continuous 15-min decision loop. She reads
+    team state (git, peer memories, CI), applies a priority policy (urgency → cadence floor → backlog →
+    release-warranted check), and dispatches via `call-peer`. She doesn't write code; she coordinates. The peers stay
+    autonomous within their domain.
+  - **felix** owns feature work within a conservative autonomous tier ceiling; higher-blast-radius work still requires
+    explicit human approval.
 
-  Each peer commits work locally and delegates the push to iris via `call-peer`. Iris owns all git/GitHub authority for
-  the team; zora owns team-level coordination + release-cadence decisions. Direct user invocation of any peer still
-  works — zora is one valid caller, not a gate.
+  Agents that author source changes commit work locally and delegate the push to iris via `call-peer`. Iris owns all
+  git/GitHub authority for the team; zora owns team-level coordination + release-cadence decisions. Direct user
+  invocation of any peer still works — zora is one valid caller, not a gate.
 
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
@@ -113,6 +115,12 @@ GITHUB_USER_ZORA=zora-agent-witwave
 # other commit-authoring agents (iris/kira/nova/evan).
 GITHUB_TOKEN_FINN=github_pat_replace_me
 GITHUB_USER_FINN=finn-agent-witwave
+
+# Felix (feature work) — starts with a conservative autonomous tier ceiling.
+# PAT needs write scope for tier-approved feature commits; higher tiers still
+# require explicit human approval before landing.
+GITHUB_TOKEN_FELIX=github_pat_replace_me
+GITHUB_USER_FELIX=felix-agent-witwave
 
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar
@@ -359,7 +367,7 @@ ww agent create zora \
 
 After zora deploys, her 15-minute heartbeat starts firing the `dispatch-team` decision loop. She'll begin reading peer
 state from memory, applying the priority policy in her CLAUDE.md, and dispatching the appropriate peer
-(iris/kira/nova/evan/finn/piper) via A2A. Until then, all peer dispatches are user-initiated.
+(iris/kira/nova/evan/finn/felix/piper) via A2A. Until then, all peer dispatches are user-initiated.
 
 ## Step 8 — Deploy finn
 
@@ -384,12 +392,36 @@ ww agent create finn \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
-## Step 9 — Deploy Piper
+## Step 9 — Deploy felix
 
-Piper is the team's outreach agent — reads team state every 5 minutes and posts substantive events to GitHub Discussions
-(Announcements ≥9 / Progress 5-8 / silent <5). Read-only on source; only writes to her memory namespace and GitHub
-Discussions. Same deployment shape as the others — one `claude` backend, identity from `.agents/self/piper/`, no
-commits-then-iris-pushes flow because she has no commits to push.
+Felix is the team's feature agent — implements new product capabilities inside the tier ceiling documented in
+`.agents/self/TEAM.md`. Same deployment shape as finn: one `claude` backend, identity from `.agents/self/felix/`,
+commits locally, and delegates pushes to iris.
+
+```bash
+ww agent create felix \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=7200 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_FELIX:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_FELIX:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/felix \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+## Step 10 — Deploy Piper
+
+Piper is the team's outreach agent — reads team state every 15 minutes and posts substantive events to GitHub
+Discussions. She routes Announcements at score ≥9, Progress at 5-8, and stays silent below 5. She is read-only on
+source and only writes to her memory namespace and GitHub Discussions. Same deployment shape as the others — one
+`claude` backend, identity from `.agents/self/piper/`, no commits-then-iris-pushes flow because she has no commits to
+push.
 
 ```bash
 ww agent create piper \
@@ -415,24 +447,58 @@ directory; no `gh api graphql` writes). This lets you calibrate her voice + scor
 
 ## Verify the team
 
-After all seven agents deploy, verify the workspace binding:
+After all eight agents deploy, verify the workspace binding:
 
 ```bash
 ww agent list \
   --namespace witwave-self
 ```
 
-`ww agent list` should now show seven rows (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `piper`) all in state
-`Ready`. `ww workspace status witwave-self` should report all seven under the bound-agents section. zora's heartbeat
-fires every 15 minutes; her first tick will discover the team and start dispatching cadence-floor work.
+`ww agent list` should now show eight rows (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `felix`, `piper`) all in
+state `Ready`. `ww workspace status witwave-self` should report all eight under the bound-agents section. zora's
+heartbeat fires every 15 minutes; her first tick will discover the team and start dispatching cadence-floor work.
 
 ## Tear it down
 
-Reverse order: agent → workspace → operator → namespaces. Each command is destructive and cascade-deletes everything it
-owns.
+Tear down in reverse order: agents, workspace, operator, namespaces. Each command is destructive.
 
 Delete each agent (cascades the pod, Service, per-backend PVC `<name>-claude-data`, and the ww-managed `<name>-claude`
 Secret; `--delete-git-secret` also reaps the per-agent `<name>-gitsync` Secret minted by `--gitsync-secret-from-env`):
+
+```bash
+ww agent delete piper \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
+
+```bash
+ww agent delete felix \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
+
+```bash
+ww agent delete finn \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
+
+```bash
+ww agent delete zora \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
+
+```bash
+ww agent delete evan \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
 
 ```bash
 ww agent delete nova \
