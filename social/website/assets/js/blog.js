@@ -90,6 +90,8 @@ function renderBlogPost(posts) {
   const visiblePosts = posts.filter(isDisplayablePost);
   const requestedSlug = new URLSearchParams(window.location.search).get("post");
   const selected = visiblePosts.find((post) => post.slug === requestedSlug) || visiblePosts[0];
+  const selectedTitle = getPostTitle(selected);
+  const selectedSummary = getPostSummary(selected);
 
   if (!selected) {
     document.title = "No Blog Posts | witwave";
@@ -104,9 +106,9 @@ function renderBlogPost(posts) {
     return;
   }
 
-  document.title = `${selected.title} | witwave`;
-  blogPostTitle.textContent = selected.title;
-  blogPostSummary.textContent = selected.summary || "Read the latest Markdown source.";
+  document.title = `${selectedTitle} | witwave`;
+  blogPostTitle.textContent = selectedTitle;
+  blogPostSummary.textContent = selectedSummary || "Read the latest Markdown source.";
   blogPostMeta.innerHTML = renderPostMeta(selected);
   blogPostActions.innerHTML = renderPostActions(selected);
   blogPostNav.innerHTML = renderPostNav(visiblePosts, selected.slug);
@@ -116,14 +118,16 @@ function renderBlogPost(posts) {
 function renderBlogCard(post) {
   const tags = (post.tags || []).slice(0, 4);
   const socialLinks = renderDistributionLinks(post, "blog-card-socials");
+  const title = getPostTitle(post);
+  const summary = getPostSummary(post);
   return `
     <article class="blog-card${post.sample ? " sample" : ""}">
       <div class="blog-card-topline">
         <span>${escapeHtml(formatPostDate(post.published_at))}</span>
         ${post.sample ? '<span class="status-pill">Sample</span>' : '<span class="status-pill">Published</span>'}
       </div>
-      <h2>${escapeHtml(post.title)}</h2>
-      <p>${escapeHtml(post.summary || "")}</p>
+      <h2>${escapeHtml(title)}</h2>
+      <p>${escapeHtml(summary)}</p>
       ${tags.length ? `<ul class="tag-list compact">${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul>` : ""}
       <div class="blog-card-actions">
         <a class="text-link" href="post/?post=${encodeURIComponent(post.slug)}">Read post</a>
@@ -156,7 +160,7 @@ function renderPostNav(posts, activeSlug) {
       const activeClass = post.slug === activeSlug ? " active" : "";
       return `
         <a class="reader-paper-link${activeClass}" href="?post=${encodeURIComponent(post.slug)}">
-          <span>${escapeHtml(post.title)}</span>
+          <span>${escapeHtml(getPostTitle(post))}</span>
           <small>${escapeHtml((post.tags || []).slice(0, 2).join(" / "))}</small>
         </a>
       `;
@@ -185,6 +189,22 @@ function getPostTime(post) {
   if (!post.published_at) return 0;
   const timestamp = Date.parse(post.published_at);
   return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getPostTitle(post) {
+  return stringifyFrontmatterText(post?.title) || stringifyFrontmatterText(post?.slug) || "Untitled post";
+}
+
+function getPostSummary(post) {
+  return stringifyFrontmatterText(post?.summary);
+}
+
+function stringifyFrontmatterText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(stringifyFrontmatterText).filter(Boolean).join(", ");
+  return "";
 }
 
 function formatPostDate(value) {
@@ -242,6 +262,7 @@ function parseFrontmatter(markdown) {
 
   const data = {};
   let activeMap = null;
+  let activeKey = null;
 
   for (const line of lines.slice(1, endIndex)) {
     if (!line.trim()) continue;
@@ -252,6 +273,14 @@ function parseFrontmatter(markdown) {
       continue;
     }
 
+    const scalarContinuation = line.match(/^\s+(.+)$/);
+    if (scalarContinuation && activeMap && activeKey && !Object.keys(activeMap).length) {
+      data[activeKey] = parseFrontmatterValue(scalarContinuation[1]);
+      activeMap = null;
+      activeKey = null;
+      continue;
+    }
+
     const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (!match) continue;
 
@@ -259,11 +288,13 @@ function parseFrontmatter(markdown) {
     if (rawValue === "") {
       data[key] = {};
       activeMap = data[key];
+      activeKey = key;
       continue;
     }
 
     data[key] = parseFrontmatterValue(rawValue);
     activeMap = null;
+    activeKey = null;
   }
 
   return {
