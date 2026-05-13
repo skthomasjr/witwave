@@ -499,32 +499,43 @@ p {
 .team-card-human {
   grid-column: -2 / -1;
   order: 99;
-  opacity: 0.66;
-  background: rgba(255, 249, 235, 0.44);
-  filter: grayscale(1) saturate(0.28);
+  border-color: rgba(18, 33, 31, 0.18);
+  background: rgba(220, 218, 208, 0.72);
+  box-shadow: 0 10px 30px rgba(18, 33, 31, 0.06);
 }
 
 .team-card-human::before {
   background:
-    radial-gradient(circle at 24% 0%, rgba(18, 33, 31, 0.08), transparent 11rem),
-    linear-gradient(135deg, rgba(82, 100, 95, 0.12), rgba(18, 33, 31, 0.06));
+    radial-gradient(circle at 24% 0%, rgba(18, 33, 31, 0.1), transparent 11rem),
+    linear-gradient(135deg, rgba(18, 33, 31, 0.14), rgba(18, 33, 31, 0.05));
 }
 
 .team-card-human:hover,
 .team-card-human:focus-within {
-  opacity: 0.82;
-  filter: grayscale(0.72) saturate(0.42);
+  transform: none;
+  box-shadow: 0 12px 34px rgba(18, 33, 31, 0.08);
+}
+
+.team-card-human .team-photo {
+  border-color: rgba(18, 33, 31, 0.16);
+  background: rgba(232, 229, 219, 0.94);
+  box-shadow: 0 10px 24px rgba(18, 33, 31, 0.09);
+}
+
+.team-card-human .team-photo img {
+  filter: grayscale(1);
+  opacity: 0.62;
 }
 
 .team-card-human .team-role {
   border-color: rgba(82, 100, 95, 0.25);
-  background: rgba(82, 100, 95, 0.08);
-  color: rgba(18, 33, 31, 0.62);
+  background: rgba(18, 33, 31, 0.06);
+  color: rgba(18, 33, 31, 0.52);
 }
 
 .team-human-label {
   margin: -0.2rem 0 0.7rem;
-  color: rgba(18, 33, 31, 0.52);
+  color: rgba(18, 33, 31, 0.46);
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -543,7 +554,7 @@ p {
   padding: 0.42rem 0.68rem;
   border: 1px solid rgba(18, 33, 31, 0.2);
   border-radius: 999px;
-  color: rgba(18, 33, 31, 0.68);
+  color: rgba(18, 33, 31, 0.56);
   font-size: 0.82rem;
   font-weight: 800;
   text-decoration: none;
@@ -557,7 +568,11 @@ p {
 
 .team-card-human h2,
 .team-card-human p {
-  color: rgba(18, 33, 31, 0.72);
+  color: rgba(18, 33, 31, 0.58);
+}
+
+.team-card-human .team-human-label {
+  color: rgba(18, 33, 31, 0.46);
 }
 
 .team-source {
