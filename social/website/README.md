@@ -19,6 +19,7 @@ content strategy and page copy remains the `witwave` repository.
 social/website/
 ├── README.md
 ├── .nojekyll                    # carry through when mirrored to GitHub Pages
+├── CNAME                         # GitHub Pages custom domain: witwave.ai
 ├── index.html                    # homepage
 ├── assets/
 │   ├── styles.css                # shared visual system
@@ -54,13 +55,14 @@ into an Astro, Vite, or other static-site build without changing the content mod
 
 Publishing is automated from this repository by `.github/workflows/publish-social-website.yml`. The workflow copies
 `social/website/` to `witwave-ai/witwave-ai.github.io` using `scripts/sync-social-website.sh`, resolves symlinks, and
-preserves a target-repo `CNAME` file if GitHub Pages custom-domain settings create one later.
+copies the source-controlled `CNAME` file for the GitHub Pages custom domain.
 
 Required setup before the workflow can push:
 
 1. Add a write-enabled deploy key to `witwave-ai/witwave-ai.github.io`.
 2. Save the private key as a secret named `WITWAVE_AI_GITHUB_IO_DEPLOY_KEY` in this repository.
-3. Configure GitHub Pages in `witwave-ai/witwave-ai.github.io` to serve from `main` / root.
+3. Configure GitHub Pages in `witwave-ai/witwave-ai.github.io` to serve from `main` / root with the custom domain
+   `witwave.ai`.
 
 If organization policy disables deploy keys, create a fine-grained token with `Contents: Read and write` access to
 `witwave-ai/witwave-ai.github.io` and save it as `WITWAVE_AI_GITHUB_IO_TOKEN` instead. The workflow supports either

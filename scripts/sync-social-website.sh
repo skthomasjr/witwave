@@ -11,8 +11,8 @@ This is intended for publishing the static site to witwave-ai.github.io.
 Notes:
   - Symlinks are resolved so content/whitepapers/*.md becomes real files.
   - .git/ is never touched in the destination.
-  - CNAME is preserved if it already exists in the destination, so GitHub Pages
-    custom-domain settings are not accidentally removed by the sync.
+  - CNAME is copied from the source site so GitHub Pages custom-domain settings
+    stay source-controlled.
 USAGE
 }
 
@@ -34,5 +34,4 @@ mkdir -p "$destination_dir"
 
 rsync -aL --delete \
   --exclude '.git/' \
-  --exclude 'CNAME' \
   "$source_dir" "$destination_dir/"
