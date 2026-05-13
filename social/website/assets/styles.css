@@ -497,11 +497,17 @@ p {
 }
 
 .team-card-human {
-  grid-column: -2 / -1;
+  display: grid;
+  grid-column: 3 / span 2;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: clamp(1rem, 3vw, 1.5rem);
+  align-items: center;
   order: 99;
+  min-height: 250px;
   border-color: rgba(18, 33, 31, 0.18);
   background: rgba(220, 218, 208, 0.72);
   box-shadow: 0 10px 30px rgba(18, 33, 31, 0.06);
+  text-align: left;
 }
 
 .team-card-human::before {
@@ -517,6 +523,7 @@ p {
 }
 
 .team-card-human .team-photo {
+  margin: 0;
   border-color: rgba(18, 33, 31, 0.16);
   background: rgba(232, 229, 219, 0.94);
   box-shadow: 0 10px 24px rgba(18, 33, 31, 0.09);
@@ -528,6 +535,7 @@ p {
 }
 
 .team-card-human .team-role {
+  justify-content: flex-start;
   border-color: rgba(82, 100, 95, 0.25);
   background: rgba(18, 33, 31, 0.06);
   color: rgba(18, 33, 31, 0.52);
@@ -545,7 +553,7 @@ p {
 .team-contact-links {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.55rem;
   margin-top: 1rem;
 }
@@ -896,6 +904,10 @@ p {
   .team-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .team-card-human {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 840px) {
@@ -928,6 +940,19 @@ p {
 
   .paper-detail {
     grid-template-columns: 1fr;
+  }
+
+  .team-card-human {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .team-card-human .team-photo {
+    margin: 1.05rem auto 1rem;
+  }
+
+  .team-contact-links {
+    justify-content: center;
   }
 
   .reader-sidebar {
