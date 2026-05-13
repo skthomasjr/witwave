@@ -964,6 +964,26 @@ p {
   }
 }
 
+@media (min-width: 721px) and (max-width: 840px) {
+  .team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .team-card-human {
+    grid-column: 1 / -1;
+    grid-template-columns: 132px minmax(0, 1fr);
+    text-align: left;
+  }
+
+  .team-card-human .team-photo {
+    margin: 0;
+  }
+
+  .team-contact-links {
+    justify-content: flex-start;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .hero,
   .page-hero,
