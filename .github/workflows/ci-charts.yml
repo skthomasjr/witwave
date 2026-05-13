@@ -163,17 +163,23 @@ jobs:
         with:
           version: v3.16.0
 
-      # values.schema.json sits alongside values.yaml and values-test.yaml.
+      # values.schema.json sits alongside values.yaml and optional
+      # supplemental values files.
       # `helm lint` with --strict honours the schema when present, so we
       # explicitly run it for every values file in charts that ship a
       # schema (#843).
       - name: helm lint --strict against schema (witwave)
         run: |
           helm lint charts/witwave --strict
-          # values-test.yaml exercises the same schema.
-          sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
-            charts/witwave/values-test.yaml > /tmp/values-test-ci.yaml
-          helm lint charts/witwave --strict --values /tmp/values-test-ci.yaml
+          if [ -f charts/witwave/values-test.yaml ]; then
+            # values-test.yaml exercises the same schema when the legacy
+            # Helm-based smoke deployment is present.
+            sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
+              charts/witwave/values-test.yaml > /tmp/values-test-ci.yaml
+            helm lint charts/witwave --strict --values /tmp/values-test-ci.yaml
+          else
+            echo "no values-test.yaml for charts/witwave, skipping legacy test-values schema lint"
+          fi
 
       - name: helm lint --strict (witwave-operator)
         run: |
@@ -474,11 +480,16 @@ jobs:
       - name: Install PyYAML
         run: python3 -m pip install --user pyyaml
 
-      - name: Render charts (values-test with placeholder-token swap)
+      - name: Render charts
         run: |
-          sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
-            charts/witwave/values-test.yaml > /tmp/values-test-ci.yaml
-          helm template witwave charts/witwave -f /tmp/values-test-ci.yaml > /tmp/witwave.yaml
+          if [ -f charts/witwave/values-test.yaml ]; then
+            sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
+              charts/witwave/values-test.yaml > /tmp/values-test-ci.yaml
+            helm template witwave charts/witwave -f /tmp/values-test-ci.yaml > /tmp/witwave.yaml
+          else
+            echo "no values-test.yaml for charts/witwave, rendering default values"
+            helm template witwave charts/witwave > /tmp/witwave.yaml
+          fi
           helm template op charts/witwave-operator > /tmp/witwave-operator.yaml
 
       # #1377: render a THIRD variant with every opt-in component on so
