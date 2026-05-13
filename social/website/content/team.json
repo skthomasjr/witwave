@@ -65,5 +65,43 @@
       "avatar": "assets/images/team/felix.png",
       "sourcePath": ".agents/self/felix/.witwave/agent-card.md"
     }
+  ],
+  "futureMembers": [
+    {
+      "name": "Coming soon",
+      "role": "Platform Build",
+      "lane": "Will own build systems, CI/CD pipelines, deployment posture, observability, and release infrastructure.",
+      "variant": "future"
+    },
+    {
+      "name": "Coming soon",
+      "role": "Agent Resources",
+      "lane": "Will manage agent runtime capacity, resource budgets, availability, and per-agent configuration tuning.",
+      "variant": "future"
+    },
+    {
+      "name": "Coming soon",
+      "role": "Process Architect",
+      "lane": "Will improve skills, schedules, coordination rules, workflow automation, and team operating scripts.",
+      "variant": "future"
+    },
+    {
+      "name": "Coming soon",
+      "role": "Security Architecture",
+      "lane": "Will handle threat modeling, RBAC posture, supply-chain review, and higher-level security judgment.",
+      "variant": "future"
+    },
+    {
+      "name": "Coming soon",
+      "role": "Testing Quality",
+      "lane": "Will expand test coverage, surface flakiness, evaluate suite quality, and grow stronger acceptance gates.",
+      "variant": "future"
+    },
+    {
+      "name": "Coming soon",
+      "role": "Software Architecture",
+      "lane": "Will watch system shape, boundary drift, cross-cutting refactors, and long-horizon design pressure.",
+      "variant": "future"
+    }
   ]
 }

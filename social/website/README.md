@@ -96,7 +96,8 @@ secret and exits cleanly without publishing when neither is configured.
 ## AI maintenance rules
 
 - Treat `content/whitepapers.json` as the card/catalog source for whitepapers.
-- Treat `content/team.json` as the roster source for the public Team page.
+- Treat `content/team.json` as the roster source for the public Team page, including `members` for active seats and
+  `futureMembers` for visible placeholder roles.
 - Treat `social/posts/posts.json` as the browser-visible blog discovery manifest; GitHub Pages does not expose folder
   listings, so Markdown posts must be listed there before the website can load them.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
