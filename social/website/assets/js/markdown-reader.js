@@ -10,7 +10,7 @@ initReader().catch((error) => {
   markdownPaper.innerHTML = `
     <div class="reader-error">
       <h2>Unable to load this paper.</h2>
-      <p>The reader could not fetch the Markdown source. Check the local server and paper catalog.</p>
+      <p>Please try again in a moment.</p>
     </div>
   `;
 });
@@ -27,7 +27,7 @@ async function initReader() {
 
   document.title = `${selected.shortTitle || selected.title} | witwave`;
   readerTitle.textContent = selected.shortTitle || selected.title;
-  readerDeck.textContent = selected.deck || "Read the latest Markdown source.";
+  readerDeck.textContent = selected.deck || "Read the full paper.";
   renderActions(selected);
   renderPaperNav(papers, selected.slug);
 
@@ -59,7 +59,6 @@ function renderActions(paper) {
     <a class="button secondary" href="../${escapeAttr(paper.markdownPath)}" download="${escapeAttr(paper.slug)}.md">
       Download Markdown
     </a>
-    <span class="source-note">Source: <code>${escapeHtml(paper.sourcePath)}</code></span>
   `;
 }
 

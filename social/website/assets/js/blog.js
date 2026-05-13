@@ -14,13 +14,10 @@ const blogPostNav = document.querySelector("#blog-post-nav");
 initBlog().catch((error) => {
   console.error(error);
   if (blogList) {
-    blogList.innerHTML = renderBlogError("Unable to load blog posts.", "Check the blog manifest and Markdown files.");
+    blogList.innerHTML = renderBlogError("Unable to load blog posts.", "Please try again in a moment.");
   }
   if (blogPost) {
-    blogPost.innerHTML = renderBlogError(
-      "Unable to load this post.",
-      "Check the URL, blog manifest, and Markdown source.",
-    );
+    blogPost.innerHTML = renderBlogError("Unable to load this post.", "Please try again in a moment.");
   }
 });
 
@@ -99,7 +96,7 @@ function renderBlogPost(posts) {
     blogPostSummary.textContent = "The blog reader is ready, but there are no displayable posts.";
     blogPost.innerHTML = renderBlogError(
       "No published posts yet.",
-      "Add a Markdown post and set it to published when ready.",
+      "The first field notes are still being shaped. Start with the whitepapers in the meantime.",
     );
     blogPostActions.innerHTML = `<a class="button primary" href="../">Back to blog</a>`;
     blogPostNav.innerHTML = "";
@@ -108,7 +105,7 @@ function renderBlogPost(posts) {
 
   document.title = `${selectedTitle} | witwave`;
   blogPostTitle.textContent = selectedTitle;
-  blogPostSummary.textContent = selectedSummary || "Read the latest Markdown source.";
+  blogPostSummary.textContent = selectedSummary || "Read the latest field note.";
   blogPostMeta.innerHTML = renderPostMeta(selected);
   blogPostActions.innerHTML = renderPostActions(selected);
   blogPostNav.innerHTML = renderPostNav(visiblePosts, selected.slug);
@@ -131,7 +128,7 @@ function renderBlogCard(post) {
       ${tags.length ? `<ul class="tag-list compact">${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul>` : ""}
       <div class="blog-card-actions">
         <a class="text-link" href="post/?post=${encodeURIComponent(post.slug)}">Read post</a>
-        ${socialLinks || '<span class="source-note">Distribution links pending.</span>'}
+        ${socialLinks || '<span class="source-note">Social links coming soon.</span>'}
       </div>
     </article>
   `;
@@ -150,7 +147,7 @@ function renderPostActions(post) {
     <a class="button secondary" href="${escapeAttr(post.sourceUrl)}" download="${escapeAttr(post.slug)}.md">
       Download Markdown
     </a>
-    ${distribution || '<span class="source-note">Social links will appear after distribution.</span>'}
+    ${distribution || '<span class="source-note">Social links coming soon.</span>'}
   `;
 }
 
