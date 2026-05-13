@@ -13,7 +13,7 @@ stable while allowing post changes to go live after a normal source-repo commit 
 ```text
 social/posts/
 ├── posts.json              # manifest of Markdown files the browser can fetch
-└── <slug>.md               # Markdown post with frontmatter
+└── yyyy-mm-dd-title.md     # Markdown post with frontmatter
 ```
 
 ## Frontmatter contract
@@ -21,7 +21,7 @@ social/posts/
 ```yaml
 ---
 title: "Post title"
-slug: "post-slug"
+slug: "2026-05-13-post-title"
 status: "published" # draft | scheduled | published | archived
 display: true
 sample: false
@@ -30,11 +30,14 @@ summary: "Short card and reader summary."
 tags: ["agentic-ai", "software-engineering"]
 surfaces: ["blog", "twitter", "linkedin"]
 published_urls:
-  blog: "https://witwave.ai/blog/post/?post=post-slug"
+  blog: "https://witwave.ai/blog/post/?post=2026-05-13-post-title"
   twitter: null
   linkedin: null
 ---
 ```
+
+Post filenames should follow `yyyy-mm-dd-title-goes-here.md`, and the `slug` should normally match the filename without
+the `.md` extension.
 
 Only posts with `status: "published"` and `display: true` appear on the public blog index and reader. Drafts can remain
 in the manifest for local checks without appearing publicly.
@@ -55,7 +58,7 @@ that mode.
 ## Empty state
 
 Open `/social/website/blog/?empty=1` during repo-root preview, or `/blog/?empty=1` on the published site, to force the
-no-posts state even when sample or published posts exist.
+no-posts state even when published posts exist.
 
 ## Distribution links
 

@@ -54,7 +54,7 @@ Adjacent canonical source content:
 ```text
 social/posts/
 ├── posts.json                    # browser-fetchable blog manifest
-└── <slug>.md                     # Markdown posts with frontmatter
+└── yyyy-mm-dd-title-goes-here.md # Markdown posts with frontmatter
 ```
 
 ## Publishing model
@@ -100,6 +100,7 @@ secret and exits cleanly without publishing when neither is configured.
 - Prefer small static changes over introducing a build system until the publishing repo requires it.
 - If a paper title or slug changes, update `index.html`, `whitepapers/index.html`, `reader/index.html` links, and
   `content/whitepapers.json` in the same change.
+- Name blog post files `yyyy-mm-dd-title-goes-here.md`.
 - If a blog slug changes, update its frontmatter, `social/posts/posts.json`, and any social `published_urls` together.
 
 ## Local preview
