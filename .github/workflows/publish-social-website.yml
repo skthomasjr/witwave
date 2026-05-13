@@ -36,7 +36,8 @@ jobs:
           if [ -n "$WEBSITE_TOKEN" ]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "auth_mode=token" >> "$GITHUB_OUTPUT"
-            git -c http.extraheader="AUTHORIZATION: bearer $WEBSITE_TOKEN" \
+            auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$WEBSITE_TOKEN" | base64 | tr -d '\n')"
+            git -c http.https://github.com/.extraheader="$auth_header" \
               clone https://github.com/witwave-ai/witwave-ai.github.io.git _site-repo
             exit 0
           fi
@@ -83,7 +84,8 @@ jobs:
           git commit -m "Publish social website from ${SOURCE_SHA:0:12}"
 
           if [ "$AUTH_MODE" = "token" ]; then
-            git -c http.extraheader="AUTHORIZATION: bearer $WEBSITE_TOKEN" \
+            auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$WEBSITE_TOKEN" | base64 | tr -d '\n')"
+            git -c http.https://github.com/.extraheader="$auth_header" \
               push https://github.com/witwave-ai/witwave-ai.github.io.git HEAD:main
           else
             GIT_SSH_COMMAND="ssh -i $HOME/.ssh/witwave-ai-github-io -o IdentitiesOnly=yes" \
