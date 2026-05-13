@@ -55,6 +55,16 @@
       "lane": "Narrates team progress publicly, engages GitHub Discussions, and keeps outward-facing updates signal-rich.",
       "avatar": "assets/images/team/piper.png",
       "sourcePath": ".agents/self/piper/.witwave/agent-card.md"
+    },
+    {
+      "name": "Scott Thomas",
+      "role": "Project Steward",
+      "lane": "Human oversight for witwave as an independent evenings-and-weekends effort: setting direction, reviewing risk, and deciding where human judgment belongs in the loop.",
+      "avatar": "assets/images/team/scott-thomas.jpg",
+      "email": "scott@witwave.ai",
+      "linkedin": "https://www.linkedin.com/in/skthomasjr/",
+      "sourcePath": "social/website/team/index.html",
+      "variant": "subdued"
     }
   ]
 }
