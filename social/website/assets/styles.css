@@ -694,16 +694,6 @@ p {
   color: rgba(18, 33, 31, 0.58);
 }
 
-.team-future-heading {
-  grid-column: 1 / -1;
-  max-width: 760px;
-  margin-top: clamp(1.2rem, 3vw, 2.5rem);
-}
-
-.team-future-heading h2 {
-  font-size: clamp(2rem, 4vw, 3.3rem);
-}
-
 .team-card-future {
   border-style: dashed;
   border-color: rgba(82, 100, 95, 0.28);
