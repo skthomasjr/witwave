@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project | witwave</title>
+    <meta
+      name="description"
+      content="witwave is a cloud-native autonomous agent framework and a live project maintained by its own agent team."
+    />
+    <meta property="og:image" content="../assets/images/witwave-social-preview.png" />
+    <link rel="icon" href="../assets/images/witwave-logo-terminal.svg" />
+    <link rel="stylesheet" href="../assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../index.html" aria-label="witwave home">
+        <img class="brand-logo" src="../assets/images/witwave-logo-terminal.svg" alt="" aria-hidden="true" />
+        <span>witwave</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="./">Project</a>
+        <a href="../whitepapers/">Whitepapers</a>
+        <a href="../blog/">Blog</a>
+        <a href="../team/">Team</a>
+        <a href="../positioning/">About</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="page-hero project-hero">
+        <p class="eyebrow">The project</p>
+        <h1>witwave is a cloud-native framework for governed autonomous agents.</h1>
+        <p>
+          The codebase is a way to run named agents, route real work to them, give them tools and memory, observe what
+          they are doing, and keep humans in the loop when judgment matters. It is built for agent teams, but the same
+          pieces can support a single specialized agent.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://github.com/witwave-ai/witwave">View the GitHub project</a>
+          <a class="button secondary" href="../whitepapers/">Read the whitepapers</a>
+        </div>
+      </section>
+
+      <section class="feature-strip" aria-label="Project summary">
+        <article>
+          <span>01</span>
+          <h2>Run agents</h2>
+          <p>Deploy named agents with durable identity, schedules, routing, memory, backend choice, and health checks.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h2>Give them tools</h2>
+          <p>Connect agents to shared workspaces and MCP tools for Kubernetes, Helm, Prometheus, and future systems.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h2>Govern the loop</h2>
+          <p>Keep work observable with metrics, traces, logs, readiness checks, explicit routing, and human escalation.</p>
+        </article>
+      </section>
+
+      <section class="section-heading">
+        <p class="eyebrow">What the code does</p>
+        <h2>The framework turns agents into deployable software infrastructure.</h2>
+        <p>
+          witwave is not just a prompt folder. The repository contains the runtime, operator, CLI, charts, backends, tool
+          servers, and documentation needed to make autonomous agents behave more like managed services than loose chat
+          sessions.
+        </p>
+      </section>
+
+      <section class="principle-grid project-capabilities" aria-label="Framework capabilities">
+        <article>
+          <h2>Agent runtime</h2>
+          <p>
+            A harness container receives work, schedules heartbeats and jobs, handles triggers and continuations, and
+            routes each concern to the configured backend.
+          </p>
+        </article>
+        <article>
+          <h2>Backend choice</h2>
+          <p>
+            Claude, Codex, Gemini, and Echo backends expose a common A2A surface while keeping their own sessions,
+            memory, conversation logs, and metrics.
+          </p>
+        </article>
+        <article>
+          <h2>Cloud control plane</h2>
+          <p>
+            Helm charts, Kubernetes CRDs, an operator, and the <code>ww</code> CLI create agents, prompts, workspaces,
+            credentials, and deployable team topologies.
+          </p>
+        </article>
+        <article>
+          <h2>Tool layer</h2>
+          <p>
+            MCP services give agents controlled access to systems such as Kubernetes, Helm, and Prometheus without
+            baking every capability into the agent image.
+          </p>
+        </article>
+        <article>
+          <h2>Shared context</h2>
+          <p>
+            Workspaces, prompt bundles, memory folders, identity files, and backend routing give agents continuity
+            across sessions and across a team.
+          </p>
+        </article>
+        <article>
+          <h2>Operational posture</h2>
+          <p>
+            Health probes, metrics ports, auth boundaries, redaction, traces, dashboards, and release tooling make the
+            agent system inspectable instead of magical.
+          </p>
+        </article>
+      </section>
+
+      <section class="split-panel project-duality">
+        <div>
+          <p class="eyebrow">The duality</p>
+          <h2>witwave is both the framework and its proving ground.</h2>
+        </div>
+        <p>
+          The project uses its own agent-team model to maintain the codebase, write documentation, shape public updates,
+          watch releases, and improve the operating process. That does not mean humans disappear. It means the project is
+          intentionally practicing the same lifecycle it argues for: agents do real work, the work is visible, and human
+          stewardship remains responsible for direction, risk, and judgment.
+        </p>
+        <a class="text-link" href="../team/">Meet the working team</a>
+      </section>
+
+      <section class="paper-list" aria-label="Why it matters">
+        <article class="paper-detail">
+          <div class="paper-number">A</div>
+          <div>
+            <p class="card-kicker">For teams</p>
+            <h2>Beyond chat sessions</h2>
+            <p>
+              Most organizations already know how to ask an AI for help. The harder question is how to make agents part
+              of delivery without losing accountability, context, or quality.
+            </p>
+          </div>
+        </article>
+
+        <article class="paper-detail">
+          <div class="paper-number">B</div>
+          <div>
+            <p class="card-kicker">For the project</p>
+            <h2>Built in public, used in practice</h2>
+            <p>
+              The self-team is not a separate demo. It is a live operating environment where the framework is used to
+              coordinate maintenance, documentation, releases, outreach, and process improvement.
+            </p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>witwave is open source and developed as a living example of agent-native engineering.</p>
+      <a href="https://github.com/witwave-ai/witwave">Open GitHub</a>
+    </footer>
+  </body>
+</html>

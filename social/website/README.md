@@ -9,6 +9,7 @@ content strategy and page copy remains the `witwave` repository.
 - Make the two foundational whitepapers prominent:
   - `social/papers/three-phases-of-ai-adoption.md`
   - `social/papers/anatomy-of-an-agentic-team.md`
+- Provide a clear project entry point that explains the framework and links to the GitHub repository.
 - Provide a home for long-form blog entries derived from `social/posts/` and future essays.
 - Hold lightweight marketing/positioning copy for the public site.
 - Keep the site easy for AI agents to maintain: simple files, explicit content maps, clear publishing rules.
@@ -21,9 +22,12 @@ social/website/
 ├── .nojekyll                    # carry through when mirrored to GitHub Pages
 ├── CNAME                         # GitHub Pages custom domain: witwave.ai
 ├── index.html                    # homepage
+├── project/
+│   └── index.html                # project overview + GitHub entry point
 ├── assets/
 │   ├── styles.css                # shared visual system
 │   ├── js/
+│   │   ├── blog.js               # dynamic Markdown blog loader
 │   │   └── markdown-reader.js    # buildless Markdown renderer for papers
 │   └── images/                   # copied site assets for publish repo portability
 ├── whitepapers/
@@ -95,7 +99,8 @@ secret and exits cleanly without publishing when neither is configured.
 - Treat `content/team.json` as the roster source for the public Team page.
 - Treat `social/posts/posts.json` as the browser-visible blog discovery manifest; GitHub Pages does not expose folder
   listings, so Markdown posts must be listed there before the website can load them.
-- Keep the homepage focused: one thesis, two foundational papers, one clear path to blog/updates.
+- Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
+  blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
 - Keep marketing claims grounded in the two papers unless a source is added.
 - Prefer small static changes over introducing a build system until the publishing repo requires it.

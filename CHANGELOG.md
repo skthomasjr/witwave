@@ -20,6 +20,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
   no-posts empty state.
 - **social**: Resolve blog content through the latest `main` commit SHA to reduce stale `posts.json` reads, and move the
   subdued project-steward card to the upper-left of the Team grid.
+- **social**: Add a Project page that explains the witwave framework, links to GitHub, and frames the self-maintaining
+  agent team as part of the project rather than a separate demo.
 
 ## [0.23.13] — 2026-05-11
 
