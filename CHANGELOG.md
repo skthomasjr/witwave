@@ -23,6 +23,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Add a Project page that explains the witwave framework, links to GitHub, and frames the self-maintaining
   agent team as part of the project rather than a separate demo.
 - **social**: Add future-seat placeholders to the Team page for planned but not-yet-deployed agent roles.
+- **social**: Restyle the public website with a darker, higher-tech visual system while preserving the existing content
+  structure.
 
 ## [0.23.13] — 2026-05-11
 
