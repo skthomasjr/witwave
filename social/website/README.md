@@ -62,6 +62,10 @@ Required setup before the workflow can push:
 2. Save the private key as a secret named `WITWAVE_AI_GITHUB_IO_DEPLOY_KEY` in this repository.
 3. Configure GitHub Pages in `witwave-ai/witwave-ai.github.io` to serve from `main` / root.
 
+If organization policy disables deploy keys, create a fine-grained token with `Contents: Read and write` access to
+`witwave-ai/witwave-ai.github.io` and save it as `WITWAVE_AI_GITHUB_IO_TOKEN` instead. The workflow supports either
+secret and exits cleanly without publishing when neither is configured.
+
 ## AI maintenance rules
 
 - Treat `content/whitepapers.json` as the card/catalog source for whitepapers.
