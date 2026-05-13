@@ -15,6 +15,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
   the agentic-team operating model tangible.
 - **social**: Run the social website publisher on every push to `main` during high-iteration site work, while keeping
   no-change publishes as a no-op.
+- **social**: Add a manifest-driven Markdown blog index and reader backed by `social/posts/`, with frontmatter-based
+  publishing controls, sample posts, distribution-link metadata, and an explicit no-posts empty state.
 
 ## [0.23.13] — 2026-05-11
 

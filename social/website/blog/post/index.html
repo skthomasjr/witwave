@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blog Post | witwave</title>
+    <meta name="description" content="Read witwave blog posts in a focused Markdown reader." />
+    <meta property="og:image" content="../../assets/images/witwave-social-preview.png" />
+    <link rel="icon" href="../../assets/images/witwave-logo-terminal.svg" />
+    <link rel="stylesheet" href="../../assets/styles.css" />
+  </head>
+  <body class="reader-page blog-reader-page">
+    <header class="site-header">
+      <a class="brand" href="../../index.html" aria-label="witwave home">
+        <img class="brand-logo" src="../../assets/images/witwave-logo-terminal.svg" alt="" aria-hidden="true" />
+        <span>witwave</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="../../whitepapers/">Whitepapers</a>
+        <a href="../">Blog</a>
+        <a href="../../team/">Team</a>
+        <a href="../../positioning/">About</a>
+      </nav>
+    </header>
+
+    <main class="reader-shell blog-reader-shell">
+      <aside class="reader-sidebar blog-sidebar" aria-label="Blog post navigation">
+        <p class="eyebrow">Blog reader</p>
+        <h1 id="blog-post-title">Loading post...</h1>
+        <p id="blog-post-summary">Fetching the latest Markdown source.</p>
+        <div class="blog-meta" id="blog-post-meta"></div>
+        <div class="reader-actions" id="blog-post-actions"></div>
+        <nav class="reader-paper-nav" id="blog-post-nav" aria-label="Available blog posts"></nav>
+      </aside>
+
+      <article class="markdown-paper blog-article" id="blog-post" aria-live="polite">
+        <p class="reader-loading">Loading Markdown...</p>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>The blog reader renders Markdown source from <code>social/posts/</code>.</p>
+      <a href="../">Back to blog</a>
+    </footer>
+
+    <script src="../../assets/js/blog.js"></script>
+  </body>
+</html>

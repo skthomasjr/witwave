@@ -1,0 +1,16 @@
+{
+  "posts": [
+    {
+      "slug": "sample-agent-native-release-note",
+      "markdownPath": "social/posts/sample-agent-native-release-note.md"
+    },
+    {
+      "slug": "sample-memory-handoffs",
+      "markdownPath": "social/posts/sample-memory-handoffs.md"
+    },
+    {
+      "slug": "draft-launch-outline",
+      "markdownPath": "social/posts/draft-launch-outline.md"
+    }
+  ]
+}

@@ -24,28 +24,45 @@
     </header>
 
     <main>
-      <section class="page-hero compact">
+      <section class="page-hero compact blog-hero">
         <p class="eyebrow">Long-form entries</p>
-        <h1>Blog coming soon.</h1>
+        <h1>Field notes from agent-native engineering.</h1>
         <p>
-          This area will hold field notes, launch posts, and practical essays derived from the whitepapers and ongoing
-          agent-native engineering work.
+          Blog posts are Markdown files with frontmatter. The website reads the manifest, filters for published entries,
+          and links each post to the social surfaces where it has been shared.
         </p>
       </section>
 
-      <section class="empty-state">
-        <h2>Candidate first posts</h2>
-        <ul>
-          <li>Why most teams plateau at delegated agent work</li>
-          <li>What makes an agent-native lifecycle trustworthy</li>
-          <li>How to design a narrow bridge from Phase 2 to Phase 3</li>
-        </ul>
+      <section class="blog-toolbar" aria-label="Blog publishing model">
+        <div>
+          <p class="eyebrow">Publishing model</p>
+          <h2>Markdown first, distribution-aware.</h2>
+        </div>
+        <p>
+          Each post can track status, display rules, tags, summaries, and outbound links for X, LinkedIn, GitHub
+          Discussions, newsletters, or future channels. Use <code>?empty=1</code> to preview the no-posts state.
+        </p>
+      </section>
+
+      <section class="blog-grid" id="blog-list" aria-label="Published blog posts">
+        <p class="reader-loading">Loading blog posts...</p>
+      </section>
+
+      <section class="empty-state blog-empty" id="blog-empty" hidden>
+        <p class="eyebrow">No published posts yet</p>
+        <h2>The blog is ready for the first field note.</h2>
+        <p>
+          Add Markdown files under <code>social/posts/</code>, list them in <code>social/posts/posts.json</code>, and
+          set <code>status: "published"</code> plus <code>display: true</code> when they should appear here.
+        </p>
       </section>
     </main>
 
     <footer class="site-footer">
-      <p>Blog source notes live under <code>social/website/content/blog/</code>.</p>
+      <p>Blog source notes live under <code>social/posts/</code>.</p>
       <a href="../whitepapers/">Read the whitepapers</a>
     </footer>
+
+    <script src="../assets/js/blog.js"></script>
   </body>
 </html>

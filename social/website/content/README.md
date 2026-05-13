@@ -9,7 +9,8 @@ This folder keeps website content metadata and draft material separate from the 
   agent cards; the human steward entry can omit an avatar and use a subdued presentation.
 - `whitepapers/` exposes the Markdown files used by the browser reader. These entries are symlinked back to
   `social/papers/` so local previews reflect paper edits immediately.
-- `blog/` is reserved for long-form essays and launch posts.
+- Blog posts are intentionally not mirrored here. The public blog reads `social/posts/posts.json` and the Markdown files
+  it lists directly from the public `witwave-ai/witwave` repository.
 - `marketing/` holds positioning copy that may be reused across the homepage, deck, and future landing pages.
 
 ## Operating rule
