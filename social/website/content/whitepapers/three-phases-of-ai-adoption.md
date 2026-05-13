@@ -1,0 +1,1 @@
+../../../papers/three-phases-of-ai-adoption.md

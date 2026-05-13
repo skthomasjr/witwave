@@ -1,0 +1,55 @@
+name: Publish social website
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "social/website/**"
+      - "social/papers/**"
+      - "scripts/sync-social-website.sh"
+      - ".github/workflows/publish-social-website.yml"
+
+concurrency:
+  group: publish-social-website
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to witwave-ai.github.io
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout witwave source
+        uses: actions/checkout@v4
+
+      - name: Checkout website repository
+        uses: actions/checkout@v4
+        with:
+          repository: witwave-ai/witwave-ai.github.io
+          path: _site-repo
+          fetch-depth: 0
+          ssh-key: ${{ secrets.WITWAVE_AI_GITHUB_IO_DEPLOY_KEY }}
+
+      - name: Sync static website
+        run: scripts/sync-social-website.sh _site-repo
+
+      - name: Commit and push website changes
+        working-directory: _site-repo
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No website changes to publish."
+            exit 0
+          fi
+
+          git config user.name "witwave website publisher"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish social website from ${SOURCE_SHA:0:12}"
+          git push origin HEAD:main

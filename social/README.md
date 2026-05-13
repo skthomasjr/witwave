@@ -12,8 +12,14 @@ content the team publishes to the world.
 social/
 ├── README.md                  (this file — the spec)
 ├── papers/                    long-form whitepapers; standalone publications
-│   ├── four-phases-of-ai-adoption.md
+│   ├── three-phases-of-ai-adoption.md
 │   └── anatomy-of-an-agentic-team.md
+├── website/                   public website source; GitHub Pages-ready static scaffold
+│   ├── index.html
+│   ├── whitepapers/
+│   ├── blog/
+│   ├── positioning/
+│   └── content/
 ├── posts/                     short / medium-form posts that follow the spec
 │   └── (post files here)
 └── assets/                    images, video, audio referenced by posts/papers
@@ -24,8 +30,11 @@ social/
 
 - **Posts** (`posts/`) — short or medium-form content destined for one or more social channels. These follow the spec
   below.
-- **Whitepapers** (`papers/`) — long-form framework pieces (e.g., `papers/four-phases-of-ai-adoption.md`). These don't
+- **Whitepapers** (`papers/`) — long-form framework pieces (e.g., `papers/three-phases-of-ai-adoption.md`). These don't
   follow the post spec; they're standalone publications. Treat them as source material that posts can reference.
+- **Website source** (`website/`) — the public website source managed in this repo and eventually published via the
+  dedicated GitHub Pages repository. The website currently starts as a static scaffold that makes the two whitepapers
+  prominent, reserves space for long-form blog entries, and keeps positioning copy agent-maintainable.
 - **Drafts** — work-in-progress in either shape, marked `status: draft` in frontmatter (posts) or simply unfinished
   (papers).
 
@@ -59,7 +68,7 @@ published_urls:
 # Context (optional but encouraged)
 tags: [] # topical tags, lowercase-kebab-case, e.g. [ai-adoption, framework]
 audience: tech-leader # tech-leader | founder | community | mixed
-related: [] # paths to related files in the repo, e.g. [social/papers/four-phases-of-ai-adoption.md]
+related: [] # paths to related files in the repo, e.g. [social/papers/three-phases-of-ai-adoption.md]
 source: null # commit SHA, GitHub discussion #, escalation ref, or "organic"
 thread_parent: null # path to parent post file if this is a follow-up
 assets: [] # paths to image/video files referenced by this post
@@ -150,11 +159,11 @@ section is a reading aid.
 
 ### Filename convention
 
-- **Slug-style, lowercase, hyphenated:** `four-phases-launch.md`, `phase-2-cliff-thread.md`,
+- **Slug-style, lowercase, hyphenated:** `three-phases-launch.md`, `phase-2-cliff-thread.md`,
   `release-v0.24-announcement.md`
 - **No date prefix.** Frontmatter has `created`; the filename stays clean so it can become a future URL slug
-  (`/blog/four-phases-launch`).
-- **Action-or-topic naming, not chronological.** `four-phases-launch.md` reads better than `2026-05-11-post.md`.
+  (`/blog/three-phases-launch`).
+- **Action-or-topic naming, not chronological.** `three-phases-launch.md` reads better than `2026-05-11-post.md`.
 
 ### Status lifecycle
 
@@ -174,7 +183,7 @@ draft → ready → scheduled → published → archived
 
 ```markdown
 ---
-title: "Four Phases of AI Adoption — launch announcement"
+title: "Three Phases of Agentic AI Adoption in Software Engineering — launch announcement"
 status: draft
 surfaces: [twitter, linkedin]
 created: 2026-05-11
@@ -189,7 +198,7 @@ published_urls:
 tags: [ai-adoption, framework, launch]
 audience: tech-leader
 related:
-  - social/papers/four-phases-of-ai-adoption.md
+  - social/papers/three-phases-of-ai-adoption.md
 source: organic
 thread_parent: null
 assets: []
@@ -201,29 +210,28 @@ tone: conversational
 
 Headline: New whitepaper on AI adoption — and why most teams will plateau at Phase 2.
 
-1/ Most engineering teams adopting AI follow a four-phase progression: Co-Pilot → Agent-Augmented → Agent-Native →
-Self-Improving. Most won't get past Phase 2.
+1/ Most engineering teams adopting AI move through three practical phases: Driven -> Delegated -> Native. Most won't get
+past Phase 2.
 
-2/ The cliff isn't technical. It's organizational. Phase 2 → 3 demolishes the process scaffolding the team is built on —
-sprints, tickets, status meetings, review queues. Nobody volunteers for that.
+2/ The cliff isn't just technical. It's the development lifecycle: context, review, tests, security, release safety,
+memory, logs, and human escalation.
 
-3/ Phase 3 → 4 by contrast is natural — same scaffolding pointed at the agents' own codebase. The hard work was already
-done in the 2 → 3 cliff.
+3/ Adding agents to the old process creates activity. Integrating agents into the SDLC creates leverage.
 
-4/ Wrote up the framework + a 10-question self-assessment for where your team sits. Link below. ⬇️
+4/ Wrote up the framework + a 23-question self-assessment for where your team sits. Link below.
 
 🔗 <whitepaper URL>
 
 ## LinkedIn
 
 Most engineering teams adopting AI will plateau at Phase 2 — not because the tech blocks them, but because the process
-redesign required to reach Phase 3 demolishes the operational scaffolding their culture is built around.
+redesign required to reach Phase 3 touches the operational scaffolding their culture is built around.
 
-I wrote up a four-phase framework (Co-Pilot → Agent-Augmented → Agent-Native → Self-Improving) and the
-asymmetric-transition insight that explains why the cliff between Phase 2 and 3 is real, why Phase 3 → 4 is natural by
-contrast, and what the rational positions are for teams currently at Phase 2.
+I wrote up a three-phase framework (Driven -> Delegated -> Native) and the asymmetric-transition insight that explains
+why the cliff between Phase 2 and 3 is real: agents stop being a tooling decision and become a development lifecycle
+decision.
 
-Includes a 10-question self-assessment for where your team sits today.
+Includes a 23-question self-assessment for where your team sits today.
 
 🔗 <whitepaper URL>
 ```
@@ -237,7 +245,7 @@ standalone documents that live under `social/papers/`. Conventions:
 - H1 title, executive summary, body sections, conclusion.
 - Optional frontmatter (just `title:` and `created:` for minimal tracking).
 - Posts can link to them via `related:` in the post's frontmatter — full path, e.g.
-  `related: [social/papers/four-phases-of-ai-adoption.md]`.
+  `related: [social/papers/three-phases-of-ai-adoption.md]`.
 - Whitepapers don't have a status lifecycle. They're either drafts or published; once a paper goes public, edits are
   corrections rather than revisions.
 
@@ -250,14 +258,14 @@ co-located and prunable.
 social/
 ├── README.md
 ├── papers/
-│   ├── four-phases-of-ai-adoption.md
+│   ├── three-phases-of-ai-adoption.md
 │   └── anatomy-of-an-agentic-team.md
 ├── posts/
-│   └── four-phases-launch.md             (post; status: draft)
+│   └── three-phases-launch.md             (post; status: draft)
 └── assets/
-    ├── four-phases-of-ai-adoption/
+    ├── three-phases-of-ai-adoption/
     │   └── transition-diagram.png
-    └── four-phases-launch/
+    └── three-phases-launch/
         ├── header.png
         └── thread-diagram.png
 ```

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Whitepaper Reader | witwave</title>
+    <meta name="description" content="Read witwave whitepapers in a focused Markdown reader." />
+    <meta property="og:image" content="../assets/images/witwave-social-preview.png" />
+    <link rel="icon" href="../assets/images/witwave-logo-terminal.svg" />
+    <link rel="stylesheet" href="../assets/styles.css" />
+  </head>
+  <body class="reader-page">
+    <header class="site-header">
+      <a class="brand" href="../index.html" aria-label="witwave home">
+        <img class="brand-logo" src="../assets/images/witwave-logo-terminal.svg" alt="" aria-hidden="true" />
+        <span>witwave</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="../whitepapers/">Whitepapers</a>
+        <a href="../blog/">Blog</a>
+        <a href="../positioning/">About</a>
+      </nav>
+    </header>
+
+    <main class="reader-shell">
+      <aside class="reader-sidebar" aria-label="Whitepaper navigation">
+        <p class="eyebrow">Whitepaper reader</p>
+        <h1 id="reader-title">Loading paper...</h1>
+        <p id="reader-deck">Fetching the latest Markdown source.</p>
+        <div class="reader-actions" id="reader-actions"></div>
+        <nav class="reader-paper-nav" id="reader-paper-nav" aria-label="Available papers"></nav>
+      </aside>
+
+      <article class="markdown-paper" id="markdown-paper" aria-live="polite">
+        <p class="reader-loading">Loading Markdown...</p>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>The reader renders the Markdown source mirrored from <code>social/papers/</code>.</p>
+      <a href="../whitepapers/">Back to whitepapers</a>
+    </footer>
+
+    <script src="../assets/js/markdown-reader.js"></script>
+  </body>
+</html>

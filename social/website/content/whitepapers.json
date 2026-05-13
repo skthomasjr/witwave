@@ -1,0 +1,28 @@
+{
+  "whitepapers": [
+    {
+      "title": "The Three Phases of Agentic AI Adoption in Software Engineering",
+      "shortTitle": "Three Phases of Agentic AI Adoption",
+      "slug": "three-phases-of-ai-adoption",
+      "sourcePath": "social/papers/three-phases-of-ai-adoption.md",
+      "markdownPath": "content/whitepapers/three-phases-of-ai-adoption.md",
+      "websitePath": "reader/?paper=three-phases-of-ai-adoption",
+      "deck": "Driven -> Delegated -> Native: the practical path from IDE agents to agent-native development lifecycle.",
+      "status": "draft",
+      "primary": true,
+      "themes": ["agentic-ai", "software-development", "sdlc", "adoption"]
+    },
+    {
+      "title": "Anatomy of an Agentic Team",
+      "shortTitle": "Anatomy of an Agentic Team",
+      "slug": "anatomy-of-an-agentic-team",
+      "sourcePath": "social/papers/anatomy-of-an-agentic-team.md",
+      "markdownPath": "content/whitepapers/anatomy-of-an-agentic-team.md",
+      "websitePath": "reader/?paper=anatomy-of-an-agentic-team",
+      "deck": "A practical model for how specialized agents coordinate, remember, improve, and keep humans in the loop.",
+      "status": "draft",
+      "primary": true,
+      "themes": ["agentic-teams", "coordination", "memory", "operating-model"]
+    }
+  ]
+}
