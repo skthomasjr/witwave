@@ -18,6 +18,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Add a manifest-driven Markdown blog index and reader backed by `social/posts/`, with frontmatter-based
   publishing controls, dated post filenames, Piper's first field note, distribution-link metadata, and an explicit
   no-posts empty state.
+- **social**: Resolve blog content through the latest `main` commit SHA to reduce stale `posts.json` reads, and move the
+  subdued project-steward card to the upper-left of the Team grid.
 
 ## [0.23.13] — 2026-05-11
 

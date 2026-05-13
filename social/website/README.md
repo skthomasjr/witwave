@@ -62,9 +62,10 @@ social/posts/
 For now this is a static HTML/CSS/JS scaffold. When the dedicated website repository is ready, the initial publish can
 copy this directory as-is. The current whitepaper reader fetches Markdown from `content/whitepapers/`, which is
 symlinked back to the canonical files under `social/papers/` in this repo. The blog reader is intentionally different:
-canonical posts and their manifest live under `social/posts/`, and the browser fetches them from the public
-`witwave-ai/witwave` repository on `main`. That means blog content changes need a normal source-repo commit and push,
-but they do not require a website-repo publish unless the site shell changes.
+canonical posts and their manifest live under `social/posts/`, and the browser resolves the latest `main` commit SHA
+from the public `witwave-ai/witwave` repository before fetching commit-pinned raw Markdown. That means blog content
+changes need a normal source-repo commit and push, but they do not require a website-repo publish unless the site shell
+changes.
 
 If the publishing workflow copies this site into another repository, use a symlink-resolving copy such as
 `rsync -aL social/website/ <publish-repo>/` so whitepaper Markdown content is materialised as normal files. Later, if the

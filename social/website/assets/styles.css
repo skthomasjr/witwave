@@ -618,11 +618,10 @@ p {
 
 .team-card-human {
   display: grid;
-  grid-column: 3 / span 2;
+  grid-column: span 2;
   grid-template-columns: 132px minmax(0, 1fr);
   gap: clamp(1rem, 3vw, 1.5rem);
   align-items: center;
-  order: 99;
   min-height: 250px;
   border-color: rgba(18, 33, 31, 0.18);
   background: rgba(220, 218, 208, 0.72);

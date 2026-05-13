@@ -4,9 +4,10 @@ Blog entries are authored as Markdown files under `social/posts/` with YAML-styl
 directory on GitHub Pages, so `social/posts/posts.json` is the manifest that tells the website which Markdown files are
 eligible to load.
 
-The website does not keep a symlinked mirror of the posts in this folder. In production, the blog JavaScript fetches the
-manifest and Markdown from the public `witwave-ai/witwave` repository on `main`. That keeps the website repository
-stable while allowing post changes to go live after a normal source-repo commit and push.
+The website does not keep a symlinked mirror of the posts in this folder. In production, the blog JavaScript resolves
+the latest `main` commit SHA through the public GitHub API, then fetches the manifest and Markdown from commit-pinned
+raw URLs. That keeps the website repository stable while allowing post changes to go live after a normal source-repo
+commit and push, usually once GitHub's short API cache sees the new ref.
 
 ## Files
 

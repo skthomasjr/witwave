@@ -1,6 +1,12 @@
 const blogScript = document.currentScript;
+const sourceRepository = {
+  owner: "witwave-ai",
+  repo: "witwave",
+  branch: "main",
+};
+const sourceMainContentBase = `https://raw.githubusercontent.com/${sourceRepository.owner}/${sourceRepository.repo}/${sourceRepository.branch}/`;
+const sourceMainRefUrl = `https://api.github.com/repos/${sourceRepository.owner}/${sourceRepository.repo}/git/ref/heads/${sourceRepository.branch}`;
 const sourceContentBase = getSourceContentBase();
-const blogCatalogUrl = new URL("social/posts/posts.json", sourceContentBase);
 
 const blogList = document.querySelector("#blog-list");
 const blogEmpty = document.querySelector("#blog-empty");
@@ -34,11 +40,13 @@ async function initBlog() {
 }
 
 async function loadPosts() {
+  const contentBase = await resolveContentBase();
+  const blogCatalogUrl = new URL("social/posts/posts.json", contentBase);
   const catalog = await fetchJson(blogCatalogUrl);
   const entries = catalog.posts || [];
   const loaded = await Promise.all(
     entries.map(async (entry) => {
-      const markdownUrl = new URL(entry.markdownPath, sourceContentBase);
+      const markdownUrl = new URL(entry.markdownPath, contentBase);
       const rawMarkdown = await fetchText(markdownUrl);
       const parsed = parseFrontmatter(rawMarkdown);
       return {
@@ -54,6 +62,40 @@ async function loadPosts() {
   return loaded.sort((left, right) => getPostTime(right) - getPostTime(left));
 }
 
+async function resolveContentBase() {
+  if (!shouldResolveGitHubCommit(sourceContentBase)) {
+    return sourceContentBase;
+  }
+
+  try {
+    const ref = await fetchJson(sourceMainRefUrl);
+    const sha = ref?.object?.sha;
+    if (isGitSha(sha)) {
+      return `https://raw.githubusercontent.com/${sourceRepository.owner}/${sourceRepository.repo}/${sha}/`;
+    }
+    console.warn("GitHub ref response did not include a valid commit SHA; falling back to raw main.");
+  } catch (error) {
+    console.warn("Unable to resolve latest blog content SHA; falling back to raw main.", error);
+  }
+
+  return sourceContentBase;
+}
+
+function shouldResolveGitHubCommit(base) {
+  try {
+    const url = new URL(base);
+    const path = url.pathname.replace(/\/+$/, "");
+    const mainPath = `/${sourceRepository.owner}/${sourceRepository.repo}/${sourceRepository.branch}`;
+    return url.origin === "https://raw.githubusercontent.com" && path === mainPath;
+  } catch {
+    return false;
+  }
+}
+
+function isGitSha(value) {
+  return typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
+}
+
 function getSourceContentBase() {
   const override = blogScript?.dataset.sourceBase;
   if (override) {
@@ -65,7 +107,7 @@ function getSourceContentBase() {
     return new URL("/", window.location.href).href;
   }
 
-  return "https://raw.githubusercontent.com/witwave-ai/witwave/main/";
+  return sourceMainContentBase;
 }
 
 function renderBlogIndex(posts) {
