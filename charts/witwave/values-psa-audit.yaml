@@ -2,7 +2,7 @@
 #
 # This values file turns on every opt-in component so the chart-CI
 # PSA-restricted audit job (in .github/workflows/ci-charts.yml) sees
-# the full rendered resource set, not just the defaults + values-test.
+# the full rendered resource set, not just the defaults.
 # Without this file, new optional components (mcp-prometheus is one)
 # ship with a missing securityContext baseline and admission-time PSS
 # failures only surface on a real cluster.

@@ -1,12 +1,13 @@
 backend:
   agents:
     - id: claude
-      url: http://localhost:8090
+      url: http://localhost:8001
       model: claude-opus-4-7
 
-    # codex and gemini omitted — no API budget for codex, no key provisioned
-    # for gemini. Restore those entries (and re-enable the backends in
-    # values-test.yaml) to bring them back.
+    # Codex and Gemini are intentionally omitted from the active Bob smoke
+    # deployment. Keep their backend config directories as parked fixtures,
+    # and add them back through `ww agent backend add` or a fresh multi-backend
+    # `ww agent create` only when credentials and budget are available.
 
   routing:
     default:

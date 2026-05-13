@@ -1,39 +1,22 @@
 ---
-description: Smoke test — verifies the task scheduler fires a run-once task and the backend responds correctly.
+description: Smoke test - verifies the precommitted task scheduler fixture fires and the backend responds correctly.
 enabled: true
 ---
 
-This test creates a run-once task (no `window-start`) which fires immediately when registered.
-
-## Setup
-
-```
-cat > .agents/test/bob/.witwave/tasks/task-smoke.md << 'EOF'
----
-name: Task Smoke
-description: Run-once task used to verify the task scheduler fires and the backend responds.
----
-Respond with TASK_SMOKE_OK.
-EOF
-```
-
-Wait 5 seconds for the file watcher to register the task.
+Bob has a precommitted task fixture at `.agents/test/bob/.witwave/tasks/smoke.md`. It has a 24-hour window and responds with `TASK_SMOKE_OK`, so it should fire after the test deployment becomes ready.
 
 ## Verification
 
-Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until
-`TASK_SMOKE_OK` appears.
+Poll Bob's conversation evidence:
 
-## Cleanup
+```bash
+ww conversation list --namespace witwave-test --agent bob --expand
+```
 
-```
-rm .agents/test/bob/.witwave/tasks/task-smoke.md
-```
+Poll every 2 seconds for up to 60 seconds until `TASK_SMOKE_OK` appears.
 
 ## Pass/Fail Criteria
 
-The test passes if `TASK_SMOKE_OK` is found in the conversation log within 60 seconds. The test fails if `TASK_SMOKE_OK`
-does not appear within 60 seconds.
+The test passes if `TASK_SMOKE_OK` appears in Bob's conversation log within 60 seconds. The test fails if it does not appear within the timeout.
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
-the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**

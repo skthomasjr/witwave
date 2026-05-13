@@ -244,6 +244,6 @@ friction points.
 ## Reading further
 
 - Per-agent identity + skills: `.agents/self/<name>/.claude/CLAUDE.md`
-- Per-agent public capability surface: `.agents/self/<name>/.{claude,witwave}/agent-card.md`
-- Bootstrap (deploying the team to a cluster): `docs/bootstrap.md`
+- Per-agent public capability surface: `.agents/self/<name>/.witwave/agent-card.md`
+- Bootstrap (deploying the team to a cluster): `.agents/self/bootstrap.md`
 - Project-level architecture: `docs/architecture.md`, `AGENTS.md`

@@ -12,7 +12,7 @@ Step 1 — fire the first POST in the background (do not wait for it to return):
 ```
 curl -s -o /dev/null \
   -X POST http://localhost:8099/triggers/ping \
-  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
   -H "Content-Type: application/json" \
   -d '{}' &
 FIRST_PID=$!
@@ -24,7 +24,7 @@ Step 2 — immediately fire a second POST and capture its HTTP status code:
 sleep 0.1
 SECOND_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
-  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
   -H "Content-Type: application/json" \
   -d '{}')
 echo "Second request status: $SECOND_CODE"

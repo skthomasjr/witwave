@@ -195,15 +195,16 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 | File            | Location                | Purpose                                                             |
 | --------------- | ----------------------- | ------------------------------------------------------------------- |
-| `agent-card.md` | `/home/agent/.claude/`  | A2A identity (agent card description) for the Claude backend        |
-| `agent-card.md` | `/home/agent/.codex/`   | A2A identity (agent card description) for the Codex backend         |
-| `agent-card.md` | `/home/agent/.gemini/`  | A2A identity (agent card description) for the Gemini backend        |
 | `CLAUDE.md`     | `/home/agent/.claude/`  | Behavioral instructions injected into the Claude backend at startup |
 | `AGENTS.md`     | `/home/agent/.codex/`   | Behavioral instructions injected into the Codex backend at startup  |
 | `GEMINI.md`     | `/home/agent/.gemini/`  | Behavioral instructions injected into the Gemini backend at startup |
 | `memory/`       | `<name>/claude/memory/` | Persistent markdown memory files for Claude backend                 |
 | `memory/`       | `<name>/codex/memory/`  | Persistent markdown memory files for Codex backend                  |
 | `memory/`       | `<name>/gemini/memory/` | JSON session history for Gemini backend (`sessions/`)               |
+
+Backend-specific `agent-card.md` files may be mounted for direct backend-sidecar discovery, but the Kubernetes Service
+for a named agent targets the harness container. The repo's self/test agent configs therefore treat
+`.witwave/agent-card.md` as the public agent-card source of truth.
 
 ### Key environment variables
 
@@ -306,20 +307,19 @@ webhook-style deliveries do not wait behind the singleton scheduler lane.
 
 ## Port Assignments
 
-| Agent       | harness | claude | codex | gemini |
-| ----------- | ------- | ------ | ----- | ------ |
-| iris        | 8000    | 8010   | 8011  | 8012   |
-| nova        | 8001    | 8010   | 8011  | 8012   |
-| kira        | 8002    | 8010   | 8011  | 8012   |
-| bob         | 8099    | 8090   | 8091  | 8092   |
-| fred        | 8098    | 8089   | —     | —      |
-| ui (active) | 3002    | —      | —     | —      |
-| ui (test)   | 3001    | —      | —     | —      |
+Operator-created agents follow the `ww` port convention unless a CR explicitly overrides it:
 
-Active agents (iris/nova/kira) each run in their own pod with their own localhost, so the backend ports are uniform
-across them (8010/8011/8012). The harness port differs per agent only because multiple active agents may share a host
-via `hostPort`/`NodePort`. Test agents (bob/fred) still use agent-unique backend ports because they're deployed together
-in `values-test.yaml` with `hostPort` exposed on the same host.
+| Container | Port |
+| --------- | ---- |
+| harness | 8000 |
+| first backend sidecar | 8001 |
+| additional backend sidecars | 8002..8050 |
+| metrics listener | 9000 |
+
+Each named agent runs in its own pod with its own localhost, so these ports can be reused across agents. Local smoke
+docs may still forward stable laptop ports to the harness Service, for example `localhost:8099 -> svc/bob:8000`, but
+that is a client-side convenience rather than an in-cluster port assignment. Bob's Codex/Gemini directories remain
+parked fixtures so they can be re-enabled deliberately once credentials and budget are available.
 
 ---
 
@@ -354,7 +354,7 @@ Phase 17:    docs refinement
 
 Installation commands live with the artifacts they deploy:
 
-- Local Helm install (with values-test.yaml) — [`AGENTS.md` → Running Locally](../AGENTS.md#running-locally)
+- Local test-team install through `ww` — [`.agents/test/bootstrap.md`](../.agents/test/bootstrap.md)
 - Production witwave agent install (published chart) — [`charts/witwave/README.md`](../charts/witwave/README.md)
 - Operator install — [`charts/witwave-operator/README.md`](../charts/witwave-operator/README.md)
 - Operator development (`make install` / `make run`) — [`operator/README.md`](../operator/README.md)
@@ -478,7 +478,7 @@ backend:
 
     - id: codex
       url: http://localhost:8011
-      model: gpt-5.1-codex
+      model: gpt-5.5
 
     - id: gemini
       url: http://localhost:8012

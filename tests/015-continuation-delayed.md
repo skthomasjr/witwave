@@ -12,7 +12,7 @@ Step 1 — fire the upstream trigger:
 ```
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
-  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -22,7 +22,7 @@ The trigger returns 202 immediately. After the trigger backend completes, the co
 Step 2 — poll the conversation log at:
 
 ```
-.agents/test/bob/logs/conversation.jsonl
+ww conversation list --namespace witwave-test --agent bob --expand
 ```
 
 Poll every 2 seconds for up to 60 seconds until `CONTINUATION_TRIGGER_OK` appears.

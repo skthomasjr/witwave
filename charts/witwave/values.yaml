@@ -405,8 +405,8 @@ gitSync:
   #      namespace. The recommended path for production.
   #
   #   2. inline username + token + acknowledgeInsecureInline=true — chart
-  #      renders a Secret for you. Convenient for local dev and smoke tests
-  #      (our own values-test.yaml uses this path), but tokens land in etcd
+  #      renders a Secret for you. Convenient for short-lived local/dev
+  #      installs, but tokens land in etcd
   #      release state + `helm get values` + `kubectl describe`, so NEVER
   #      commit a values file with inline tokens to a shared repo.
   #

@@ -23,8 +23,8 @@ each agent's harness:
 
 ```bash
 # Terminal 1: port-forward each agent's harness
-kubectl port-forward -n witwave svc/witwave-bob 8099:8099 &
-kubectl port-forward -n witwave svc/witwave-fred 8098:8098 &
+kubectl port-forward -n witwave-test svc/bob 8099:8000 &
+kubectl port-forward -n witwave-test svc/fred 8098:8000 &
 
 # Terminal 2: run the dev server with the team list
 cd dashboard

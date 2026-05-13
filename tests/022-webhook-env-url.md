@@ -9,7 +9,7 @@ environment variable at parse time and successfully POSTs to the resolved URL. I
 
 The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-env-url.md`. It fires when a response contains
 `WEBHOOK_ENV_URL_FIRE` and POSTs to `WEBHOOK_TEST_URL_FEATURE_SINK`, which resolves to
-`http://witwave-bob:8099/triggers/feature-sink`. That trigger dispatches a prompt to the backend which responds with
+`http://bob:8000/triggers/feature-sink`. That trigger dispatches a prompt to the backend which responds with
 `FEATURE_SINK_OK`.
 
 ## Step 1 — Send a prompt that produces WEBHOOK_ENV_URL_FIRE
@@ -28,7 +28,7 @@ After `WEBHOOK_ENV_URL_FIRE` appears, the webhook runner fires asynchronously. P
 `FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
 
 ```
-.agents/test/bob/logs/conversation.jsonl
+ww conversation list --namespace witwave-test --agent bob --expand
 ```
 
 ## Pass/Fail Criteria

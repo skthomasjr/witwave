@@ -1,140 +1,137 @@
 ---
 description:
-  Builds all images, deploys the test environment via Helm, and verifies all services are ready before any tests run.
+  Deploys the operator-managed test team with ww and verifies Bob/Fred are ready before any tests run.
 enabled: true
 ---
 
-> **Before you start.** Read [`tests/README.md`](./README.md) for the framework conventions, the trigger Bearer-auth
-> contract, and (most importantly) the **required tabular output format** that the run must produce after the suite
-> finishes. Every executed test must have a row in that table.
+> **Before you start.** Read [`tests/README.md`](./README.md) for the framework conventions, the trigger Bearer-auth contract, and the required tabular output format that the run must produce after the suite finishes. Every executed test must have a row in that table.
 
-Tear down any existing test environment before starting fresh:
+Tear down any existing test agents and workspace before starting fresh:
 
-```
-helm uninstall witwave-test -n witwave-test 2>/dev/null || true
-```
-
-Clear all test agent logs so tests start with a clean slate:
-
-```
-rm -f .agents/test/bob/logs/conversation.jsonl
-rm -f .agents/test/bob/logs/tool-activity.jsonl
-rm -f .agents/test/bob/logs/agent.log
+```bash
+ww agent delete bob --namespace witwave-test --delete-git-secret --yes 2>/dev/null || true
+ww agent delete fred --namespace witwave-test --delete-git-secret --yes 2>/dev/null || true
+ww workspace delete witwave-test --namespace witwave-test --wait --yes 2>/dev/null || true
 ```
 
-The fastest path — deploy via the project's helper script:
+Load credentials from the repo-root `.env`:
 
-```
-./scripts/deploy-test.sh
-```
+```bash
+set -a
+source .env
+set +a
 
-The script sources `.env` at the repo root, validates required vars (`CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`,
-`GITSYNC_PASSWORD`), creates the `ghcr-credentials` image-pull secret from the dev's local `~/.docker/config.json`, and
-runs `helm upgrade --install witwave-test ./charts/witwave -f values-test.yaml ...` with credentials passed as `--set`
-flags.
-
-The chart's inline-credentials pattern (`gitSync.credentials` + `backends.credentials` with
-`acknowledgeInsecureInline=true`) renders the per-agent Secrets for us — no manual `kubectl create secret` chain needed.
-See `charts/witwave/README.md#credentials-for-gitsync--backends` for the full shape, three install modes, and the
-explicit dev-only tradeoff of landing tokens in `helm get values`.
-
-Required in `.env`:
-
-```
-CLAUDE_CODE_OAUTH_TOKEN=...
-GITSYNC_USERNAME=<your-github-username>
-GITSYNC_PASSWORD=<github-pat-with-repo-scope>
+: "${CLAUDE_CODE_OAUTH_TOKEN:?set CLAUDE_CODE_OAUTH_TOKEN in .env}"
+: "${GITSYNC_USERNAME:?set GITSYNC_USERNAME in .env}"
+: "${GITSYNC_PASSWORD:?set GITSYNC_PASSWORD in .env}"
+export TRIGGERS_AUTH_TOKEN="${TRIGGERS_AUTH_TOKEN:-$(python3 -c 'import secrets; print(secrets.token_hex(32))')}"
+printf 'Using TRIGGERS_AUTH_TOKEN=%s\n' "$TRIGGERS_AUTH_TOKEN"
 ```
 
-Optional in `.env` (placeholders used when absent — disabled backends ignore them):
+Install or verify the operator:
 
-```
-OPENAI_API_KEY=...
-GEMINI_API_KEY=...
-```
-
-If any required var is missing, the script fails fast with a clear message naming the var. If `~/.docker/config.json`
-has no `ghcr.io` entry, the script tells you to run `docker login ghcr.io` first.
-
-### Manual fallback (when the script can't run)
-
-If you need to bypass the script — say you're deploying with a non-`.env` secret source — the underlying call is just
-`helm upgrade`:
-
-```
-helm upgrade --install witwave-test ./charts/witwave \
-  -f ./charts/witwave/values-test.yaml \
-  --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
-  --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \
-  --set        gitSync.credentials.acknowledgeInsecureInline=true \
-  --set-string "backends.credentials.secrets.CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN" \
-  --set        backends.credentials.acknowledgeInsecureInline=true \
-  -n witwave-test --create-namespace
+```bash
+ww operator install --yes
+ww operator status
 ```
 
-### Legacy path (pre-existing-Secrets approach)
+Create the test workspace. Bob and Fred both bind to this workspace.
 
-If you'd rather pre-create the Secrets yourself and skip the chart-rendered ones (common in CI), use the
-`existingSecret` mode — `kubectl create secret generic bob-claude-secrets --from-literal=CLAUDE_CODE_OAUTH_TOKEN=...`
-and point `agents[].backends[].credentials.existingSecret: bob-claude-secrets`. The chart respects existingSecret
-references and renders nothing extra.
+```bash
+ww workspace create witwave-test \
+  --namespace witwave-test \
+  --create-namespace \
+  --volume memory=1Gi:rwo \
+  --yes
 
-If any step fails, do your best to diagnose and fix the issue — for example, a missing dependency in a Dockerfile, a
-stale image, or a broken compose mount. Fixing infrastructure issues to get the environment running is expected and
-encouraged.
+ww workspace status witwave-test \
+  --namespace witwave-test
+```
 
-Once the stack is up, poll each service until it reports ready or until 60 seconds have elapsed:
+Deploy Bob:
 
-- Bob witwave agent: GET <http://localhost:8099/health/ready> — expect 200 with `"status": "ready"`
-- Bob claude backend: GET <http://localhost:8090/health> — expect 200 with `"status": "ok"`
-- Bob codex backend: GET <http://localhost:8091/health> — expect 200 with `"status": "ok"`
-- Bob gemini backend: GET <http://localhost:8092/health> — expect 200 with `"status": "ok"`
+```bash
+ww agent create bob \
+  --namespace witwave-test \
+  --create-namespace \
+  --team test \
+  --workspace witwave-test \
+  --with-persistence \
+  --backend claude \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --harness-env TRIGGERS_AUTH_TOKEN="$TRIGGERS_AUTH_TOKEN" \
+  --harness-env WEBHOOK_TEST_HOST=bob:8000 \
+  --harness-env WEBHOOK_TEST_URL_FEATURE_SINK=http://bob:8000/triggers/feature-sink \
+  --harness-env WEBHOOK_TEST_URL_WEBHOOK_SINK=http://bob:8000/triggers/webhook-sink \
+  --harness-env WEBHOOK_TEST_TOKEN=test-token-abc123 \
+  --harness-env WEBHOOK_TEST_BEARER="$TRIGGERS_AUTH_TOKEN" \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/test/bob \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD \
+  --yes
+```
 
-If any service fails to become ready within 60 seconds, fail immediately with a clear message identifying which service
-failed. Do not proceed with the remaining tests.
+Deploy Fred:
 
-**Trigger auth.** The harness rejects every trigger POST that lacks either a per-trigger HMAC secret or a Bearer token
-matching `TRIGGERS_AUTH_TOKEN` (security-by-default since 2026-04-12). The test stack ships
-`TRIGGERS_AUTH_TOKEN=smoke-test-token` in bob's environment via `charts/witwave/values-test.yaml`. Smoke tests use
-`Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}` in their curl examples — set the env var if you've
-overridden it, otherwise the default works.
+```bash
+ww agent create fred \
+  --namespace witwave-test \
+  --create-namespace \
+  --team test \
+  --workspace witwave-test \
+  --with-persistence \
+  --backend claude \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/test/fred \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD \
+  --yes
+```
 
-If all services are healthy, continue with the dashboard wire-up below before declaring ready.
+Poll readiness:
 
-## Dashboard wire-up (every smoke-test run)
+```bash
+ww workspace status witwave-test --namespace witwave-test
+ww agent status bob --namespace witwave-test
+ww agent status fred --namespace witwave-test
+```
 
-Whenever the smoke-test stack comes up, finish the initialisation sequence by getting the dashboard reachable from a
-browser:
+`ww workspace status` should show Bob and Fred as bound.
 
-1. **Wire up the dashboard.** The chart renders a `witwave-dashboard` Deployment + Service when `dashboard.enabled=true`
-   (the default in `values-test.yaml`). Confirm the Service exists and has an endpoint:
+Start the local port-forwards that the leaf specs assume:
 
-   ```
-   kubectl get svc witwave-dashboard -n witwave-test
-   kubectl get endpoints witwave-dashboard -n witwave-test
-   ```
+```bash
+if [ -f /tmp/witwave-bob-portforward.pid ]; then kill "$(cat /tmp/witwave-bob-portforward.pid)" 2>/dev/null || true; fi
+if [ -f /tmp/witwave-fred-portforward.pid ]; then kill "$(cat /tmp/witwave-fred-portforward.pid)" 2>/dev/null || true; fi
 
-   Both should return a non-empty entry. If the Service has no endpoints, the dashboard pod is still coming up — wait
-   for it.
+kubectl port-forward -n witwave-test svc/bob 8099:8000 9099:9000 >/tmp/witwave-bob-portforward.log 2>&1 &
+echo $! >/tmp/witwave-bob-portforward.pid
 
-2. **Port-forward the dashboard** so it's reachable from `localhost`:
+kubectl port-forward -n witwave-test svc/fred 8098:8000 >/tmp/witwave-fred-portforward.log 2>&1 &
+echo $! >/tmp/witwave-fred-portforward.pid
 
-   ```
-   kubectl port-forward -n witwave-test svc/witwave-dashboard 8080:80 &
-   ```
+sleep 2
+curl -sf http://localhost:8099/health/ready
+curl -sf http://localhost:9099/metrics >/dev/null
+curl -sf http://localhost:8098/health/ready
+```
 
-   Run it in the background so the smoke run can continue. Record the PID so a later spec or cleanup step can `kill` it.
+Run a minimal A2A round-trip on each agent:
 
-3. **Open the dashboard.** On macOS:
+```bash
+ww agent send bob --namespace witwave-test "Respond with INIT_BOB_OK."
+ww agent send fred --namespace witwave-test "Respond with INIT_FRED_OK."
+```
 
-   ```
-   open http://localhost:8080
-   ```
+Confirm conversation inspection works:
 
-   On Linux use `xdg-open`; on Windows use `start`. The dashboard should load to the Team view. If it doesn't, record
-   the failure with the browser console output before continuing.
+```bash
+ww conversation list --namespace witwave-test --agent bob --expand
+ww conversation list --namespace witwave-test --agent fred --expand
+```
 
-Only respond with INIT_OK once the dashboard loaded end-to-end.
+If any step fails, do your best to diagnose and fix the issue. Fixing infrastructure issues to get the environment running is expected and encouraged. If a code bug in the system under test is the cause, mark init as failed and report the issue rather than fixing product code during the smoke run.
 
-**If you encounter code bugs in the system under test, do not fix them — mark this test as failed and report the issue.
-Only fix infrastructure and tooling problems that prevent the test environment from starting.**
+Only respond with `INIT_OK` once Bob and Fred are ready, the port-forwards are active, and `ww conversation list` can read both agents.

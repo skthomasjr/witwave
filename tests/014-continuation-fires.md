@@ -1,56 +1,27 @@
 ---
-description: Verifies that a continuation fires after an upstream job completes and the backend responds correctly.
+description: Verifies that the precommitted job continuation fires after the ping job completes.
 enabled: true
 ---
 
-This test creates a run-once job and a matching continuation, fires the job on startup, and verifies the continuation
-fires.
-
-## Setup
-
-Create a run-once job (no schedule — fires immediately when registered):
-
-```
-cat > .agents/test/bob/.witwave/jobs/continuation-probe.md << 'EOF'
----
-name: Continuation Probe
-description: Run-once job used to verify continuation wiring.
----
-Respond with CONTINUATION_PROBE_JOB_OK.
-EOF
-```
-
-Create a continuation that fires after the job:
-
-```
-cat > .agents/test/bob/.witwave/continuations/continuation-probe.md << 'EOF'
----
-name: Continuation Probe
-description: Fires after the run-once continuation-probe job.
-continues-after: job:Continuation Probe
----
-Respond with CONTINUATION_PROBE_OK.
-EOF
-```
-
-Wait 5 seconds for the file watchers to register both files.
+Bob has a precommitted recurring job at `.agents/test/bob/.witwave/jobs/ping.md` that responds with `JOB_OK`. Bob also has `.agents/test/bob/.witwave/continuations/ping.md`, which continues after `job:ping` and responds with `CONTINUATION_OK`.
 
 ## Verification
 
-Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until
-`CONTINUATION_PROBE_OK` appears.
+Poll Bob's conversation evidence:
 
-## Cleanup
+```bash
+ww conversation list --namespace witwave-test --agent bob --expand
+```
 
-```
-rm .agents/test/bob/.witwave/jobs/continuation-probe.md
-rm .agents/test/bob/.witwave/continuations/continuation-probe.md
-```
+Poll every 15 seconds for up to 16 minutes until both `JOB_OK` and `CONTINUATION_OK` appear in the same job session. The long timeout is intentional because the `ping` job runs every 15 minutes.
 
 ## Pass/Fail Criteria
 
-The test passes if `CONTINUATION_PROBE_OK` appears in the conversation log within 60 seconds. The test fails if
-`CONTINUATION_PROBE_OK` does not appear within 60 seconds.
+The test passes if:
 
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
-the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+1. `JOB_OK` appears in Bob's conversation log.
+2. `CONTINUATION_OK` appears after `JOB_OK` in the same session.
+
+The test fails if either string is absent within the timeout.
+
+**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**

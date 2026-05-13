@@ -231,7 +231,7 @@ agents:
    named `<release>-<agent>-<entry>-{gitsync,backend}-credentials` and wires envFrom. Dev-friendly: a single `--set`
    flag sourced from `.env` sets everything up. **Must** also set `acknowledgeInsecureInline: true` or the chart aborts
    template render with a pointed warning — inline tokens land in etcd release state, `helm get values`, and
-   `kubectl describe`. Our own `values-test.yaml` uses this path because smoke tests are ephemeral.
+   `kubectl describe`. Use this only for short-lived local/dev installs.
 
 3. **Empty (default)** — no auth envFrom rendered. gitSync runs anonymously (fine for public repos); backends start but
    will fail on first LLM call.
@@ -249,7 +249,7 @@ arbitrary positional flags.
 
 **Release-state leak on inline credentials.** Even with `acknowledgeInsecureInline: true`, token values are captured
 into the `sh.helm.release.v1.<release>.v<N>` Secret Helm writes to etcd — the rendered Secret object is part of the
-release manifest and `helm get values` will echo the inline token back. For anything beyond ephemeral smoke tests,
+release manifest and `helm get values` will echo the inline token back. For anything beyond short-lived local/dev work,
 prefer the `existingSecret` path.
 
 ### Installing with credentials from `.env`
@@ -258,14 +258,14 @@ There's no Helm-native `.env` reader — easiest path is to shell-source before 
 
 ```bash
 set -a; source .env; set +a
-helm upgrade --install witwave-test ./charts/witwave \
-  -f ./charts/witwave/values-test.yaml \
+helm upgrade --install witwave-dev ./charts/witwave \
+  -f ./my-values.yaml \
   --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
   --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \
   --set     gitSync.credentials.acknowledgeInsecureInline=true \
   --set-string backends.credentials.secrets.CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
   --set     backends.credentials.acknowledgeInsecureInline=true \
-  -n witwave-test --create-namespace
+  -n witwave-dev --create-namespace
 ```
 
 Use `--set-string` on any value that might parse as a number / boolean to avoid type coercion (`--set x=01234` becomes

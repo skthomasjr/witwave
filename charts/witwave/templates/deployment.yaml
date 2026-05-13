@@ -15,13 +15,12 @@
 {{- end }}
 {{- end }}
 {{- /* Guard: reject unreplaced `REPLACE_ME*` placeholders on any security-
-       sensitive env var (#760). values-test.yaml ships literal REPLACE_ME_
-       tokens that are not empty strings — they pass the existing "is this
-       set?" checks and boot with a deterministic, publicly-known shared
-       secret. Fail-render instead so `helm install -f values-test.yaml`
-       without editing values refuses to produce output. Inspected keys are
-       the ones that gate trigger/webhook/CORS/hook endpoints; extend this
-       list whenever a new auth env var lands. */}}
+       sensitive env var (#760). Placeholder tokens are not empty strings —
+       they pass the existing "is this set?" checks and boot with a
+       deterministic, publicly-known shared secret. Fail-render instead so
+       placeholder-filled values overlays refuse to produce output. Inspected
+       keys are the ones that gate trigger/webhook/CORS/hook endpoints; extend
+       this list whenever a new auth env var lands. */}}
 {{- $sensitiveEnvKeys := list
     "TRIGGERS_AUTH_TOKEN"
     "WEBHOOK_TEST_BEARER"

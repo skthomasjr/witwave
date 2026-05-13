@@ -1,10 +1,10 @@
 ---
-name: model-check-codex-gpt-5-1-codex
+name: model-check-codex-gpt-5-3-codex
 description:
-  Verifies routing to gpt-5.1-codex and checks model self-awareness. The model's self-reported name may be inaccurate —
+  Verifies routing to gpt-5.3-codex and checks model self-awareness. The model's self-reported name may be inaccurate —
   models often misreport their own version. The authoritative model is in the conversation log, not the response text.
 agent: codex
-model: gpt-5.1-codex
+model: gpt-5.3-codex
 enabled: false
 ---
 

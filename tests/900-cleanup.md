@@ -1,28 +1,27 @@
 ---
-description: Tears down the test environment after all tests have run.
+description: Tears down the operator-managed test agents after all tests have run.
 enabled: true
 ---
 
-Bring down the test stack and remove containers:
+Stop local port-forwards started by `000-init.md`:
 
-```
-helm uninstall witwave-test -n witwave-test
-```
-
-If the command fails, do your best to diagnose and fix the issue — for example, manually stopping containers or removing
-networks — until the environment is clean.
-
-If all services are down, respond with CLEANUP_OK. If cleanup could not be completed, report the error and respond with
-CLEANUP_FAILED.
-
-Any fixes made during initialization or cleanup (to Dockerfiles, requirements, compose files, or other infrastructure)
-should be committed and pushed:
-
-```
-git add <changed files>
-git commit -m "Fix test infrastructure: <short description>"
-git push origin main
+```bash
+if [ -f /tmp/witwave-bob-portforward.pid ]; then kill "$(cat /tmp/witwave-bob-portforward.pid)" 2>/dev/null || true; rm -f /tmp/witwave-bob-portforward.pid; fi
+if [ -f /tmp/witwave-fred-portforward.pid ]; then kill "$(cat /tmp/witwave-fred-portforward.pid)" 2>/dev/null || true; rm -f /tmp/witwave-fred-portforward.pid; fi
 ```
 
-**If you encounter code bugs in the system under test, do not fix them — mark cleanup as passed regardless and report
-the bug separately. Only fix infrastructure and tooling problems.**
+Delete the test agents and workspace:
+
+```bash
+ww agent delete bob --namespace witwave-test --delete-git-secret --yes 2>/dev/null || true
+ww agent delete fred --namespace witwave-test --delete-git-secret --yes 2>/dev/null || true
+ww workspace delete witwave-test --namespace witwave-test --wait --yes 2>/dev/null || true
+```
+
+If the commands fail, diagnose and fix tooling/infra issues until the environment is clean. The operator owns the Deployments, Services, PVCs, and backend credential Secrets; `ww agent delete` should cascade those resources. Delete agents before deleting the workspace because `WitwaveWorkspace` refuses deletion while any agent is still bound.
+
+If all services are down, respond with `CLEANUP_OK`. If cleanup could not be completed, report the error and respond with `CLEANUP_FAILED`.
+
+Any fixes made during initialization or cleanup should be committed and pushed only when explicitly requested by the user.
+
+**If you encounter code bugs in the system under test, do not fix them during cleanup; mark cleanup as passed if teardown worked and report the bug separately. Only fix infrastructure and tooling problems.**

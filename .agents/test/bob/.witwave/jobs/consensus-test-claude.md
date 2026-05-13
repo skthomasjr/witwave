@@ -4,7 +4,7 @@ description: Multi-model consensus test — three backends answer independently,
 agent: claude
 consensus:
   - backend: "codex"
-    model: "gpt-5.1-codex-max"
+    model: "gpt-5.5"
   - backend: "claude"
     model: "claude-sonnet-4-6"
   - backend: "claude"

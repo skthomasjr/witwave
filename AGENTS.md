@@ -10,9 +10,10 @@ file.
 
 ## Skills
 
-Skills under `.claude/skills/` are mounted directly into each backend container — `claude` at
-`/home/agent/.claude/skills/` and `codex` at `/home/agent/.codex/skills/`. Agents always have the same skills as the
-local Claude Code session — no per-agent copying required.
+Claude-oriented skill documents can live under `.claude/skills/`, but cross-backend behavior that must work on Claude,
+Codex, and Gemini should be encoded in the backend's primary identity document: `CLAUDE.md`, `AGENTS.md`, or
+`GEMINI.md`. Those files are the guaranteed loaded instruction surface for each backend. Gemini currently persists
+session history under `.gemini/memory/`, but this backend does not have an equivalent skill-folder convention.
 
 ## Agent Identity
 
@@ -135,8 +136,9 @@ Each backend:
   `SESSION_ID_SECRET` is set the bound ID is HMAC-derived from the caller identity so one caller cannot hijack another's
   session. Leave unset only in single-tenant dev
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
-- Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex, `GEMINI.md` for
-  gemini) and A2A identity via a mounted `agent-card.md`
+- Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex,
+  `GEMINI.md` for gemini). Backend-specific `agent-card.md` files are optional; the named agent's public card is served
+  by harness from `.witwave/agent-card.md`
 
 Each named agent has its own dedicated backend instances. For example, iris has `iris-claude`, `iris-codex`, and
 `iris-gemini`.
@@ -203,7 +205,7 @@ backend:
 
     - id: codex
       url: http://localhost:8011
-      model: gpt-5.1-codex
+      model: gpt-5.5
 
     - id: gemini
       url: http://localhost:8012
@@ -245,8 +247,8 @@ Agent identity and behavior are file-based — nothing is baked into images.
 
 ```text
 .agents/self/<name>/
-├── agent-card.md            # A2A identity description text (mounted into all containers at /home/agent/agent-card.md)
 ├── .witwave/                    # Runtime config (mounted into harness)
+│   ├── agent-card.md        # A2A identity description exposed by the harness Service
 │   ├── backend.yaml         # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
@@ -256,18 +258,15 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   └── webhooks/            # Outbound webhook subscriptions (*.md with url frontmatter)
 ├── .claude/                 # Claude backend config (mounted into claude)
 │   ├── CLAUDE.md            # Behavioral instructions / system prompt
-│   ├── agent-card.md        # A2A identity description text
 │   ├── mcp.json             # MCP server configuration
 │   ├── hooks.yaml           # Optional PreToolUse/PostToolUse extension rules (#467)
 │   ├── settings.json        # Claude Code settings
 │   └── skills/              # Skill definitions (*.md)
 ├── .codex/                  # Codex backend config (mounted into codex)
 │   ├── AGENTS.md            # Behavioral instructions / system prompt
-│   ├── agent-card.md        # A2A identity description text
 │   └── config.toml
 ├── .gemini/                 # Gemini backend config (mounted into gemini)
-│   ├── GEMINI.md            # Behavioral instructions / system prompt
-│   └── agent-card.md        # A2A identity description text
+│   └── GEMINI.md            # Behavioral instructions / system prompt
 ├── logs/                    # harness logs (runtime, not committed)
 ├── claude/               # Claude backend instance for this agent
 │   ├── logs/                # Backend conversation.jsonl + tool-activity.jsonl (runtime, not committed)
@@ -280,11 +279,15 @@ Agent identity and behavior are file-based — nothing is baked into images.
     └── memory/              # Includes sessions/ subdir for JSON session history
 ```
 
+Backend-specific `agent-card.md` files are optional and only affect direct sidecar discovery on backend localhost ports.
+The agent Service points at harness, so the public agent card for repo-managed self/test agents lives in
+`.witwave/agent-card.md`.
+
 ## Project Structure
 
 ```text
 .agents/
-├── self/                    # Self-managing agents (see .agents/self/TEAM.md)
+├── self/                    # Self-managing agents (see .agents/self/README.md)
 │   └── <name>/              # Per-agent directory (see layout above)
 └── test/                    # Test agents: bob, fred (deployed); jack, luke (scaffolds only, see port table below)
     └── <name>/
@@ -394,15 +397,12 @@ docker build -f helpers/git-sync/Dockerfile -t git-sync:latest helpers/git-sync
 
 ## Running Locally
 
+Use the CLI/operator path for disposable local test agents. The test-team bootstrap creates `bob` and `fred` as
+`WitwaveAgent` resources from the files under `.agents/test/`.
+
 ```bash
-docker build -f harness/Dockerfile -t harness:latest . \
-  && docker build -f backends/claude/Dockerfile -t claude:latest . \
-  && docker build -f backends/codex/Dockerfile -t codex:latest . \
-  && docker build -f backends/gemini/Dockerfile -t gemini:latest . \
-  && docker build -f backends/echo/Dockerfile -t echo:latest . \
-  && docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest . \
-  && docker build -f tools/helm/Dockerfile -t mcp-helm:latest . \
-  && helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave --create-namespace
+ww operator install --yes
+# Then follow the commands in .agents/test/bootstrap.md
 ```
 
 ## Installing the operator via ww
@@ -431,22 +431,18 @@ the local-cluster prompt heuristic.
 Use the `/remote` skill to interact with running agents. Always target the **witwave agent by name** — witwave routes
 the request internally to its configured backend. Never target backend services directly.
 
-| Agent | Harness | claude | codex | gemini |
-| ----- | ------- | ------ | ----- | ------ |
-| iris  | 8000    | 8010   | 8011  | 8012   |
-| nova  | 8001    | 8010   | 8011  | 8012   |
-| kira  | 8002    | 8010   | 8011  | 8012   |
-| bob   | 8099    | 8090   | 8091  | 8092   |
-| fred  | 8098    | 8089   | —     | —      |
+| Shape | Harness | First backend | Additional backends | Metrics |
+| ----- | ------- | ------------- | ------------------- | ------- |
+| `ww` / operator default | 8000 | 8001 | 8002..8050 | 9000 |
+| historical host-forward examples | varies by local forward | varies by local forward | varies by local forward | 9000 |
 
-Self-managing agents run in their own pods with their own localhost, so backend ports can be uniform within that pod.
-The table above lists the long-lived local examples still used in the repo docs; newer self-managing agents are
-operator-managed from `.agents/self/<name>/` and do not require a unique backend port assignment in this static table.
-Test agents (bob/fred) still use agent-unique backend ports because they're deployed together in `values-test.yaml` with
-`hostPort` exposed on the same host.
+Self-managing and test agents run in their own pods with their own localhost, so backend ports can be uniform within
+each pod. When a local smoke spec wants stable laptop ports, port-forward the harness Service, for example
+`kubectl port-forward svc/bob 8099:8000 -n witwave-test`.
 
-Test agents `jack` (codex-only) and `luke` (gemini-only) exist as filesystem scaffolds under `.agents/test/` but are not
-wired into `charts/witwave/values-test.yaml` yet. Port assignments will land when they're deployed.
+Test agents `jack` (codex-only) and `luke` (gemini-only) exist as filesystem scaffolds under `.agents/test/` and can be
+created with `ww agent create` when those parity surfaces are needed. Bob's Codex/Gemini directories remain parked
+fixtures so they can be re-enabled deliberately once credentials and budget are available.
 
 The `/remote` skill derives the session ID automatically from the current Claude Code session. Pass it explicitly only
 when you need to target a specific session.
@@ -457,6 +453,11 @@ Each backend manages its own memory under `.agents/<env>/<name>/<backend>/memory
 `.agents/self/iris/claude/memory/`). For `claude` and `codex`, memory files are markdown documents. For `gemini`,
 conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. harness
 has no memory layer of its own.
+
+Workspace-backed memory is separate from backend-local memory. When a `WitwaveWorkspace` declares a `memory` volume,
+bound agents see it at `/workspaces/<workspace-name>/memory`; self-team identity docs use
+`/workspaces/witwave-self/memory`, and the test identity docs mirror the same namespace/index contract under
+`/workspaces/witwave-test/memory`.
 
 ## Metrics landscape
 

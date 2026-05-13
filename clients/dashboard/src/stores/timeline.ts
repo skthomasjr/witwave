@@ -58,7 +58,7 @@ import { __resetUseAlerts } from "../composables/useAlerts";
 // Override path: if a caller passes `opts.url` to `start()` we skip
 // fanout entirely and run a single stream against that URL. This
 // preserves the phase-1 single-harness behaviour that test fixtures
-// (and `values-test.yaml` single-agent setups) rely on.
+// and one-off local setups rely on.
 // -----------------------------------------------------------------------
 
 const DEFAULT_RING_SIZE = 1000;

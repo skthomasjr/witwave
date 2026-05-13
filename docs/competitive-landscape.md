@@ -695,8 +695,9 @@ so it becomes a direct comparable to the MS toolkit. See Gap Analysis → Safety
 
 The closed learning loop: execution → skill synthesis → future reuse. Hermes Agent auto-generates skill documents after
 completing complex tasks; Google's Always-On Memory Agent continuously consolidates in the background. The 2026 frame:
-"can the agent remember what it learned yesterday and do it better tomorrow?" This project has the skill-document
-infrastructure (`.claude/skills/`, `.codex/skills/`, `.gemini/skills/`) but no execution-to-skill synthesis path.
+"can the agent remember what it learned yesterday and do it better tomorrow?" This project has Claude-oriented
+skill-document infrastructure (`.claude/skills/`) and cross-backend identity documents (`CLAUDE.md`, `AGENTS.md`,
+`GEMINI.md`) plus Gemini session-history memory, but no execution-to-skill synthesis path.
 Candidate: post-task skill synthesis that evaluates whether a completed run yielded a reusable pattern.
 
 ### Cost / Token Management

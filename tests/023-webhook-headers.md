@@ -11,7 +11,7 @@ full delivery path completed.
 
 The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-headers.md`. It fires when a response contains
 `WEBHOOK_HEADERS_FIRE` and POSTs to the URL held in `WEBHOOK_TEST_URL_FEATURE_SINK` (resolves to
-`http://witwave-bob:8099/triggers/feature-sink`) with:
+`http://bob:8000/triggers/feature-sink`) with:
 
 - `X-Test-Token: test-token-abc123` (resolved from `{{env.WEBHOOK_TEST_TOKEN}}`)
 - `X-Static-Header: static-value`
@@ -32,7 +32,7 @@ After `WEBHOOK_HEADERS_FIRE` appears, the webhook runner fires asynchronously. P
 `FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
 
 ```
-.agents/test/bob/logs/conversation.jsonl
+ww conversation list --namespace witwave-test --agent bob --expand
 ```
 
 ## Pass/Fail Criteria

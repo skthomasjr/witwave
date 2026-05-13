@@ -2,7 +2,8 @@
 description:
   Verifies that trigger-when filtering allows a continuation to fire only when the upstream response contains the
   expected string.
-enabled: true
+enabled: false
+deferred-note: "Deferred under CLI gitSync: this spec creates transient continuation files locally; convert to precommitted fixtures before re-enabling."
 ---
 
 Bob has a continuation at `.agents/test/bob/.witwave/continuations/ping-delayed.md` with
@@ -49,7 +50,7 @@ Wait 5 seconds for watchers to register the files.
 ```
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
-  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -58,7 +59,7 @@ Verify the response is 202.
 
 ## Poll
 
-Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds.
+Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 2 seconds for up to 60 seconds.
 
 ## Cleanup
 

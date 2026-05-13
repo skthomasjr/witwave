@@ -1,28 +1,28 @@
 backend:
   agents:
     - id: codex
-      url: http://localhost:8087
-      model: gpt-5.1-codex-max
+      url: http://localhost:8001
+      model: gpt-5.5
 
   routing:
     default:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5
     a2a:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5
     heartbeat:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5
     job:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5
     task:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5
     trigger:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5
     continuation:
       agent: codex
-      model: gpt-5.1-codex-max
+      model: gpt-5.5

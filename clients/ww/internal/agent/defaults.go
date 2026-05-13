@@ -22,9 +22,7 @@ const imageRepoPrefix = "ghcr.io/witwave-ai/images/"
 // The CRD caps `.spec.backends` at 50 entries (maxItems: 50), so the
 // range 8001-8050 is an exact fit: one port per possible backend slot
 // with no overflow into the metrics port. The harness + every backend
-// share a pod network namespace, so ports MUST be distinct — mirrors
-// the chart's values-test.yaml pattern (e.g. bob: harness=8099,
-// claude=8090, codex=8091).
+// share a pod network namespace, so ports MUST be distinct.
 //
 // Callers that need a port outside this range (e.g. to match a legacy
 // backend container's listener) can set `spec.backends[].port`

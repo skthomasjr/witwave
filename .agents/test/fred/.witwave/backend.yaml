@@ -1,7 +1,7 @@
 backend:
   agents:
     - id: claude
-      url: http://localhost:8089
+      url: http://localhost:8001
       model: claude-opus-4-7
 
   routing:

@@ -1,6 +1,7 @@
 ---
 description: Verifies that continuations can chain — a continuation fires after another continuation completes.
-enabled: true
+enabled: false
+deferred-note: "Deferred under CLI gitSync: this spec creates transient continuation files locally; convert to precommitted fixtures before re-enabling."
 ---
 
 This test creates a two-level continuation chain: the trigger ping fires, which triggers a first continuation, which in
@@ -41,7 +42,7 @@ Wait 5 seconds for the file watcher to register both continuations.
 ```
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
-  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -50,7 +51,7 @@ Verify the response is 202 before proceeding.
 
 ## Poll for both chain steps
 
-Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until both
+Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 2 seconds for up to 60 seconds until both
 `CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear.
 
 ## Cleanup

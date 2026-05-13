@@ -39,7 +39,7 @@ delivery). Poll the shared conversation log until `FEATURE_SINK_OK` appears, or 
 extra time for the extraction LLM call):
 
 ```
-.agents/test/bob/logs/conversation.jsonl
+ww conversation list --namespace witwave-test --agent bob --expand
 ```
 
 ## Pass/Fail Criteria

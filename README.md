@@ -179,7 +179,7 @@ ww update --check      # check only
 ww update --force      # run the upgrade unconditionally
 ```
 
-Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.9.6`. The latest released tag
+Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.23.15`. The latest released tag
 is visible on the [GitHub Releases](https://github.com/witwave-ai/witwave/releases) page; substitute it for the version
 below.
 
@@ -202,10 +202,10 @@ CLI-managed):
 
 ```bash
 # Agent chart — deploys witwave agents directly via templated manifests.
-helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.9.6 --namespace witwave --create-namespace
+helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.23.15 --namespace witwave --create-namespace
 
 # Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
-helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.9.6 --namespace witwave-system --create-namespace
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.23.15 --namespace witwave-system --create-namespace
 ```
 
 See [charts/witwave/README.md](charts/witwave/README.md) and
@@ -238,32 +238,38 @@ docker build -f backends/echo/Dockerfile -t echo:latest .
 ### 2. Configure credentials
 
 ```bash
-export CLAUDE_CODE_OAUTH_TOKEN=your-token-here
-export OPENAI_API_KEY=your-key-here
-export GEMINI_API_KEY=your-key-here
+cat > .env <<'EOF'
+CLAUDE_CODE_OAUTH_TOKEN=your-claude-token-here
+GITSYNC_USERNAME=your-github-username
+GITSYNC_PASSWORD=your-github-pat
+
+# Optional: only needed when the parked Codex/Gemini test fixtures are enabled.
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+
+# Optional: set this if you want to run manual trigger curl checks after deploy.
+TRIGGERS_AUTH_TOKEN=
+EOF
 ```
 
-### 3. Start the agents
+### 3. Start the test agents
 
 ```bash
-helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave --create-namespace
+ww operator install --yes
+
+# Then follow the Bob/Fred `ww agent create` commands in:
+sed -n '1,240p' .agents/test/bootstrap.md
 ```
 
 ### 4. Verify
 
 ```bash
-# harness (router layer)
-curl http://localhost:8000/.well-known/agent.json
+# In one terminal:
+kubectl port-forward svc/bob 8099:8000 -n witwave-test
 
-# Claude backend for iris
-curl http://localhost:8010/.well-known/agent.json
-curl http://localhost:8010/health
-
-# Codex backend for iris
-curl http://localhost:8011/health
-
-# Gemini backend for iris
-curl http://localhost:8012/health
+# In another terminal:
+curl http://localhost:8099/.well-known/agent.json
+curl http://localhost:8099/health/ready
 ```
 
 ## Agent Structure
@@ -283,24 +289,25 @@ own directory containing witwave config, backend instances, logs, and memory.
 │   ├── piper/         # Outreach
 │   └── zora/          # Team coordination
 └── test/
-    ├── bob/           # Bob  (witwave: 8099 | claude: 8090 | codex: 8091 | gemini: 8092)
-    ├── fred/          # Fred (witwave: 8098 | claude: 8089 — single-backend test agent)
+    ├── bob/           # Bob  (Claude-first smoke agent; codex/gemini fixtures parked)
+    ├── fred/          # Fred (small Claude-only second-agent sanity check)
     ├── jack/          # Codex-only scaffold
     └── luke/          # Gemini-only scaffold
 ```
 
-Port numbers above are example assignments from the bundled `values-test.yaml` and the default `values.yaml` layout —
-not hardcoded in any image. Each container reads its own port from an environment variable (`HARNESS_PORT`,
-`BACKEND_PORT`, `METRICS_PORT`) and can be remapped per deployment via Helm values or the `WitwaveAgent` CRD.
+CLI/operator-created agents use the `ww` port convention by default: harness on `8000`, backend sidecars on
+`8001..8050`, and metrics on `9000`. Ports are not hardcoded in any image. Each container reads its own port from an
+environment variable (`HARNESS_PORT`, `BACKEND_PORT`, `METRICS_PORT`) and can be remapped per deployment via Helm values
+or the `WitwaveAgent` CRD.
 
 Each agent directory contains:
 
 ```text
 <agent>/
 ├── .witwave/              # Runtime config (agent-card.md, backend.yaml, HEARTBEAT.md, jobs/)
-├── .claude/           # Claude backend config (CLAUDE.md, agent-card.md, mcp.json, settings.json)
-├── .codex/            # Codex backend config (AGENTS.md, agent-card.md, config.toml)
-├── .gemini/           # Gemini backend config (GEMINI.md, agent-card.md)
+├── .claude/           # Claude backend config (CLAUDE.md, mcp.json, settings.json, skills/)
+├── .codex/            # Codex backend config (AGENTS.md, config.toml)
+├── .gemini/           # Gemini backend config (GEMINI.md)
 ├── logs/              # harness logs (runtime, not committed)
 ├── claude/         # Claude backend instance
 │   ├── logs/          # Conversation log (runtime, not committed)
@@ -400,8 +407,7 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
    ```
 
 2. Update the agent's `agent-card.md` in `.witwave/` (mounted at `/home/agent/.witwave/agent-card.md`) with the agent's
-   identity and role; update each backend's `agent-card.md` in `.claude/`, `.codex/`, and `.gemini/` if those
-   directories are used
+   identity and role
 
 3. Update the backend instruction files: `CLAUDE.md` (at `/home/agent/.claude/CLAUDE.md`), `AGENTS.md` (at
    `/home/agent/.codex/AGENTS.md`), and `GEMINI.md` (at `/home/agent/.gemini/GEMINI.md`) with backend-specific
@@ -409,13 +415,14 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
 
 4. Update `.agents/self/<name>/.witwave/backend.yaml` with the new agent's backend service names and URLs
 
-5. Add the agent to `charts/witwave/values-test.yaml` (or your own overrides file) with its backends, config, and
-   storage
+5. Deploy it with `ww agent create`, usually using `--workspace <workspace>` to bind it to the right team workspace,
+   `--gitsync-bundle` to point at the agent directory, and `--with-persistence` for backend memory/session storage
 
 6. Deploy:
 
    ```bash
-   helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave
+   ww agent create <name> --namespace <namespace> --workspace <workspace> --backend claude --with-persistence \
+     --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/<name>
    ```
 
 ## Communication
@@ -471,6 +478,10 @@ Each backend container additionally exposes:
 Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `claude` and `codex`, memory
 files are markdown documents. For `gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files
 are not committed to source control. harness has no memory layer of its own.
+
+Workspace-backed memory is a separate shared volume. When a workspace declares a `memory` volume, bound agents see it at
+`/workspaces/<workspace-name>/memory`; the self team uses `witwave-self/memory`, and the test team mirrors the same
+namespace/index contract under `witwave-test/memory`.
 
 ## Authentication
 

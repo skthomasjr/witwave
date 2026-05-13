@@ -1,116 +1,30 @@
 ---
-description: Verifies that items with enabled:false are suppressed and never fire.
+description: Verifies that precommitted fixtures with enabled:false stay suppressed in the default smoke deployment.
 enabled: true
 ---
 
-This test creates disabled fixtures for each feature type, waits to confirm they don't fire, then removes them.
-
-## Setup
-
-Create a disabled job file:
-
-```
-cat > .agents/test/bob/.witwave/jobs/disabled-test.md << 'EOF'
----
-name: Disabled Job Test
-description: Should never fire — enabled is false.
-schedule: "* * * * *"
-enabled: false
----
-Respond with DISABLED_JOB_FIRED.
-EOF
-```
-
-Create a disabled trigger file:
-
-```
-cat > .agents/test/bob/.witwave/triggers/disabled-test.md << 'EOF'
----
-name: Disabled Trigger Test
-description: Should never be reachable — enabled is false.
-endpoint: disabled-test
-enabled: false
----
-Respond with DISABLED_TRIGGER_FIRED.
-EOF
-```
-
-Create a disabled continuation file:
-
-```
-cat > .agents/test/bob/.witwave/continuations/disabled-test.md << 'EOF'
----
-name: Disabled Continuation Test
-description: Should never fire — enabled is false.
-continues-after: "*"
-enabled: false
----
-Respond with DISABLED_CONTINUATION_FIRED.
-EOF
-```
-
-Disable the heartbeat by replacing HEARTBEAT.md with an `enabled: false` version:
-
-```
-cp .agents/test/bob/.witwave/HEARTBEAT.md .agents/test/bob/.witwave/HEARTBEAT.md.bak
-
-cat > .agents/test/bob/.witwave/HEARTBEAT.md << 'EOF'
----
-description: Disabled heartbeat — should not fire.
-schedule: "* * * * *"
-enabled: false
----
-Respond with DISABLED_HEARTBEAT_FIRED.
-EOF
-```
+Bob carries several Codex fixtures under `.agents/test/bob/.witwave/jobs/` and `.agents/test/bob/.witwave/continuations/` with `enabled: false`. They are deliberately parked while the default test deployment is Claude-only.
 
 ## Verification
 
-Wait 10 seconds for the file watchers to pick up the new files.
+Inspect Bob's conversation evidence:
 
-Then verify the disabled trigger endpoint is not reachable (returns 404):
-
-```
-CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X POST http://localhost:8099/triggers/disabled-test \
-  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
-  -H "Content-Type: application/json" \
-  -d '{}')
-echo "Disabled trigger status: $CODE"
+```bash
+ww conversation list --namespace witwave-test --agent bob --expand
 ```
 
-The disabled trigger must return 404.
+Check that none of these disabled-fixture markers appear:
 
-Wait a further 70 seconds (long enough for the disabled job's `* * * * *` schedule to fire if it were enabled).
-
-Check the conversation log at `.agents/test/bob/logs/conversation.jsonl` for any of these strings:
-
-- `DISABLED_JOB_FIRED`
-- `DISABLED_TRIGGER_FIRED`
-- `DISABLED_CONTINUATION_FIRED`
-- `DISABLED_HEARTBEAT_FIRED`
-
-## Cleanup
-
-Remove the test fixtures and restore the heartbeat:
-
-```
-rm .agents/test/bob/.witwave/jobs/disabled-test.md
-rm .agents/test/bob/.witwave/triggers/disabled-test.md
-rm .agents/test/bob/.witwave/continuations/disabled-test.md
-mv .agents/test/bob/.witwave/HEARTBEAT.md.bak .agents/test/bob/.witwave/HEARTBEAT.md
-```
+- `animal-memory-codex`
+- `backend-check-codex`
+- `model-check-codex-default`
+- `model-check-codex-gpt-5-3-codex`
+- `model-check-codex-gpt-5-5`
+- `ping-codex`
+- `bob-codex`
 
 ## Pass/Fail Criteria
 
-The test passes if ALL of the following are true:
+The test passes if none of the disabled Codex fixtures appear in Bob's conversation log. It fails if any Codex fixture fires or any entry is attributed to `bob-codex` in the default deployment.
 
-1. The disabled trigger endpoint returned 404.
-2. None of `DISABLED_JOB_FIRED`, `DISABLED_TRIGGER_FIRED`, `DISABLED_CONTINUATION_FIRED`, or `DISABLED_HEARTBEAT_FIRED`
-   appear in the conversation log.
-
-The test fails if the disabled trigger returned anything other than 404, or if any disabled sentinel string appears in
-the log.
-
-**If the failure is caused by a code bug in the system under test, do not fix it — mark the test as failed and report
-the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**

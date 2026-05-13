@@ -1,6 +1,7 @@
 ---
 description: Verifies that repeated job executions use the same deterministic session ID.
-enabled: true
+enabled: false
+deferred-note: "Deferred under CLI gitSync: this spec creates transient job files locally; convert to precommitted fixtures before re-enabling."
 ---
 
 The job scheduler generates a deterministic session ID for each job derived from the agent name and job filename. For a
@@ -52,7 +53,7 @@ rm .agents/test/bob/.witwave/jobs/session-probe.md
 
 ## Verification
 
-Check the conversation log at `.agents/test/bob/logs/conversation.jsonl`.
+Check the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand`.
 
 Count occurrences of `b94e5f7c-6a0d-5bdd-a642-8469dbff89fe` in the log. There must be at least 2.
 
