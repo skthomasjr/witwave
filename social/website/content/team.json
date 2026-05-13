@@ -69,7 +69,7 @@
   "futureMembers": [
     {
       "name": "Coming soon",
-      "role": "Platform Build",
+      "role": "Platform + Build",
       "lane": "Will own build systems, CI/CD pipelines, deployment posture, observability, and release infrastructure.",
       "variant": "future"
     },
