@@ -25,13 +25,25 @@ jobs:
       - name: Checkout witwave source
         uses: actions/checkout@v4
 
-      - name: Checkout website repository
-        uses: actions/checkout@v4
-        with:
-          repository: witwave-ai/witwave-ai.github.io
-          path: _site-repo
-          fetch-depth: 0
-          ssh-key: ${{ secrets.WITWAVE_AI_GITHUB_IO_DEPLOY_KEY }}
+      - name: Clone website repository
+        env:
+          WEBSITE_DEPLOY_KEY: ${{ secrets.WITWAVE_AI_GITHUB_IO_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$WEBSITE_DEPLOY_KEY" ]; then
+            echo "::error title=Missing deploy key::Set WITWAVE_AI_GITHUB_IO_DEPLOY_KEY to a write-enabled deploy key for witwave-ai.github.io."
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$WEBSITE_DEPLOY_KEY" > "$HOME/.ssh/witwave-ai-github-io"
+          chmod 600 "$HOME/.ssh/witwave-ai-github-io"
+          ssh-keyscan github.com >> "$HOME/.ssh/known_hosts"
+
+          GIT_SSH_COMMAND="ssh -i $HOME/.ssh/witwave-ai-github-io -o IdentitiesOnly=yes" \
+            git clone git@github.com:witwave-ai/witwave-ai.github.io.git _site-repo
 
       - name: Sync static website
         run: scripts/sync-social-website.sh _site-repo
@@ -52,4 +64,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Publish social website from ${SOURCE_SHA:0:12}"
-          git push origin HEAD:main
+          GIT_SSH_COMMAND="ssh -i $HOME/.ssh/witwave-ai-github-io -o IdentitiesOnly=yes" \
+            git push origin HEAD:main
