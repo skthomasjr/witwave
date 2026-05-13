@@ -30,6 +30,8 @@ social/website/
 │   └── index.html                # whitepaper hub
 ├── reader/
 │   └── index.html                # clickable Markdown whitepaper reader
+├── team/
+│   └── index.html                # public self-team roster with avatars and roles
 ├── blog/
 │   └── index.html                # long-form blog placeholder
 ├── positioning/
@@ -37,6 +39,7 @@ social/website/
 └── content/
     ├── README.md                 # content operation notes
     ├── whitepapers.json          # source-of-truth map for paper cards
+    ├── team.json                 # self-team roster source for the Team page
     ├── whitepapers/              # symlinks to canonical markdown sources
     ├── blog/
     │   └── README.md
@@ -55,7 +58,9 @@ into an Astro, Vite, or other static-site build without changing the content mod
 
 Publishing is automated from this repository by `.github/workflows/publish-social-website.yml`. The workflow copies
 `social/website/` to `witwave-ai/witwave-ai.github.io` using `scripts/sync-social-website.sh`, resolves symlinks, and
-copies the source-controlled `CNAME` file for the GitHub Pages custom domain.
+copies the source-controlled `CNAME` file for the GitHub Pages custom domain. During high-iteration website work, the
+workflow runs on every push to `main`; if the published site has no material changes, the publisher exits without
+creating a commit in `witwave-ai.github.io`.
 
 Required setup before the workflow can push:
 
@@ -71,6 +76,7 @@ secret and exits cleanly without publishing when neither is configured.
 ## AI maintenance rules
 
 - Treat `content/whitepapers.json` as the card/catalog source for whitepapers.
+- Treat `content/team.json` as the roster source for the public Team page.
 - Keep the homepage focused: one thesis, two foundational papers, one clear path to blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
 - Keep marketing claims grounded in the two papers unless a source is added.

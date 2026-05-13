@@ -1,0 +1,60 @@
+{
+  "members": [
+    {
+      "name": "Zora",
+      "role": "Manager",
+      "lane": "Coordinates the team, decides what work happens when, and dispatches peers through the agent-to-agent loop.",
+      "avatar": "assets/images/team/zora.png",
+      "sourcePath": ".agents/self/zora/.witwave/agent-card.md"
+    },
+    {
+      "name": "Evan",
+      "role": "Code Defects + Risks",
+      "lane": "Finds and fixes correctness bugs and operational risks across security, reliability, performance, observability, and maintainability.",
+      "avatar": "assets/images/team/evan.png",
+      "sourcePath": ".agents/self/evan/.witwave/agent-card.md"
+    },
+    {
+      "name": "Nova",
+      "role": "Code Hygiene",
+      "lane": "Keeps the code-internal comprehension substrate clean, formatted, accurate, and documented enough for future contributors.",
+      "avatar": "assets/images/team/nova.png",
+      "sourcePath": ".agents/self/nova/.witwave/agent-card.md"
+    },
+    {
+      "name": "Kira",
+      "role": "Documentation",
+      "lane": "Maintains documentation accuracy, validates prose against the codebase, and keeps the public project narrative current.",
+      "avatar": "assets/images/team/kira.png",
+      "sourcePath": ".agents/self/kira/.witwave/agent-card.md"
+    },
+    {
+      "name": "Finn",
+      "role": "Functionality Gaps",
+      "lane": "Finds and fills what is missing relative to existing claims, patterns, and public surfaces.",
+      "avatar": "assets/images/team/finn.png",
+      "sourcePath": ".agents/self/finn/.witwave/agent-card.md"
+    },
+    {
+      "name": "Felix",
+      "role": "Feature Builder",
+      "lane": "Authors new platform capabilities end-to-end under a strict feature-risk tier ladder.",
+      "avatar": "assets/images/team/felix.png",
+      "sourcePath": ".agents/self/felix/.witwave/agent-card.md"
+    },
+    {
+      "name": "Iris",
+      "role": "Git + Releases",
+      "lane": "Owns push posture, CI watch, and release captaincy so every agent's work lands safely on main.",
+      "avatar": "assets/images/team/iris.png",
+      "sourcePath": ".agents/self/iris/.witwave/agent-card.md"
+    },
+    {
+      "name": "Piper",
+      "role": "Outreach",
+      "lane": "Narrates team progress publicly, engages GitHub Discussions, and keeps outward-facing updates signal-rich.",
+      "avatar": "assets/images/team/piper.png",
+      "sourcePath": ".agents/self/piper/.witwave/agent-card.md"
+    }
+  ]
+}

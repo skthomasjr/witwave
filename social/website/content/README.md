@@ -5,6 +5,7 @@ This folder keeps website content metadata and draft material separate from the 
 ## Content types
 
 - `whitepapers.json` maps the foundational papers to website cards and future rendered pages.
+- `team.json` maps the public self-team roster to names, roles, avatars, and source agent-card paths.
 - `whitepapers/` exposes the Markdown files used by the browser reader. These entries are symlinked back to
   `social/papers/` so local previews reflect paper edits immediately.
 - `blog/` is reserved for long-form essays and launch posts.

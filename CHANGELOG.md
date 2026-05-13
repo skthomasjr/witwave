@@ -11,6 +11,10 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Scaffold `social/website/` as the GitHub Pages-ready source for the public site, featuring the two
   foundational whitepapers, a buildless Markdown reader, plus blog and positioning placeholders, with a publishing
   workflow for `witwave-ai/witwave-ai.github.io`.
+- **social**: Add a public Team page for the self-team roster, roles, and avatars, plus a homepage preview that makes
+  the agentic-team operating model tangible.
+- **social**: Run the social website publisher on every push to `main` during high-iteration site work, while keeping
+  no-change publishes as a no-op.
 
 ## [0.23.13] — 2026-05-11
 

@@ -4,11 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "social/website/**"
-      - "social/papers/**"
-      - "scripts/sync-social-website.sh"
-      - ".github/workflows/publish-social-website.yml"
 
 concurrency:
   group: publish-social-website
