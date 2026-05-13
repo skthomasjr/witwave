@@ -541,15 +541,6 @@ p {
   color: rgba(18, 33, 31, 0.52);
 }
 
-.team-human-label {
-  margin: -0.2rem 0 0.7rem;
-  color: rgba(18, 33, 31, 0.46);
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .team-contact-links {
   display: flex;
   flex-wrap: wrap;
@@ -577,10 +568,6 @@ p {
 .team-card-human h2,
 .team-card-human p {
   color: rgba(18, 33, 31, 0.58);
-}
-
-.team-card-human .team-human-label {
-  color: rgba(18, 33, 31, 0.46);
 }
 
 .team-source {
