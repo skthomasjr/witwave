@@ -1,8 +1,7 @@
 # witwave
 
-witwave is a cloud-native autonomous agent framework for AI agent teams.
-
-Public site: [witwave.ai](https://witwave.ai)
+witwave is a cloud-native autonomous agent framework for AI agent teams. Visit [witwave.ai](https://witwave.ai) for the
+public overview, whitepapers, team roster, and Quick Start.
 
 The project is built around agent-native engineering: named agents with durable identity, backend choice, schedules,
 triggers, memory, observability, MCP tool access, shared workspaces, and human-governed escalation. The goal is not to
