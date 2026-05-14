@@ -106,17 +106,17 @@ secret and exits cleanly without publishing when neither is configured.
   `futureMembers` for visible placeholder roles.
 - Treat `social/posts/posts.json` as the browser-visible blog discovery manifest; GitHub Pages does not expose folder
   listings, so Markdown posts must be listed there before the website can load them.
-- Keep the compact "Join the conversation" strip pointed at GitHub Discussion category URLs unless the community
-  surface changes. Pull category descriptions from GitHub Discussions before refreshing the rows; the public Questions
-  row maps to GitHub's `general` category.
+- Keep the compact "Join the conversation" strip pointed at GitHub Discussion category URLs unless the community surface
+  changes. Pull category descriptions from GitHub Discussions before refreshing the rows; the public Questions row maps
+  to GitHub's `general` category.
 - Keep SEO metadata and JSON-LD in each HTML page aligned with its canonical `https://witwave.ai/...` URL. The source
-  `sitemap.xml` covers indexable hand-authored pages; the publish generator expands the published sitemap with
-  generated whitepaper and blog URLs plus `lastmod` values. JavaScript reader shells can stay usable but should remain
+  `sitemap.xml` covers indexable hand-authored pages; the publish generator expands the published sitemap with generated
+  whitepaper and blog URLs plus `lastmod` values. JavaScript reader shells can stay usable but should remain
   `noindex,follow` when generated pages are the canonical article URLs.
 - Keep `llms.txt` concise and factual. It should summarize the public project for AI assistants, link to canonical
   public pages and source Markdown, and avoid claims that are not already supported by the site or repository.
-- Keep the RSS feed generated from `social/posts/posts.json` and published post frontmatter. Do not hand-edit
-  `feed.xml` in the publish repository; update the post source instead.
+- Keep the RSS feed generated from `social/posts/posts.json` and published post frontmatter. Do not hand-edit `feed.xml`
+  in the publish repository; update the post source instead.
 - Optimize SEO for clarity and discoverability, not keyword stuffing. Page titles, headings, descriptions, article
   schema, and internal links should use the terms real readers would search for while preserving the site's voice:
   cloud-native autonomous agents, AI agent teams, Kubernetes, MCP tools, agentic AI adoption, and agent-native software
@@ -150,5 +150,5 @@ python3 -m http.server 8080 --directory .
 
 Then open `http://localhost:8080/social/website/`.
 
-Serving only `social/website/` is fine for layout checks, but the blog will read public content from GitHub in that mode.
-Serve the repository root when previewing unpublished local blog posts.
+Serving only `social/website/` is fine for layout checks, but the blog will read public content from GitHub in that
+mode. Serve the repository root when previewing unpublished local blog posts.

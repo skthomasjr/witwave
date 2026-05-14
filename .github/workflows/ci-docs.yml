@@ -9,10 +9,10 @@
 #     drift introduced." Convergence is incremental: as files are
 #     edited their formatting is brought up to spec.
 #
-#   lint-full (push to main, warn-only)
-#     Runs the same tools across the whole repo and reports
-#     violations as workflow warnings without failing. Gives us
-#     telemetry on the residual drift pile without blocking.
+#   lint-full (push to main, hard-fail)
+#     Runs the same tools across the whole repo and fails when drift
+#     appears. The historical drift pile has been cleaned up, so main
+#     now has a real repo-wide Markdown formatting/linting floor.
 #
 # Tooling pinned via npx --yes <pkg>@<version> — no package.json at
 # repo root, no committed lockfile to maintain. Bump these versions
@@ -85,7 +85,14 @@ jobs:
           # exist on HEAD.
           git diff --name-only --diff-filter=ACMR \
             "$BASE_SHA" "$HEAD_SHA" -- '*.md' \
-            > .ci-changed-md.txt
+            > .ci-changed-md.raw
+          # Skip markdown symlinks. Prettier refuses explicit symlink
+          # operands, and the canonical target file is linted directly.
+          while IFS= read -r file; do
+            if [ -n "$file" ] && [ ! -L "$file" ]; then
+              printf '%s\n' "$file"
+            fi
+          done < .ci-changed-md.raw > .ci-changed-md.txt
           if [ -s .ci-changed-md.txt ]; then
             echo "has_files=true" >> "$GITHUB_OUTPUT"
             echo "Changed *.md files:"
@@ -101,25 +108,25 @@ jobs:
           set -euo pipefail
           # xargs piping the file list keeps shell-injection-safe
           # even though the repo currently has no spaces in paths.
-          xargs -a .ci-changed-md.txt npx --yes prettier@3.4.2 --check
+          xargs npx --yes prettier@3.4.2 --check < .ci-changed-md.txt
 
       - name: markdownlint (changed files)
         if: steps.changed.outputs.has_files == 'true'
         run: |
           set -euo pipefail
-          xargs -a .ci-changed-md.txt \
+          xargs \
             npx --yes markdownlint-cli@0.43.0 \
               --config .markdownlint.yaml \
-              --ignore-path .markdownlintignore
+              --ignore-path .markdownlintignore \
+            < .ci-changed-md.txt
 
   # ---------------------------------------------------------------
-  # Repo-wide lint on main — warn-only. Runs the same tools across
-  # **/*.md and reports violations as ::warning lines, but does NOT
-  # fail the workflow. Gives us a measurable drift signal on the
-  # default branch without blocking unrelated work.
+  # Repo-wide lint on main. The repo now has a clean Markdown baseline,
+  # so pushes to main should keep the whole tracked Markdown surface
+  # formatted and lint-clean.
   # ---------------------------------------------------------------
   lint-full:
-    name: Lint all *.md (warn-only on main)
+    name: Lint all *.md
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -129,26 +136,29 @@ jobs:
         with:
           node-version: "20"
 
-      - name: prettier --check (full repo, warn-only)
+      - name: Compute tracked *.md files
         run: |
-          set +e
-          npx --yes prettier@3.4.2 --check '**/*.md'
-          rc=$?
-          if [ "$rc" -ne 0 ]; then
-            echo "::warning title=Markdown drift::prettier reported drift on main; see job log for the file list. PRs touching these files will be required to fix the drift."
-          fi
-          # Always exit 0 — this job is observational, not a gate.
-          exit 0
+          set -euo pipefail
+          git ls-files -z -- '*.md' |
+            while IFS= read -r -d '' file; do
+              # Skip markdown symlinks. Prettier refuses explicit
+              # symlink operands; the canonical target file is checked
+              # directly elsewhere in this list.
+              if [ ! -L "$file" ]; then
+                printf '%s\0' "$file"
+              fi
+            done > .ci-all-md.zlist
 
-      - name: markdownlint (full repo, warn-only)
+      - name: prettier --check (full repo)
         run: |
-          set +e
-          npx --yes markdownlint-cli@0.43.0 \
+          set -euo pipefail
+          xargs -0 npx --yes prettier@3.4.2 --check < .ci-all-md.zlist
+
+      - name: markdownlint (full repo)
+        run: |
+          set -euo pipefail
+          xargs -0 \
+            npx --yes markdownlint-cli@0.43.0 \
             --config .markdownlint.yaml \
             --ignore-path .markdownlintignore \
-            '**/*.md'
-          rc=$?
-          if [ "$rc" -ne 0 ]; then
-            echo "::warning title=Markdown drift::markdownlint reported violations on main; see job log for details. PRs touching these files will be required to fix the violations."
-          fi
-          exit 0
+            < .ci-all-md.zlist

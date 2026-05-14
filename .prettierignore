@@ -7,6 +7,10 @@
 **/dist/
 **/build/
 
+# Local scratch space
+tmp/
+temp/
+
 # JS/TS deps
 **/node_modules/
 

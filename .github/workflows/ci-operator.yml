@@ -1,0 +1,83 @@
+name: CI — Operator
+
+# Gates the Kubernetes operator source itself. Chart CI validates the
+# Helm packaging/rendering surface; this workflow catches Go-source,
+# generated-manifest, envtest, and binary-build drift under operator/.
+
+on:
+  pull_request:
+    paths:
+      - "operator/**"
+      - ".github/workflows/ci-operator.yml"
+  push:
+    branches: [main]
+    paths:
+      - "operator/**"
+      - ".github/workflows/ci-operator.yml"
+
+concurrency:
+  group: ci-operator-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: generate + vet + test + build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: operator
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: operator/go.mod
+          cache: true
+          cache-dependency-path: operator/go.sum
+
+      - name: Generated manifests are current
+        run: |
+          set -euo pipefail
+          make manifests generate
+          if ! git diff --exit-code -- api config; then
+            echo "::error::operator generated files are stale. Run 'cd operator && make manifests generate'."
+            exit 1
+          fi
+
+      - name: gofmt check
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt drift found in operator:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: |
+          set -euo pipefail
+          make setup-envtest
+          k8s_version="$(go list -m -f '{{ .Version }}' k8s.io/api | awk -F'[v.]' '{printf "1.%d", $3}')"
+          envtest_assets="$(./bin/setup-envtest use "$k8s_version" --bin-dir ./bin -p path)"
+          KUBEBUILDER_ASSETS="$(pwd)/$envtest_assets"
+          export KUBEBUILDER_ASSETS
+          go list ./... | grep -v /e2e | xargs go test -race -count=1
+
+      - name: Build manager
+        run: |
+          go build \
+            -ldflags "-X github.com/witwave-ai/witwave-operator/internal/controller.DefaultImageTag=ci" \
+            -o /tmp/witwave-operator-manager \
+            ./cmd/main.go

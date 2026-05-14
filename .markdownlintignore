@@ -4,6 +4,8 @@
 
 **/dist/
 **/build/
+tmp/
+temp/
 **/node_modules/
 
 clients/ww/internal/operator/embedded/

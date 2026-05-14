@@ -193,14 +193,14 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 ### Backend config files
 
-| File            | Location                | Purpose                                                             |
-| --------------- | ----------------------- | ------------------------------------------------------------------- |
-| `CLAUDE.md`     | `/home/agent/.claude/`  | Behavioral instructions injected into the Claude backend at startup |
-| `AGENTS.md`     | `/home/agent/.codex/`   | Behavioral instructions injected into the Codex backend at startup  |
-| `GEMINI.md`     | `/home/agent/.gemini/`  | Behavioral instructions injected into the Gemini backend at startup |
-| `memory/`       | `<name>/claude/memory/` | Persistent markdown memory files for Claude backend                 |
-| `memory/`       | `<name>/codex/memory/`  | Persistent markdown memory files for Codex backend                  |
-| `memory/`       | `<name>/gemini/memory/` | JSON session history for Gemini backend (`sessions/`)               |
+| File        | Location                | Purpose                                                             |
+| ----------- | ----------------------- | ------------------------------------------------------------------- |
+| `CLAUDE.md` | `/home/agent/.claude/`  | Behavioral instructions injected into the Claude backend at startup |
+| `AGENTS.md` | `/home/agent/.codex/`   | Behavioral instructions injected into the Codex backend at startup  |
+| `GEMINI.md` | `/home/agent/.gemini/`  | Behavioral instructions injected into the Gemini backend at startup |
+| `memory/`   | `<name>/claude/memory/` | Persistent markdown memory files for Claude backend                 |
+| `memory/`   | `<name>/codex/memory/`  | Persistent markdown memory files for Codex backend                  |
+| `memory/`   | `<name>/gemini/memory/` | JSON session history for Gemini backend (`sessions/`)               |
 
 Backend-specific `agent-card.md` files may be mounted for direct backend-sidecar discovery, but the Kubernetes Service
 for a named agent targets the harness container. The repo's self/test agent configs therefore treat
@@ -210,49 +210,49 @@ for a named agent targets the harness container. The repo's self/test agent conf
 
 **harness:**
 
-| Variable                                    | Default                             | Description                                                                                                                    |
-| ------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `AGENT_NAME`                                | `witwave`                           | Agent display name (e.g. `iris`)                                                                                               |
-| `HARNESS_HOST`                              | `0.0.0.0`                           | Interface the harness binds to                                                                                                 |
-| `HARNESS_PORT`                              | `8000`                              | HTTP port the harness listens on                                                                                               |
-| `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/`   | Public URL published on the A2A agent card                                                                                     |
-| `BACKEND_CONFIG_PATH`                       | `/home/agent/.witwave/backend.yaml` | Path to backend routing config                                                                                                 |
-| `METRICS_ENABLED`                           | _(unset)_                           | Enable Prometheus `/metrics`                                                                                                   |
-| `METRICS_AUTH_TOKEN`                        | _(unset)_                           | Bearer token required to access `/metrics`                                                                                     |
-| `METRICS_CACHE_TTL`                         | `15`                                | Seconds to cache aggregated backend metrics between scrapes                                                                    |
+| Variable                                    | Default                             | Description                                                                                                                            |
+| ------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `AGENT_NAME`                                | `witwave`                           | Agent display name (e.g. `iris`)                                                                                                       |
+| `HARNESS_HOST`                              | `0.0.0.0`                           | Interface the harness binds to                                                                                                         |
+| `HARNESS_PORT`                              | `8000`                              | HTTP port the harness listens on                                                                                                       |
+| `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/`   | Public URL published on the A2A agent card                                                                                             |
+| `BACKEND_CONFIG_PATH`                       | `/home/agent/.witwave/backend.yaml` | Path to backend routing config                                                                                                         |
+| `METRICS_ENABLED`                           | _(unset)_                           | Enable Prometheus `/metrics`                                                                                                           |
+| `METRICS_AUTH_TOKEN`                        | _(unset)_                           | Bearer token required to access `/metrics`                                                                                             |
+| `METRICS_CACHE_TTL`                         | `15`                                | Seconds to cache aggregated backend metrics between scrapes                                                                            |
 | `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                           | Bearer token required to access harness read/observe endpoints such as `/conversations`, `/trace`, `/api/traces`, and `/events/stream` |
-| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations`, `/trace`, and `/api/traces` endpoints (set if backends require auth)       |
-| `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                           | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                    |
-| `CORS_ALLOW_ORIGINS`                        | _(unset)_                           | Comma-separated allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                        |
-| `TASK_STORE_PATH`                           | _(unset)_                           | Path for SQLite A2A task store; defaults to in-memory                                                                          |
-| `WORKER_MAX_RESTARTS`                       | `5`                                 | Consecutive crash limit before a critical worker marks the agent not-ready                                                     |
-| `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                                | Maximum number of in-flight webhook delivery tasks across all subscriptions                                                    |
-| `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` | `10`                                | Per-subscription cap on concurrent in-flight deliveries; also settable per webhook via `max-concurrent-deliveries` frontmatter |
-| `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                               | Seconds to wait for a single LLM extraction call inside a webhook delivery                                                     |
-| `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                     | Maximum number of jobs that may run concurrently; `0` disables the limit                                                       |
-| `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                     | Maximum number of tasks that may run concurrently; `0` disables the limit                                                      |
-| `TASK_TIMEOUT_SECONDS`                      | `300`                               | Task timeout in seconds, applied to A2A backend requests                                                                       |
-| `MANIFEST_PATH`                             | `/home/agent/manifest.json`         | Path to the team manifest file listing all agents by name and URL                                                              |
-| `BACKENDS_READY_WARN_AFTER`                 | `120`                               | Seconds to wait before logging a warning that backends have not become healthy                                                 |
-| `LOG_PROMPT_MAX_BYTES`                      | `200`                               | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                       |
-| `A2A_BACKEND_MAX_RETRIES`                   | `3`                                 | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                      |
-| `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                               | Base backoff in seconds for retry delay (exponential with jitter)                                                              |
-| `A2A_URL_<ID>`                              | _(unset)_                           | Per-backend URL override (e.g. `A2A_URL_IRIS_CLAUDE`)                                                                          |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                           | Bearer token forwarded to backend `/conversations`, `/trace`, and `/api/traces` endpoints (set if backends require auth)               |
+| `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                           | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                            |
+| `CORS_ALLOW_ORIGINS`                        | _(unset)_                           | Comma-separated allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                                |
+| `TASK_STORE_PATH`                           | _(unset)_                           | Path for SQLite A2A task store; defaults to in-memory                                                                                  |
+| `WORKER_MAX_RESTARTS`                       | `5`                                 | Consecutive crash limit before a critical worker marks the agent not-ready                                                             |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                                | Maximum number of in-flight webhook delivery tasks across all subscriptions                                                            |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` | `10`                                | Per-subscription cap on concurrent in-flight deliveries; also settable per webhook via `max-concurrent-deliveries` frontmatter         |
+| `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                               | Seconds to wait for a single LLM extraction call inside a webhook delivery                                                             |
+| `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                     | Maximum number of jobs that may run concurrently; `0` disables the limit                                                               |
+| `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                     | Maximum number of tasks that may run concurrently; `0` disables the limit                                                              |
+| `TASK_TIMEOUT_SECONDS`                      | `300`                               | Task timeout in seconds, applied to A2A backend requests                                                                               |
+| `MANIFEST_PATH`                             | `/home/agent/manifest.json`         | Path to the team manifest file listing all agents by name and URL                                                                      |
+| `BACKENDS_READY_WARN_AFTER`                 | `120`                               | Seconds to wait before logging a warning that backends have not become healthy                                                         |
+| `LOG_PROMPT_MAX_BYTES`                      | `200`                               | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                               |
+| `A2A_BACKEND_MAX_RETRIES`                   | `3`                                 | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                              |
+| `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                               | Base backoff in seconds for retry delay (exponential with jitter)                                                                      |
+| `A2A_URL_<ID>`                              | _(unset)_                           | Per-backend URL override (e.g. `A2A_URL_IRIS_CLAUDE`)                                                                                  |
 
 **Backends (claude / codex / gemini):**
 
-| Variable                   | Default                       | Description                                                                  |
-| -------------------------- | ----------------------------- | ---------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-claude`)                                   |
-| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_      | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
-| `AGENT_ID`                 | `claude` / `codex` / `gemini` | Backend slot identifier; used in metric labels                               |
-| `AGENT_URL`                | `http://localhost:8000/`      | Public A2A endpoint URL reported in agent card                               |
-| `BACKEND_PORT`             | `8000`                        | HTTP port the backend listens on (internal)                                  |
-| `METRICS_ENABLED`          | _(unset)_                     | Enable Prometheus `/metrics`                                                 |
+| Variable                   | Default                       | Description                                                                                  |
+| -------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-claude`)                                                   |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_      | Named agent this backend belongs to (e.g. `iris`); used in metric labels                     |
+| `AGENT_ID`                 | `claude` / `codex` / `gemini` | Backend slot identifier; used in metric labels                                               |
+| `AGENT_URL`                | `http://localhost:8000/`      | Public A2A endpoint URL reported in agent card                                               |
+| `BACKEND_PORT`             | `8000`                        | HTTP port the backend listens on (internal)                                                  |
+| `METRICS_ENABLED`          | _(unset)_                     | Enable Prometheus `/metrics`                                                                 |
 | `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                     | Bearer token required to access `/conversations`, `/trace`, `/mcp`, and `/api/traces[/<id>]` |
-| `TASK_STORE_PATH`          | _(unset)_                     | Path for SQLite A2A task store; defaults to in-memory                        |
-| `WORKER_MAX_RESTARTS`      | `5`                           | Consecutive crash limit before a critical worker marks the backend not-ready |
-| `LOG_PROMPT_MAX_BYTES`     | `200`                         | Max bytes of the prompt logged at INFO level; `0` suppresses it entirely     |
+| `TASK_STORE_PATH`          | _(unset)_                     | Path for SQLite A2A task store; defaults to in-memory                                        |
+| `WORKER_MAX_RESTARTS`      | `5`                           | Consecutive crash limit before a critical worker marks the backend not-ready                 |
+| `LOG_PROMPT_MAX_BYTES`     | `200`                         | Max bytes of the prompt logged at INFO level; `0` suppresses it entirely                     |
 
 ---
 
@@ -309,12 +309,12 @@ webhook-style deliveries do not wait behind the singleton scheduler lane.
 
 Operator-created agents follow the `ww` port convention unless a CR explicitly overrides it:
 
-| Container | Port |
-| --------- | ---- |
-| harness | 8000 |
-| first backend sidecar | 8001 |
+| Container                   | Port       |
+| --------------------------- | ---------- |
+| harness                     | 8000       |
+| first backend sidecar       | 8001       |
 | additional backend sidecars | 8002..8050 |
-| metrics listener | 9000 |
+| metrics listener            | 9000       |
 
 Each named agent runs in its own pod with its own localhost, so these ports can be reused across agents. Local smoke
 docs may still forward stable laptop ports to the harness Service, for example `localhost:8099 -> svc/bob:8000`, but

@@ -13,8 +13,8 @@ is running:
 - One **WitwaveWorkspace** (`witwave-self`) with one or more shared volumes (`source` for the working repo state,
   `memory` for long-term per-agent memory, more as concerns accrete) that every participating agent mounts at the same
   paths.
-- Eight **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `felix`, `piper`) with
-  `Spec.WorkspaceRefs` pointing at `witwave-self` so they share the workspace.
+- Eight **WitwaveAgent**s (`iris`, `kira`, `nova`, `evan`, `zora`, `finn`, `felix`, `piper`) with `Spec.WorkspaceRefs`
+  pointing at `witwave-self` so they share the workspace.
 
   - **iris** owns source-tree initialization + release captaincy + git plumbing for the team.
   - **kira** owns documentation hygiene + research.
@@ -418,10 +418,9 @@ ww agent create felix \
 ## Step 10 — Deploy Piper
 
 Piper is the team's outreach agent — reads team state every 15 minutes and posts substantive events to GitHub
-Discussions. She routes Announcements at score ≥9, Progress at 5-8, and stays silent below 5. She is read-only on
-source and only writes to her memory namespace and GitHub Discussions. Same deployment shape as the others — one
-`claude` backend, identity from `.agents/self/piper/`, no commits-then-iris-pushes flow because she has no commits to
-push.
+Discussions. She routes Announcements at score ≥9, Progress at 5-8, and stays silent below 5. She is read-only on source
+and only writes to her memory namespace and GitHub Discussions. Same deployment shape as the others — one `claude`
+backend, identity from `.agents/self/piper/`, no commits-then-iris-pushes flow because she has no commits to push.
 
 ```bash
 ww agent create piper \

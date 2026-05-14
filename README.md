@@ -190,9 +190,9 @@ ww update --check      # check only
 ww update --force      # run the upgrade unconditionally
 ```
 
-Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.23.15`. The latest released tag
-is visible on the [GitHub Releases](https://github.com/witwave-ai/witwave/releases) page; substitute it for the version
-below.
+Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.23.15`. The latest released
+tag is visible on the [GitHub Releases](https://github.com/witwave-ai/witwave/releases) page; substitute it for the
+version below.
 
 ## Helm Charts
 
@@ -574,25 +574,25 @@ conversation-log redaction rules (idempotent merge-spans with UUID / OTel-trace 
 
 ### Backend (claude / codex / gemini) environment variables
 
-| Variable                       | Default                   | Description                                                                                                                                          |
-| ------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                   | `claude`/`codex`/`gemini` | Backend instance name (e.g. `iris-claude`)                                                                                                           |
-| `AGENT_OWNER`                  | _(same as `AGENT_NAME`)_  | Named agent this backend belongs to (e.g. `iris`); used in metric labels                                                                             |
-| `AGENT_ID`                     | `claude`/`codex`/`gemini` | Backend slot identifier (e.g. `claude`); used in metric labels                                                                                       |
-| `AGENT_URL`                    | `http://localhost:8000/`  | Public A2A endpoint URL for the agent card                                                                                                           |
-| `BACKEND_PORT`                 | `8000`                    | HTTP port the backend listens on (internal)                                                                                                          |
-| `METRICS_ENABLED`              | _(unset)_                 | Set to any non-empty value to expose `/metrics`                                                                                                      |
-| `METRICS_PORT`                 | `9000`                    | Dedicated port the metrics listener binds to (#643; same semantics as harness)                                                                       |
+| Variable                       | Default                   | Description                                                                                                                                            |
+| ------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AGENT_NAME`                   | `claude`/`codex`/`gemini` | Backend instance name (e.g. `iris-claude`)                                                                                                             |
+| `AGENT_OWNER`                  | _(same as `AGENT_NAME`)_  | Named agent this backend belongs to (e.g. `iris`); used in metric labels                                                                               |
+| `AGENT_ID`                     | `claude`/`codex`/`gemini` | Backend slot identifier (e.g. `claude`); used in metric labels                                                                                         |
+| `AGENT_URL`                    | `http://localhost:8000/`  | Public A2A endpoint URL for the agent card                                                                                                             |
+| `BACKEND_PORT`                 | `8000`                    | HTTP port the backend listens on (internal)                                                                                                            |
+| `METRICS_ENABLED`              | _(unset)_                 | Set to any non-empty value to expose `/metrics`                                                                                                        |
+| `METRICS_PORT`                 | `9000`                    | Dedicated port the metrics listener binds to (#643; same semantics as harness)                                                                         |
 | `CONVERSATIONS_AUTH_TOKEN`     | _(unset — warn on empty)_ | Bearer token required to access `/conversations`, `/trace`, `/mcp`, and `/api/traces[/<id>]` on all three LLM-backed backends (#510, #516, #517, #518) |
-| `CONVERSATIONS_AUTH_DISABLED`  | _(unset)_                 | Explicit escape hatch to run without the auth guard; loud startup log for visibility (#718). Intended for local dev only.                            |
-| `LOG_REDACT`                   | _(unset)_                 | When truthy, conversation and response logs redact user-prompt / agent-response content (#714)                                                       |
-| `GEMINI_MAX_HISTORY_BYTES`     | _(gemini only)_           | Byte ceiling on the JSON session-history file gemini persists per session; older turns are truncated to fit                                          |
-| `MCP_ALLOWED_COMMANDS`         | _(per-backend default)_   | Comma-separated allow-list of basenames for stdio entries parsed from `mcp.json`                                                                     |
-| `MCP_ALLOWED_COMMAND_PREFIXES` | _(per-backend default)_   | Comma-separated allow-list of absolute-path prefixes for stdio entries                                                                               |
-| `MCP_ALLOWED_CWD_PREFIXES`     | _(per-backend default)_   | Comma-separated allow-list of working-directory prefixes for stdio entries (rejections counted on `backend_mcp_command_rejected_total`)              |
-| `TASK_STORE_PATH`              | _(unset)_                 | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                                                                        |
-| `WORKER_MAX_RESTARTS`          | `5`                       | Consecutive crash limit before a critical worker marks the backend not-ready                                                                         |
-| `LOG_PROMPT_MAX_BYTES`         | `200`                     | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                                             |
+| `CONVERSATIONS_AUTH_DISABLED`  | _(unset)_                 | Explicit escape hatch to run without the auth guard; loud startup log for visibility (#718). Intended for local dev only.                              |
+| `LOG_REDACT`                   | _(unset)_                 | When truthy, conversation and response logs redact user-prompt / agent-response content (#714)                                                         |
+| `GEMINI_MAX_HISTORY_BYTES`     | _(gemini only)_           | Byte ceiling on the JSON session-history file gemini persists per session; older turns are truncated to fit                                            |
+| `MCP_ALLOWED_COMMANDS`         | _(per-backend default)_   | Comma-separated allow-list of basenames for stdio entries parsed from `mcp.json`                                                                       |
+| `MCP_ALLOWED_COMMAND_PREFIXES` | _(per-backend default)_   | Comma-separated allow-list of absolute-path prefixes for stdio entries                                                                                 |
+| `MCP_ALLOWED_CWD_PREFIXES`     | _(per-backend default)_   | Comma-separated allow-list of working-directory prefixes for stdio entries (rejections counted on `backend_mcp_command_rejected_total`)                |
+| `TASK_STORE_PATH`              | _(unset)_                 | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                                                                          |
+| `WORKER_MAX_RESTARTS`          | `5`                       | Consecutive crash limit before a critical worker marks the backend not-ready                                                                           |
+| `LOG_PROMPT_MAX_BYTES`         | `200`                     | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                                               |
 
 ## Metrics
 

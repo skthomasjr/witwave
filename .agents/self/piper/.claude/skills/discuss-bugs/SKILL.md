@@ -86,10 +86,10 @@ Before opening the investigation state file for any candidate thread, apply the 
 - **Gate A — `hold` label:** If the Discussion carries a `hold` label, SKIP entirely on this tick. Log to
   `pulse_log.md`: `[skipped: hold-label on #<number>]`. Move to next.
 - **Gate B — External trigger:** If your last action on this thread was a reply AND no non-Piper comment has landed
-  since, there is no external trigger this tick. SKIP. Log: `[skipped: no-external-trigger on #<number>]`. (For
-  bug threads, the trigger can also be a meaningful new commit in the team's source that materially changes the
-  bug's status — e.g., a fix commit references the discussion number. That counts as a substantive work event per
-  Gate B's "substantive work event" carve-out.)
+  since, there is no external trigger this tick. SKIP. Log: `[skipped: no-external-trigger on #<number>]`. (For bug
+  threads, the trigger can also be a meaningful new commit in the team's source that materially changes the bug's status
+  — e.g., a fix commit references the discussion number. That counts as a substantive work event per Gate B's
+  "substantive work event" carve-out.)
 
 If both gates pass, proceed to Step 2.
 

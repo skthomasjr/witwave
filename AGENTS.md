@@ -136,9 +136,9 @@ Each backend:
   `SESSION_ID_SECRET` is set the bound ID is HMAC-derived from the caller identity so one caller cannot hijack another's
   session. Leave unset only in single-tenant dev
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
-- Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex,
-  `GEMINI.md` for gemini). Backend-specific `agent-card.md` files are optional; the named agent's public card is served
-  by harness from `.witwave/agent-card.md`
+- Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex, `GEMINI.md` for
+  gemini). Backend-specific `agent-card.md` files are optional; the named agent's public card is served by harness from
+  `.witwave/agent-card.md`
 
 Each named agent has its own dedicated backend instances. For example, iris has `iris-claude`, `iris-codex`, and
 `iris-gemini`.
@@ -431,10 +431,10 @@ the local-cluster prompt heuristic.
 Use the `/remote` skill to interact with running agents. Always target the **witwave agent by name** — witwave routes
 the request internally to its configured backend. Never target backend services directly.
 
-| Shape | Harness | First backend | Additional backends | Metrics |
-| ----- | ------- | ------------- | ------------------- | ------- |
-| `ww` / operator default | 8000 | 8001 | 8002..8050 | 9000 |
-| historical host-forward examples | varies by local forward | varies by local forward | varies by local forward | 9000 |
+| Shape                            | Harness                 | First backend           | Additional backends     | Metrics |
+| -------------------------------- | ----------------------- | ----------------------- | ----------------------- | ------- |
+| `ww` / operator default          | 8000                    | 8001                    | 8002..8050              | 9000    |
+| historical host-forward examples | varies by local forward | varies by local forward | varies by local forward | 9000    |
 
 Self-managing and test agents run in their own pods with their own localhost, so backend ports can be uniform within
 each pod. When a local smoke spec wants stable laptop ports, port-forward the harness Service, for example
@@ -531,8 +531,8 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
   `agents[].env` entry overrides them. Common harness keys include `SESSION_STREAM_MAX_PER_CALLER`,
   `CONVERSATION_STREAM_{QUEUE_MAX,RING_MAX,GRACE_SEC,KEEPALIVE_SEC}`, `WEBHOOK_RETRY_BYTES_PER_SUB`,
   `WEBHOOK_ALLOW_LOOPBACK_HOSTS`, `A2A_SESSION_CONTEXT_CACHE_MAX`, `A2A_MAX_RESPONSE_BYTES`, `A2A_RETRY_POLICY`
-  (fast-only | always | never; default fast-only), `A2A_RETRY_FAST_ONLY_MS` (default 5000 — 5xx slower than this won't be
-  retried under fast-only), `HARNESS_PROXY_MAX_RESPONSE_BYTES`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`,
+  (fast-only | always | never; default fast-only), `A2A_RETRY_FAST_ONLY_MS` (default 5000 — 5xx slower than this won't
+  be retried under fast-only), `HARNESS_PROXY_MAX_RESPONSE_BYTES`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`,
   `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, and `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`. MCP tool tunables are surfaced under each
   `mcpTools.<name>.env` block, including `MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`,
   `MCP_K8S_READ_SECRETS_DISABLED`, and `MCP_PROM_MAX_RESPONSE_BYTES`. Service-specific env vars are also declared in
