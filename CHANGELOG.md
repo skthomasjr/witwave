@@ -41,6 +41,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Move blog post titles into the main article pane so the blog reader sidebar stays focused on controls.
 - **social**: Move whitepaper reader titles out of the sidebar so the main paper pane owns the document title.
 - **social**: Fine-tune the icon-only header mark slightly smaller.
+- **social**: Make blog and whitepaper reader sidebar buttons full-width for a uniform control stack.
 
 ## [0.23.13] — 2026-05-11
 

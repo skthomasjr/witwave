@@ -978,7 +978,8 @@ p {
 }
 
 .reader-actions .button {
-  justify-self: start;
+  width: 100%;
+  justify-self: stretch;
 }
 
 .reader-paper-nav {
