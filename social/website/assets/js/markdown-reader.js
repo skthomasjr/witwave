@@ -27,7 +27,7 @@ async function initReader() {
 
   document.title = `${selected.shortTitle || selected.title} | witwave`;
   readerTitle.textContent = "Reader controls";
-  readerDeck.textContent = "Choose a paper, download Markdown, or return to the whitepaper archive.";
+  readerDeck.textContent = "Choose a paper, download MD, or return to the whitepaper archive.";
   renderActions(selected);
   renderPaperNav(papers, selected.slug);
 
@@ -57,7 +57,7 @@ function renderActions(paper) {
   readerActions.innerHTML = `
     <a class="button primary" href="../whitepapers/">All whitepapers</a>
     <a class="button secondary" href="../${escapeAttr(paper.markdownPath)}" download="${escapeAttr(paper.slug)}.md">
-      Download Markdown
+      Download MD
     </a>
   `;
 }
