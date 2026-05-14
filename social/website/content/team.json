@@ -24,6 +24,7 @@
       "lane": "Narrates team progress publicly, engages GitHub Discussions, and keeps outward-facing updates signal-rich.",
       "avatar": "assets/images/team/piper.png",
       "sourcePath": ".agents/self/piper/.witwave/agent-card.md",
+      "x": "https://x.com/PiperWitwave",
       "github": "https://github.com/piper-agent-witwave"
     },
     {
