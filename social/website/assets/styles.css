@@ -268,6 +268,10 @@ p {
   margin-top: 2rem;
 }
 
+.home-hero-actions .primary {
+  margin-left: auto;
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -972,31 +976,28 @@ p {
   min-width: 0;
 }
 
-.terminal-window {
+.code-window {
   overflow: hidden;
   max-width: 100%;
   margin: 1rem 0;
-  border: 1px solid rgba(49, 231, 211, 0.22);
-  border-radius: 18px;
-  background: #03090d;
-  box-shadow:
-    inset 0 0 0 1px rgba(231, 247, 255, 0.04),
-    0 18px 46px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(132, 199, 217, 0.18);
+  border-radius: 14px;
+  background: rgba(3, 9, 13, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(231, 247, 255, 0.035);
 }
 
-.terminal-window.compact {
+.code-window.compact {
   margin-top: 0.6rem;
 }
 
-.terminal-title {
+.code-window-header {
   display: flex;
-  gap: 0.7rem;
   align-items: center;
-  padding: 0.62rem 0.82rem;
-  border-bottom: 1px solid rgba(132, 199, 217, 0.16);
-  background:
-    linear-gradient(90deg, rgba(49, 231, 211, 0.12), rgba(216, 255, 95, 0.04)),
-    rgba(10, 24, 32, 0.9);
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.52rem 0.62rem 0.52rem 0.85rem;
+  border-bottom: 1px solid rgba(132, 199, 217, 0.14);
+  background: rgba(231, 247, 255, 0.035);
   color: var(--muted);
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.72rem;
@@ -1005,34 +1006,43 @@ p {
   text-transform: uppercase;
 }
 
-.terminal-dots {
-  display: inline-flex;
-  gap: 0.34rem;
+.copy-code-button {
+  min-height: 2rem;
+  padding: 0.36rem 0.72rem;
+  border: 1px solid rgba(49, 231, 211, 0.28);
+  border-radius: 999px;
+  background: rgba(49, 231, 211, 0.08);
+  color: var(--sea);
+  cursor: pointer;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
-.terminal-dots i {
-  display: block;
-  width: 0.58rem;
-  height: 0.58rem;
-  border-radius: 50%;
-  background: var(--clay);
+.copy-code-button:hover,
+.copy-code-button:focus-visible {
+  border-color: rgba(49, 231, 211, 0.55);
+  background: rgba(49, 231, 211, 0.12);
 }
 
-.terminal-dots i:nth-child(2) {
-  background: var(--gold);
+.copy-code-button.copied {
+  border-color: rgba(216, 255, 95, 0.55);
+  color: var(--gold);
 }
 
-.terminal-dots i:nth-child(3) {
-  background: var(--sea);
+.copy-code-button.copy-failed {
+  border-color: rgba(255, 123, 86, 0.55);
+  color: var(--clay);
 }
 
-.terminal-window pre {
+.code-window pre {
   margin: 0;
   overflow-x: auto;
   padding: 1rem;
 }
 
-.terminal-window code {
+.code-window code {
   display: block;
   padding: 0;
   border: 0;
@@ -1544,6 +1554,10 @@ p {
   .blog-card-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .home-hero-actions .primary {
+    margin-left: 0;
   }
 
   .button,

@@ -10,7 +10,7 @@
     />
     <meta property="og:image" content="../assets/images/witwave-social-preview.png" />
     <link rel="icon" href="../assets/images/witwave-logo-terminal.svg" />
-    <link rel="stylesheet" href="../assets/styles.css?v=header-cta-20260514" />
+    <link rel="stylesheet" href="../assets/styles.css?v=code-copy-20260514" />
   </head>
   <body>
     <header class="site-header">
@@ -72,10 +72,10 @@
           </p>
         </div>
         <div class="quickstart-mini-command">
-          <div class="terminal-window">
-            <div class="terminal-title">
-              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span>Terminal window</span>
+          <div class="code-window" data-code-window>
+            <div class="code-window-header">
+              <span>bash</span>
+              <button class="copy-code-button" type="button">Copy</button>
             </div>
             <pre><code>curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
 ww operator install --if-missing --yes
@@ -225,5 +225,6 @@ ww agent create hello --namespace witwave --create-namespace</code></pre>
       <p>witwave is open source and developed as a living example of agent-native engineering.</p>
       <a href="https://github.com/witwave-ai/witwave">Open GitHub</a>
     </footer>
+    <script src="../assets/js/quickstart-copy.js?v=code-copy-fallback-20260514"></script>
   </body>
 </html>

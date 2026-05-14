@@ -10,7 +10,7 @@
     />
     <meta property="og:image" content="../assets/images/witwave-social-preview.png" />
     <link rel="icon" href="../assets/images/witwave-logo-terminal.svg" />
-    <link rel="stylesheet" href="../assets/styles.css?v=header-cta-20260514" />
+    <link rel="stylesheet" href="../assets/styles.css?v=code-copy-20260514" />
   </head>
   <body>
     <header class="site-header">
@@ -62,18 +62,18 @@
             <p class="card-kicker">Install</p>
             <h2>Install <code>ww</code>.</h2>
             <p>The universal installer works on Linux and macOS and verifies the release checksum.</p>
-            <div class="terminal-window">
-              <div class="terminal-title">
-                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span>Terminal window</span>
+            <div class="code-window" data-code-window>
+              <div class="code-window-header">
+                <span>bash</span>
+                <button class="copy-code-button" type="button">Copy</button>
               </div>
               <pre><code>curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh</code></pre>
             </div>
             <p class="source-note">macOS alternative:</p>
-            <div class="terminal-window compact">
-              <div class="terminal-title">
-                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span>Terminal window</span>
+            <div class="code-window compact" data-code-window>
+              <div class="code-window-header">
+                <span>bash</span>
+                <button class="copy-code-button" type="button">Copy</button>
               </div>
               <pre><code>brew install witwave-ai/homebrew-ww/ww</code></pre>
             </div>
@@ -86,10 +86,10 @@
             <p class="card-kicker">Confirm</p>
             <h2>Check your CLI and cluster context.</h2>
             <p>Make sure <code>ww</code> is on your path and your kubeconfig is pointed at the cluster you intend to use.</p>
-            <div class="terminal-window">
-              <div class="terminal-title">
-                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span>Terminal window</span>
+            <div class="code-window" data-code-window>
+              <div class="code-window-header">
+                <span>bash</span>
+                <button class="copy-code-button" type="button">Copy</button>
               </div>
               <pre><code>ww version
 kubectl config current-context</code></pre>
@@ -106,10 +106,10 @@ kubectl config current-context</code></pre>
               The operator reconciles <code>WitwaveAgent</code>, <code>WitwavePrompt</code>, and
               <code>WitwaveWorkspace</code> resources into running infrastructure.
             </p>
-            <div class="terminal-window">
-              <div class="terminal-title">
-                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span>Terminal window</span>
+            <div class="code-window" data-code-window>
+              <div class="code-window-header">
+                <span>bash</span>
+                <button class="copy-code-button" type="button">Copy</button>
               </div>
               <pre><code>ww operator install --if-missing --yes
 ww operator status</code></pre>
@@ -126,10 +126,10 @@ ww operator status</code></pre>
               The default echo backend needs no LLM API key, so it is the safest first smoke test before wiring Claude,
               Codex, Gemini, workspaces, or git-backed configuration.
             </p>
-            <div class="terminal-window">
-              <div class="terminal-title">
-                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span>Terminal window</span>
+            <div class="code-window" data-code-window>
+              <div class="code-window-header">
+                <span>bash</span>
+                <button class="copy-code-button" type="button">Copy</button>
               </div>
               <pre><code>ww agent create hello --namespace witwave --create-namespace
 ww agent status hello --namespace witwave
@@ -158,5 +158,6 @@ ww agent send hello "ping from quick start" --namespace witwave</code></pre>
       <p>Quick Start gets the operator and a no-key agent running; the full walkthrough takes you deeper.</p>
       <a href="https://github.com/witwave-ai/witwave/blob/main/clients/ww/WALKTHROUGH.md">Open walkthrough</a>
     </footer>
+    <script src="../assets/js/quickstart-copy.js?v=code-copy-fallback-20260514"></script>
   </body>
 </html>

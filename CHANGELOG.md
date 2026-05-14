@@ -50,7 +50,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
   replacing public `self team` wording, and retiring the hidden positioning page.
 - **social**: Add website planning notes for a prominent CLI Quick Start and lightweight GitHub Discussions links.
 - **social**: Add a prominent Quick Start page for installing `ww`, verifying Kubernetes access, installing the
-  operator, and creating a no-key echo agent, with terminal-style command windows and a highlighted navigation pill.
+  operator, and creating a no-key echo agent, with copyable code windows and a highlighted navigation action.
 
 ## [0.23.13] — 2026-05-11
 
