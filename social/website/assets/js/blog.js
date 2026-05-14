@@ -200,7 +200,7 @@ function renderBlogCard(post) {
       ${tags.length ? `<ul class="tag-list compact">${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul>` : ""}
       <div class="blog-card-actions">
         <a class="text-link" href="post/?post=${encodeURIComponent(post.slug)}">Read post</a>
-        ${socialLinks || '<span class="source-note">Social links coming soon.</span>'}
+        ${socialLinks}
       </div>
     </article>
   `;
@@ -216,7 +216,7 @@ function renderPostActions(post) {
   const distribution = renderDistributionLinks(post, "reader-actions blog-distribution-links");
   return `
     <a class="button primary" href="../">All posts</a>
-    ${distribution || '<span class="source-note">Social links coming soon.</span>'}
+    ${distribution}
   `;
 }
 

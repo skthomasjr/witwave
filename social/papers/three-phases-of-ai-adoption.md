@@ -7,7 +7,7 @@
 
 ## Executive summary
 
-Most engineering teams will soon be able to say they use agents. That will not mean they have transformed software
+Most engineering teams will soon be able to say they use agents. That alone will not mean they have transformed software
 delivery.
 
 A team can use agents heavily and still move at the speed of the old process. Agents can write code in minutes, then

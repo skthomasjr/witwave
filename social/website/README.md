@@ -35,17 +35,15 @@ social/website/
 ├── reader/
 │   └── index.html                # clickable Markdown whitepaper reader
 ├── team/
-│   └── index.html                # public self-team roster with avatars and roles
+│   └── index.html                # public working-team roster with avatars and roles
 ├── blog/
 │   ├── index.html                # dynamic Markdown blog index
 │   └── post/
 │       └── index.html            # Markdown blog reader
-├── positioning/
-│   └── index.html                # marketing / narrative page
 └── content/
     ├── README.md                 # content operation notes
     ├── whitepapers.json          # source-of-truth map for paper cards
-    ├── team.json                 # self-team roster source for the Team page
+    ├── team.json                 # working-team roster source for the Team page
     ├── whitepapers/              # symlinks to canonical markdown sources
     ├── blog/
     │   └── README.md
@@ -109,6 +107,30 @@ secret and exits cleanly without publishing when neither is configured.
   `content/whitepapers.json` in the same change.
 - Name blog post files `yyyy-mm-dd-title-goes-here.md`.
 - If a blog slug changes, update its frontmatter, `social/posts/posts.json`, and any social `published_urls` together.
+
+## Planned content improvements
+
+- **Prominent Quick Start path.** Add a first-class Quick Start surface for people who want to try the CLI immediately.
+  It should be visible from the homepage and Project page, likely as a primary or secondary CTA near "Explore the
+  project." Keep it short and practical:
+  - prerequisite: access to a Kubernetes cluster and a working kubeconfig context;
+  - install: `curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh`;
+  - macOS alternate: `brew install witwave-ai/homebrew-ww/ww`;
+  - first cluster step: `ww operator install`, then `ww operator status`;
+  - next path: link to `clients/ww/README.md` and the walkthrough for agent creation.
+- **Lightweight Discussion links.** Add a low-weight community/help block without making Discussions the main story.
+  Piper's public surfaces are:
+  - Ideas: `https://github.com/witwave-ai/witwave/discussions/categories/ideas`;
+  - Bugs: `https://github.com/witwave-ai/witwave/discussions/categories/bugs`;
+  - Questions: `https://github.com/witwave-ai/witwave/discussions/categories/questions`;
+  - Announcements: `https://github.com/witwave-ai/witwave/discussions/categories/announcements`;
+  - Progress: `https://github.com/witwave-ai/witwave/discussions/categories/progress`.
+  Candidate placement: a compact "Join the conversation" strip near the Blog footer, Project footer, or homepage lower
+  section. Ideas, Bugs, and Questions are user-facing participation links; Announcements and Progress are follow-along
+  links.
+- **Wording posture.** Keep public copy in external-reader terms such as "working team" instead of internal repo terms
+  such as "self team." Keep the adoption thesis framed as "agents provide immediate value; lifecycle-native integration
+  is the compounding step."
 
 ## Local preview
 
