@@ -609,6 +609,8 @@ p {
 
 .team-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   min-height: 390px;
   padding: 1.1rem;
@@ -658,6 +660,9 @@ p {
 
 .team-card-body {
   position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
 }
 
 .team-card h2 {
@@ -741,7 +746,8 @@ p {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.55rem;
-  margin-top: 1rem;
+  margin-top: auto;
+  padding-top: 1rem;
 }
 
 .team-contact-links a {

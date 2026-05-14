@@ -34,6 +34,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Move planned future agent cards into a distinct section below the active Team roster.
 - **social**: Add GitHub profile links to active Team cards.
 - **social**: Move Team ahead of Blog in the public website navigation.
+- **social**: Bottom-align Team card profile badges and put Scott's LinkedIn badge before GitHub.
 
 ## [0.23.13] — 2026-05-11
 
