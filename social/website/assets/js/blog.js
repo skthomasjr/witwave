@@ -134,8 +134,9 @@ function renderBlogPost(posts) {
 
   if (!selected) {
     document.title = "No Blog Posts | witwave";
-    blogPostTitle.textContent = "No published posts yet.";
-    blogPostSummary.textContent = "The blog reader is ready, but there are no displayable posts.";
+    blogPostTitle.textContent = "Reader controls";
+    blogPostSummary.textContent = "No displayable posts are available yet.";
+    blogPostMeta.innerHTML = "";
     blogPost.innerHTML = renderBlogError(
       "No published posts yet.",
       "The first field notes are still being shaped. Start with the whitepapers in the meantime.",
@@ -146,12 +147,42 @@ function renderBlogPost(posts) {
   }
 
   document.title = `${selectedTitle} | witwave`;
-  blogPostTitle.textContent = selectedTitle;
-  blogPostSummary.textContent = selectedSummary || "Read the latest field note.";
-  blogPostMeta.innerHTML = renderPostMeta(selected);
+  blogPostTitle.textContent = "Reader controls";
+  blogPostSummary.textContent = "Choose a field note, download Markdown, or return to the blog archive.";
+  blogPostMeta.innerHTML = "";
   blogPostActions.innerHTML = renderPostActions(selected);
   blogPostNav.innerHTML = renderPostNav(visiblePosts, selected.slug);
-  blogPost.innerHTML = renderMarkdown(selected.body).html;
+  blogPost.innerHTML = renderBlogArticle(selected, selectedTitle, selectedSummary);
+}
+
+function renderBlogArticle(post, title, summary) {
+  const articleBody = stripLeadingMarkdownHeading(post.body || "");
+  return `
+    <header class="blog-article-header">
+      <p class="eyebrow">Field note</p>
+      <h1 id="blog-article-title">${escapeHtml(title)}</h1>
+      ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
+      <div class="blog-meta">${renderPostMeta(post)}</div>
+    </header>
+    <div class="blog-article-body">
+      ${renderMarkdown(articleBody).html}
+    </div>
+  `;
+}
+
+function stripLeadingMarkdownHeading(markdown) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const firstContentIndex = lines.findIndex((line) => line.trim());
+  if (firstContentIndex === -1) return "";
+
+  if (/^#\s+/.test(lines[firstContentIndex].trim())) {
+    return lines
+      .slice(firstContentIndex + 1)
+      .join("\n")
+      .trim();
+  }
+
+  return markdown.trim();
 }
 
 function renderBlogCard(post) {
