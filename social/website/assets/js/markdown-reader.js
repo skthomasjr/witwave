@@ -26,8 +26,8 @@ async function initReader() {
   }
 
   document.title = `${selected.shortTitle || selected.title} | witwave`;
-  readerTitle.textContent = selected.shortTitle || selected.title;
-  readerDeck.textContent = selected.deck || "Read the full paper.";
+  readerTitle.textContent = "Reader controls";
+  readerDeck.textContent = "Choose a paper, download Markdown, or return to the whitepaper archive.";
   renderActions(selected);
   renderPaperNav(papers, selected.slug);
 

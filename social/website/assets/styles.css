@@ -483,11 +483,6 @@ p {
   grid-template-columns: minmax(240px, 0.28fr) minmax(0, 1fr);
 }
 
-.blog-sidebar h2 {
-  font-size: clamp(1.45rem, 2.2vw, 2rem);
-  line-height: 1.05;
-}
-
 .blog-article-header {
   padding-bottom: clamp(1.6rem, 4vw, 2.4rem);
   margin-bottom: clamp(1.6rem, 4vw, 2.4rem);
@@ -949,7 +944,7 @@ p {
 
 .reader-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.3fr) minmax(0, 1fr);
   gap: clamp(1.3rem, 3vw, 2.4rem);
   align-items: start;
 }
@@ -969,6 +964,11 @@ p {
 
 .reader-sidebar h1 {
   font-size: clamp(2rem, 4vw, 3.4rem);
+}
+
+.reader-sidebar h2 {
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  line-height: 1.05;
 }
 
 .reader-actions {
@@ -1378,7 +1378,7 @@ p {
   }
 
   .markdown-paper h1 {
-    font-size: clamp(1.95rem, 9vw, 2.7rem);
+    font-size: clamp(1.85rem, 8vw, 2.45rem);
   }
 
   .blog-article-header h1 {

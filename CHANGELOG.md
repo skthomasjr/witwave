@@ -39,6 +39,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Put Piper's GitHub Team badge before her X badge.
 - **social**: Tighten narrow mobile website layouts so navigation, heroes, and reader sidebars do not overflow.
 - **social**: Move blog post titles into the main article pane so the blog reader sidebar stays focused on controls.
+- **social**: Move whitepaper reader titles out of the sidebar so the main paper pane owns the document title.
 
 ## [0.23.13] — 2026-05-11
 
