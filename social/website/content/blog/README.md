@@ -29,10 +29,10 @@ sample: false
 published_at: "2026-05-13"
 summary: "Short card and reader summary."
 tags: ["agentic-ai", "software-engineering"]
-surfaces: ["blog", "twitter", "linkedin"]
+surfaces: ["blog", "x", "linkedin"]
 published_urls:
   blog: "https://witwave.ai/blog/post/?post=2026-05-13-post-title"
-  twitter: null
+  x: null
   linkedin: null
 ---
 ```

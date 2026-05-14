@@ -195,7 +195,7 @@ This is only safe because the prior structural changes hold:
   that PR review would have enforced.
 - Commits are atomic and small (the development style is trunk-based by policy), so the blast radius of any single
   commit is bounded.
-- The serialized push posture means conflicts surface at one well-defined point and are handled by one specialist,
+- The serialized commit-and-push flow means conflicts surface at one well-defined point and are handled by one specialist,
   rather than spreading across every agent's local checkout.
 - The shared memory layer (see §2) means peers always know what others are about to commit, so concurrent work that
   touches overlapping files is noticed _before_ it diverges, not after.

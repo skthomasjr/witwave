@@ -1,7 +1,7 @@
 # social/
 
-Outward-facing published content. Whitepapers, blog drafts, and posts destined for public channels (X / LinkedIn /
-Mastodon / Threads / the team's eventual blog).
+Outward-facing published content. Whitepapers, blog drafts, website copy, and posts destined for public channels
+(witwave.ai, X, LinkedIn, Mastodon, Threads, and future channels).
 
 This folder sits outside `docs/` deliberately. `docs/` is project-internal reference read by contributors; `social/` is
 content the team publishes to the world.
@@ -14,11 +14,12 @@ social/
 ├── papers/                    long-form whitepapers; standalone publications
 │   ├── three-phases-of-ai-adoption.md
 │   └── anatomy-of-an-agentic-team.md
-├── website/                   public website source; GitHub Pages-ready static scaffold
+├── website/                   public website source; GitHub Pages-ready static site
 │   ├── index.html
+│   ├── project/
+│   ├── quickstart/
 │   ├── whitepapers/
 │   ├── blog/
-│   ├── positioning/
 │   └── content/
 ├── posts/                     short / medium-form posts that follow the spec
 │   └── (post files here)
@@ -32,9 +33,9 @@ social/
   below.
 - **Whitepapers** (`papers/`) — long-form framework pieces (e.g., `papers/three-phases-of-ai-adoption.md`). These don't
   follow the post spec; they're standalone publications. Treat them as source material that posts can reference.
-- **Website source** (`website/`) — the public website source managed in this repo and eventually published via the
-  dedicated GitHub Pages repository. The website currently starts as a static scaffold that makes the two whitepapers
-  prominent, reserves space for long-form blog entries, and keeps positioning copy agent-maintainable.
+- **Website source** (`website/`) — the public website source managed in this repo and published through the dedicated
+  GitHub Pages repository. The website makes the two whitepapers prominent, explains the project, hosts the Quick Start
+  path, loads blog entries, and keeps positioning copy agent-maintainable.
 - **Drafts** — work-in-progress in either shape, marked `status: draft` in frontmatter (posts) or simply unfinished
   (papers).
 
@@ -49,9 +50,13 @@ ships to multiple surfaces — keeps voice and facts in sync across variants.
 ---
 # Required
 title: "Short descriptive title — for human reference, not necessarily the post headline"
+slug: "yyyy-mm-dd-short-title"
 status: draft # draft | ready | scheduled | published | archived
-surfaces: [twitter, linkedin, blog] # subset of: twitter, linkedin, mastodon, threads, blog
-created: 2026-05-11 # YYYY-MM-DD, the day this file was authored
+display: true # public blog index visibility
+sample: false # true only for formatting/demo content
+surfaces: [blog, x, linkedin] # subset of: blog, x, linkedin, mastodon, threads, bluesky, github-discussion, hn, newsletter
+created: 2026-05-11 # optional YYYY-MM-DD authoring date
+summary: "Short card and reader summary."
 
 # Scheduling (optional unless status = scheduled or published)
 scheduled_for: null # ISO 8601 UTC, e.g. 2026-05-15T14:00:00Z
@@ -59,11 +64,11 @@ published_at: null # ISO 8601 UTC, set when status flips to published
 
 # Published URLs — one entry per surface in `surfaces`, filled when status = published
 published_urls:
-  twitter: null
+  blog: null
+  x: null
   linkedin: null
   mastodon: null
   threads: null
-  blog: null
 
 # Context (optional but encouraged)
 tags: [] # topical tags, lowercase-kebab-case, e.g. [ai-adoption, framework]
@@ -82,12 +87,16 @@ tone: conversational # formal | conversational | casual | technical
 | Field            | Type             | Notes                                                                                                                                                                                                                              |
 | ---------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `title`          | string, required | For humans reading the repo, not necessarily the headline that ships. Keep ≤80 chars.                                                                                                                                              |
+| `slug`           | string, required | Usually matches the filename without `.md`.                                                                                                                                                                                        |
 | `status`         | enum, required   | See "Status lifecycle" below.                                                                                                                                                                                                      |
+| `display`        | boolean          | `true` means the website may show the post when status is `published`.                                                                                                                                                             |
+| `sample`         | boolean          | `true` only for intentionally fake/demo posts. Keep public launch content `false`.                                                                                                                                                  |
 | `surfaces`       | list, required   | Which channels this post targets. Each value must match a key in `published_urls`. Empty `[]` is invalid — use `status: archived` instead.                                                                                         |
-| `created`        | date, required   | The day the file was authored, in `YYYY-MM-DD`.                                                                                                                                                                                    |
+| `created`        | date, optional   | The day the file was authored, in `YYYY-MM-DD`.                                                                                                                                                                                    |
 | `scheduled_for`  | ISO 8601 / null  | When the post should publish. Required when `status: scheduled`.                                                                                                                                                                   |
 | `published_at`   | ISO 8601 / null  | When the post actually published. Required when `status: published`.                                                                                                                                                               |
 | `published_urls` | map / null       | Per-surface URLs. Filled in when each variant publishes.                                                                                                                                                                           |
+| `summary`        | string           | Short card and reader summary used by the website.                                                                                                                                                                                 |
 | `tags`           | list             | Lowercase-kebab-case topical tags.                                                                                                                                                                                                 |
 | `audience`       | enum             | Who this post speaks to. Drives tone calibration.                                                                                                                                                                                  |
 | `related`        | list             | Repo-relative paths to related content (other posts, whitepapers, docs).                                                                                                                                                           |
@@ -97,14 +106,15 @@ tone: conversational # formal | conversational | casual | technical
 | `cta`            | enum             | The call-to-action shape. Helps consistency across posts.                                                                                                                                                                          |
 | `tone`           | enum             | Tone register. `conversational` is the witwave-house default; `technical` for engineering-detail posts (deep into APIs, internals); `casual` for off-the-cuff community-level posts; `formal` for press / investor / GTM contexts. |
 
-### Body — multi-surface convention
+### Body convention
 
-The body is markdown, organised by surface. One H2 section per surface in `surfaces`. An empty section means "this
-surface is in scope but the variant hasn't been written yet." A missing section means "this surface is not in scope"
-(and the entry should be removed from `surfaces`).
+The body is Markdown. Blog-first posts can be written as a normal article body with an H1 title and sections. If one
+file needs to hold distinct variants for multiple social surfaces, use one H2 section per surface in `surfaces`. An
+empty section means "this surface is in scope but the variant hasn't been written yet." A missing section means "this
+surface is not in scope" and the entry should be removed from `surfaces`.
 
 ```markdown
-## Twitter
+## X
 
 Headline: <hook post, ≤280 chars>
 
@@ -130,14 +140,14 @@ before adding a new value in a post.
 
 | Surface            | `surfaces` enum     | URL pattern (filled in `published_urls` once live)       | Char limit                             | Notes                                                                                                                                     |
 | ------------------ | ------------------- | -------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| X (Twitter)        | `twitter`           | `https://x.com/<user>/status/<id>`                       | 280 (Free); 25,000 (Premium)           | Threads are multiple posts. Number each `N/` for orientation. URLs count as 23 chars regardless of actual length.                         |
+| X                  | `x`                 | `https://x.com/<user>/status/<id>`                       | 280 (Free); 25,000 (Premium)           | Threads are multiple posts. Number each `N/` for orientation. URLs count as 23 chars regardless of actual length.                         |
 | LinkedIn           | `linkedin`          | `https://linkedin.com/posts/<slug>`                      | 3,000                                  | First ~140 chars are the visible preview before "see more" — treat them as the hook.                                                      |
 | Mastodon           | `mastodon`          | `https://<instance>/@<user>/<id>`                        | 500 (default; instance-dependent)      | Federation-compatible across instances. 500 is the safe ceiling.                                                                          |
 | Threads            | `threads`           | `https://threads.net/@<user>/post/<id>`                  | 500                                    | Meta's. Similar shape to X.                                                                                                               |
 | Bluesky            | `bluesky`           | `https://bsky.app/profile/<handle>/post/<id>`            | 300                                    | AT Protocol; federation in progress.                                                                                                      |
-| Blog               | `blog`              | `https://witwave.ai/blog/<slug>` (eventual)              | No cap                                 | Project-owned long-form. Surface is forthcoming; until then, `published_urls.blog` stays `null`.                                          |
+| Blog               | `blog`              | `https://witwave.ai/blog/post/?post=<slug>`              | No cap                                 | Project-owned long-form.                                                                                                                  |
 | GitHub Discussions | `github-discussion` | `https://github.com/witwave-ai/witwave/discussions/<n>`  | No hard cap (practical: ~10,000 chars) | Already in active use. For community-facing announcements that warrant a thread, not a shortform post.                                    |
-| HackerNews         | `hn`                | `https://news.ycombinator.com/item?id=<n>`               | Title only (80 chars)                  | Submission is a title + URL; no body. Body in the post file is the link-target text, usually the whitepaper or blog post being submitted. |
+| Hacker News        | `hn`                | `https://news.ycombinator.com/item?id=<n>`               | Title only (80 chars)                  | Submission is a title + URL; no body. Body in the post file is the link-target text, usually the whitepaper or blog post being submitted. |
 | Newsletter         | `newsletter`        | `https://<provider>/issues/<id>` (Substack/Beehiiv/etc.) | No cap                                 | Provider TBD; reserve enum value for future use.                                                                                          |
 
 #### Per-post distribution snapshot
@@ -148,7 +158,7 @@ human-readable form. Useful when scanning the file directly without parsing YAML
 ```markdown
 ## Distribution
 
-- ✅ **Twitter** — https://x.com/skthomasjr/status/1234567890 (2026-05-15T14:00:00Z)
+- ✅ **X** — https://x.com/skthomasjr/status/1234567890 (2026-05-15T14:00:00Z)
 - ✅ **LinkedIn** — https://linkedin.com/posts/scott-thomas-launch (2026-05-15T14:05:00Z)
 - ⏳ **Blog** — draft (blog surface not yet live)
 - ❌ **Mastodon** — not posting (decision: too niche for this content)
@@ -159,11 +169,11 @@ section is a reading aid.
 
 ### Filename convention
 
-- **Slug-style, lowercase, hyphenated:** `three-phases-launch.md`, `phase-2-cliff-thread.md`,
-  `release-v0.24-announcement.md`
-- **No date prefix.** Frontmatter has `created`; the filename stays clean so it can become a future URL slug
-  (`/blog/three-phases-launch`).
-- **Action-or-topic naming, not chronological.** `three-phases-launch.md` reads better than `2026-05-11-post.md`.
+- **Date-prefixed, lowercase, hyphenated:** `2026-05-13-introducing-field-notes-from-piper.md`,
+  `2026-05-15-three-phases-launch.md`.
+- **Slug matches filename.** The frontmatter `slug` should normally match the filename without `.md`.
+- **Action-or-topic naming after the date.** Prefer `2026-05-15-three-phases-launch.md` over a vague name such as
+  `2026-05-15-post.md`.
 
 ### Status lifecycle
 
@@ -184,15 +194,19 @@ draft → ready → scheduled → published → archived
 ```markdown
 ---
 title: "Three Phases of Agentic AI Adoption in Software Engineering — launch announcement"
+slug: "2026-05-15-three-phases-launch"
 status: draft
-surfaces: [twitter, linkedin]
+display: true
+sample: false
+surfaces: [x, linkedin]
 created: 2026-05-11
+summary: "A short launch note for the three-phase adoption framework."
 
 scheduled_for: null
 published_at: null
 
 published_urls:
-  twitter: null
+  x: null
   linkedin: null
 
 tags: [ai-adoption, framework, launch]
@@ -206,7 +220,7 @@ cta: link-to-whitepaper
 tone: conversational
 ---
 
-## Twitter
+## X
 
 Headline: New whitepaper on AI adoption — and why most teams will plateau at Phase 2.
 

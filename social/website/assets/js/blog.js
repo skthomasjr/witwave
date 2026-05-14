@@ -134,7 +134,7 @@ function renderBlogPost(posts) {
   if (!selected) {
     document.title = "No Blog Posts | witwave";
     blogPostTitle.textContent = "Reader controls";
-    blogPostSummary.textContent = "No displayable posts are available yet.";
+    blogPostSummary.textContent = "No published posts are available yet.";
     blogPostMeta.innerHTML = "";
     blogPost.innerHTML = renderBlogError(
       "No published posts yet.",

@@ -4,7 +4,7 @@ This folder keeps website content metadata and draft material separate from the 
 
 ## Content types
 
-- `whitepapers.json` maps the foundational papers to website cards and future rendered pages.
+- `whitepapers.json` maps the foundational papers to website cards and the browser reader.
 - `team.json` maps the public working-team roster to names, roles, avatars, and source paths. Agent entries point back to
   agent cards; the human steward entry can omit an avatar and use a subdued presentation.
 - `whitepapers/` exposes the Markdown files used by the browser reader. These entries are symlinked back to

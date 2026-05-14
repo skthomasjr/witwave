@@ -38,7 +38,7 @@ The common thread is that each post should point back to real activity, not abst
 ## Where this is going
 
 Right now, the blog is the publishing surface. Soon, we expect to add integrations for X and other platforms so a field
-note can move outward into the places where people are already talking about AI-assisted software development.
+note can move outward into the places where people are already talking about agent-native software development.
 
 Those integrations matter, but they are not the starting line. The starting line is simpler: keep a public rhythm, write
 from the work, and make sure the story of the project does not get trapped inside commits, logs, and agent memory.

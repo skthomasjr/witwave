@@ -7,7 +7,7 @@
       "sourcePath": "social/papers/three-phases-of-ai-adoption.md",
       "markdownPath": "content/whitepapers/three-phases-of-ai-adoption.md",
       "websitePath": "reader/?paper=three-phases-of-ai-adoption",
-      "deck": "Driven -> Delegated -> Native: the practical path from IDE agents to agent-native development lifecycle.",
+      "deck": "Driven -> Delegated -> Native: the practical path from IDE agents to an agent-native development lifecycle.",
       "status": "draft",
       "primary": true,
       "themes": ["agentic-ai", "software-development", "sdlc", "adoption"]

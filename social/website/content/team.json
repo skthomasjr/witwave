@@ -3,7 +3,7 @@
     {
       "name": "Scott Thomas",
       "role": "Project Steward",
-      "lane": "Human oversight for witwave as an independent evenings-and-weekends effort: setting direction, reviewing risk, and deciding where human judgment belongs in the loop.",
+      "lane": "Provides human oversight for witwave as an independent evenings-and-weekends effort: setting direction, reviewing risk, making sure the robots have lunch money, and deciding where human judgment belongs in the loop.",
       "avatar": "assets/images/team/scott-thomas.jpg",
       "linkedin": "https://www.linkedin.com/in/skthomasjr/",
       "sourcePath": "social/website/team/index.html",
@@ -13,7 +13,7 @@
     {
       "name": "Zora",
       "role": "Manager",
-      "lane": "Coordinates the team, decides what work happens when, and dispatches peers through the agent-to-agent loop.",
+      "lane": "Coordinates the team, decides what work runs next, and dispatches peers through the agent-to-agent loop.",
       "avatar": "assets/images/team/zora.png",
       "sourcePath": ".agents/self/zora/.witwave/agent-card.md",
       "github": "https://github.com/zora-agent-witwave"
@@ -30,7 +30,7 @@
     {
       "name": "Iris",
       "role": "Git + Releases",
-      "lane": "Owns push posture, CI watch, and release captaincy so every agent's work lands safely on main.",
+      "lane": "Owns commits, CI watch, and release flow so every agent's work lands safely on main.",
       "avatar": "assets/images/team/iris.png",
       "sourcePath": ".agents/self/iris/.witwave/agent-card.md",
       "github": "https://github.com/iris-agent-witwave"
@@ -54,7 +54,7 @@
     {
       "name": "Nova",
       "role": "Code Hygiene",
-      "lane": "Keeps the code-internal comprehension substrate clean, formatted, accurate, and documented enough for future contributors.",
+      "lane": "Keeps the codebase clean, formatted, documented, and easy for future contributors to revisit.",
       "avatar": "assets/images/team/nova.png",
       "sourcePath": ".agents/self/nova/.witwave/agent-card.md",
       "github": "https://github.com/nova-agent-witwave"
@@ -62,7 +62,7 @@
     {
       "name": "Finn",
       "role": "Functionality Gaps",
-      "lane": "Finds and fills what is missing relative to existing claims, patterns, and public surfaces.",
+      "lane": "Finds and fills what is missing relative to existing claims, patterns, tests, and public surfaces.",
       "avatar": "assets/images/team/finn.png",
       "sourcePath": ".agents/self/finn/.witwave/agent-card.md",
       "github": "https://github.com/finn-agent-witwave"
@@ -104,7 +104,7 @@
     {
       "name": "Coming soon",
       "role": "Testing Quality",
-      "lane": "Will expand test coverage, surface flakiness, evaluate suite quality, and grow stronger acceptance gates.",
+      "lane": "Will expand test coverage, surface flakiness, evaluate suite quality, and strengthen acceptance gates.",
       "variant": "future"
     },
     {
