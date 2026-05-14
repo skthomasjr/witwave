@@ -106,6 +106,22 @@ jobs:
         if: matrix.chart == 'charts/witwave'
         run: scripts/check-runbook-coverage.sh
 
+      # The operator chart templates hand-maintain RBAC so they can
+      # express Helm gates such as rbac.secretsWrite and metrics.enabled.
+      # Keep the effective permission surface aligned with the canonical
+      # controller-gen role before a release ships.
+      - name: Operator RBAC matches canonical manager role
+        if: matrix.chart == 'charts/witwave-operator'
+        run: |
+          python3 -m pip install --quiet pyyaml
+          scripts/check-rbac-drift.sh
+
+      # Regression coverage for the documented 600s startup grace window
+      # when users provide partial operator values files that omit probes.
+      - name: Operator startup probe default matches values docs (#1642)
+        if: matrix.chart == 'charts/witwave-operator'
+        run: scripts/check-operator-startup-default.sh
+
       # #1626: ingress.auth.enabled=true with empty htpasswd AND empty
       # existingSecret must fail render unconditionally — even when
       # dashboard.enabled=false (the default). Previously the guard sat
