@@ -6,22 +6,22 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: shared
 spec:
-  # Shared volumes provisioned for this workspace. Each entry produces one
-  # PVC the operator stamps onto every WitwaveAgent whose
-  # spec.workspaceRefs[] references this CR. v1alpha1 honours storageType=pvc
-  # only; hostPath is rejected at admission and reserved for v1.x.
+  # Shared volumes provisioned for this workspace. Each entry produces one PVC.
+  # This sample keeps the claim small and ReadWriteOnce so it applies cleanly on
+  # common single-node dev clusters. Use ReadWriteMany plus an explicit storage
+  # class for a production workspace shared across nodes.
   volumes:
     - name: source
-      size: 50Gi
-      accessMode: ReadWriteMany
+      size: 1Gi
+      accessMode: ReadWriteOnce
       reclaimPolicy: Delete
 
-  # Pre-created Secret references projected onto every participating agent.
-  # The operator never writes to these Secrets — secrets-write RBAC stays
-  # outside the workspace controller's trust boundary.
-  secrets:
-    - name: github-token
-      envFrom: true
+  # Optional pre-created Secret references can be projected onto every
+  # participating agent. Keep the default sample self-contained; uncomment only
+  # after creating the Secret in this namespace.
+  # secrets:
+  #   - name: github-token
+  #     envFrom: true
 
   # ConfigMap-backed files mounted onto every participating agent. Each entry
   # references either a pre-created ConfigMap or carries inline content the
