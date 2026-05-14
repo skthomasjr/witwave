@@ -321,7 +321,8 @@ spec:
       size: 50Gi
       storageClassName: efs-sc
       # mountPath defaults to /workspaces/<workspace>/<volume.name>
-      # accessMode defaults to ReadWriteMany (only RWM is honoured in v1alpha1)
+      # accessMode defaults to ReadWriteMany; use ReadWriteOnce for
+      # single-node dev clusters whose storage class cannot satisfy RWM
       # reclaimPolicy defaults to Delete; flip to Retain for stateful volumes
   secrets:
     - name: shared-github-token
@@ -345,11 +346,11 @@ spec:
 Three list-shaped fields, all optional, all loose. The operator provisions; it does not interpret what the volumes,
 secrets, or files are for.
 
-| Field         | Shape                   | Notes                                                                                                                                                                                                                                                                                       |
-| ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `volumes`     | `[]WorkspaceVolume`     | One PVC per entry (`<workspace>-vol-<name>`). `storageType` enum is `pvc` or `hostPath`; only `pvc` is honoured in v1alpha1 — the admission webhook rejects `hostPath` so the enum stays stable for a future v1.x. RWM is the only honoured access mode. `reclaimPolicy: Delete \| Retain`. |
-| `secrets`     | `[]WorkspaceSecret`     | Existing-Secret references only — no inline data, by design. Each entry is mutually-exclusive `mountPath` OR `envFrom: true`; the webhook rejects entries that set both.                                                                                                                    |
-| `configFiles` | `[]WorkspaceConfigFile` | Each entry references either a pre-created `configMap` (operator never writes to it) or an `inline` block the operator renders into a project-owned ConfigMap. Exactly one of the two must be set.                                                                                          |
+| Field         | Shape                   | Notes                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `volumes`     | `[]WorkspaceVolume`     | One PVC per entry (`<workspace>-vol-<name>`). `storageType` enum is `pvc` or `hostPath`; only `pvc` is honoured in v1alpha1 — the admission webhook rejects `hostPath` so the enum stays stable for a future v1.x. `accessMode` defaults to `ReadWriteMany`; `ReadWriteOnce` and `ReadWriteOncePod` are accepted for constrained dev or single-pod cases. `reclaimPolicy: Delete \| Retain`. |
+| `secrets`     | `[]WorkspaceSecret`     | Existing-Secret references only — no inline data, by design. Each entry is mutually-exclusive `mountPath` OR `envFrom: true`; the webhook rejects entries that set both.                                                                                                                                                                                                                     |
+| `configFiles` | `[]WorkspaceConfigFile` | Each entry references either a pre-created `configMap` (operator never writes to it) or an `inline` block the operator renders into a project-owned ConfigMap. Exactly one of the two must be set.                                                                                                                                                                                           |
 
 `MaxItems` caps: `volumes` 20, `secrets` 50, `configFiles` 50. Volume names must be DNS-1123 label-safe so the rendered
 PVC names stay valid.
@@ -376,7 +377,7 @@ A `vwitwaveworkspace.kb.io` validating webhook lands in the existing `Validating
 `Ignore`). The webhook rejects:
 
 - `volumes[].storageType: hostPath` (reserved for v1.x).
-- `volumes[].accessMode` other than `ReadWriteMany`.
+- `volumes[].accessMode` outside `ReadWriteMany`, `ReadWriteOnce`, or `ReadWriteOncePod`.
 - `secrets[]` entries that set both `mountPath` and `envFrom`.
 - `configFiles[]` entries that set neither `configMap` nor `inline`, or both.
 - Mount path collisions across `volumes`, `secrets`, and `configFiles` within the same WitwaveWorkspace.
@@ -401,7 +402,8 @@ The CRD is deliberately thin. None of the following is on the v1 surface:
   `secrets[]` and a URL from `configFiles[]` (or their own knowledge).
 - No agent-side bootstrap. Volumes start empty; agents handle initial population.
 - No `hostPath` storage type — the enum value exists for a future v1.x but the webhook rejects it today.
-- No RWO single-node fallback — RWM is hard-required in v1alpha1.
+- No storage-class capability probing — the operator accepts the requested access mode and lets Kubernetes/CSI report
+  whether the cluster can satisfy the PVC.
 - No operator-enforced editing locks or per-agent worktree partitioning. Coordination is the agents' problem (A2A
   messages, OS file locks, etc.).
 - No workspace-level scheduled jobs / heartbeats / tasks, no workspace-scoped MCP-tool gating.

@@ -94,11 +94,11 @@ install path to the agent chart; both target the same per-agent deployment shape
 ## Workspaces
 
 A `WitwaveWorkspace` is the operator-level primitive for shared resources multiple agents collaborate over. Each
-WitwaveWorkspace declares a list of shared volumes (RWM-capable PVCs), a list of pre-created Secret references, and a
-list of ConfigMap-backed files; the operator provisions and projects them onto every `WitwaveAgent` whose
-`spec.workspaceRefs[]` references the WitwaveWorkspace. The CRD is intentionally generic — source trees, datasets, video
-pipelines, accumulated memory pools, anything where teams of agents need the same files visible at the same paths.
-Membership is agent-owned: an agent with zero `workspaceRefs[]` runs perfectly; participation is purely additive.
+WitwaveWorkspace declares a list of shared PVC-backed volumes, a list of pre-created Secret references, and a list of
+ConfigMap-backed files; the operator provisions and projects them onto every `WitwaveAgent` whose `spec.workspaceRefs[]`
+references the WitwaveWorkspace. The CRD is intentionally generic — source trees, datasets, video pipelines, accumulated
+memory pools, anything where teams of agents need the same files visible at the same paths. Membership is agent-owned:
+an agent with zero `workspaceRefs[]` runs perfectly; participation is purely additive.
 
 ```yaml
 apiVersion: witwave.ai/v1alpha1

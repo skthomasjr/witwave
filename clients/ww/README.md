@@ -620,12 +620,12 @@ NS-3).
 
 `ww workspace create` convenience flags:
 
-| Flag                 | Shape                                        | Behaviour                                                                                                                                |
-| -------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `-f, --from-file`    | path                                         | YAML/JSON `WitwaveWorkspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                  |
-| `--volume`           | `<name>=<size>[@<storageClass>]`             | Repeatable. Defaults the access mode to `ReadWriteMany` (v1alpha1 contract — RWO is v1.x).                                               |
-| `--secret`           | `<name>` / `<name>@/abs/path` / `<name>=env` | Repeatable. Bare name = reference only; `@/abs/path` = mount; `=env` = project as `envFrom`. Anything else after `=` is rejected loudly. |
-| `--create-namespace` | bool                                         | Provision the namespace (labelled `app.kubernetes.io/managed-by: ww`) when missing. No-op otherwise.                                     |
+| Flag                 | Shape                                        | Behaviour                                                                                                                                           |
+| -------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-f, --from-file`    | path                                         | YAML/JSON `WitwaveWorkspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                             |
+| `--volume`           | `<name>=<size>[@<storageClass>][:<mode>]`    | Repeatable. Defaults access mode to `ReadWriteMany`; append `:rwo` or `:rwop` for `ReadWriteOnce` / `ReadWriteOncePod` on constrained dev clusters. |
+| `--secret`           | `<name>` / `<name>@/abs/path` / `<name>=env` | Repeatable. Bare name = reference only; `@/abs/path` = mount; `=env` = project as `envFrom`. Anything else after `=` is rejected loudly.            |
+| `--create-namespace` | bool                                         | Provision the namespace (labelled `app.kubernetes.io/managed-by: ww`) when missing. No-op otherwise.                                                |
 
 `ww workspace delete` accepts `--wait` (block until the apiserver removes the CR) bounded by `--timeout` (default `2m`).
 The plan banner enumerates currently-bound agents up-front so the refuse-delete finalizer's blast radius is visible
