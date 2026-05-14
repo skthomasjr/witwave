@@ -107,7 +107,8 @@ metrics:
 serviceMonitor:
   enabled: false
   # scrapeInterval and scrapeTimeout are forwarded to the ServiceMonitor
-  # endpoints[]; defaults align with kubebuilder's manifests/monitor.yaml.
+  # endpoints[]; defaults keep operator metrics reasonably fresh without
+  # making the control plane chatty.
   scrapeInterval: 30s
   scrapeTimeout: 10s
   # Extra labels merged into the ServiceMonitor metadata. Useful when the
@@ -246,7 +247,8 @@ securityContext:
     type: RuntimeDefault
 
 # Resource requests and limits for the controller-manager container.
-# Defaults match kubebuilder's recommended baseline for small clusters.
+# Defaults keep the singleton operator lightweight for small clusters; tune up
+# when reconciling many agents or large prompt/workspace inventories.
 resources:
   limits:
     cpu: 500m

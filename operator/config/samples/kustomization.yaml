@@ -1,4 +1,4 @@
-## Append samples of your project ##
+## Witwave sample resources ##
 resources:
   - witwave_v1alpha1_witwaveagent.yaml
   - witwave_v1alpha1_witwaveworkspace.yaml
