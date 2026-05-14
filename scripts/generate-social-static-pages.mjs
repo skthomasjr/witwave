@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,7 @@ const repoRoot = path.resolve(scriptDir, '..');
 const siteDir = path.resolve(process.argv[2] || 'social/website');
 const siteUrl = 'https://witwave.ai';
 const socialImage = `${siteUrl}/assets/images/witwave-social-preview.png`;
+const organizationId = `${siteUrl}/#organization`;
 const today = new Date().toISOString().slice(0, 10);
 
 if (!fs.existsSync(siteDir)) {
@@ -27,6 +29,7 @@ for (const entry of postsCatalog.posts || []) {
   generateBlogPostPage(entry);
 }
 
+rewritePublicArticleLinks(whitepaperCatalog.whitepapers || []);
 writeSitemap(generatedUrls);
 console.log(`Generated ${generatedUrls.length} social website pages into ${path.relative(repoRoot, siteDir) || siteDir}.`);
 
@@ -42,13 +45,30 @@ function generateWhitepaperPage(paper) {
   const slug = paper.slug;
   const outputDir = path.join(siteDir, 'whitepapers', slug);
   const canonicalUrl = `${siteUrl}/whitepapers/${slug}/`;
+  const lastmod = paper.updatedAt || paper.lastmod || gitLastModified(paper.sourcePath) || fileLastModified(markdownPath);
   const html = renderPage({
     depth: 2,
     title: `${title} | witwave`,
     description,
     canonicalUrl,
+    ogType: 'article',
     bodyClass: 'reader-page generated-page',
     mainClass: '',
+    structuredData: [
+      articleSchema({
+        type: 'Article',
+        title,
+        description,
+        canonicalUrl,
+        authorName: 'witwave',
+        dateModified: lastmod,
+      }),
+      breadcrumbSchema([
+        ['Home', `${siteUrl}/`],
+        ['Whitepapers', `${siteUrl}/whitepapers/`],
+        [title, canonicalUrl],
+      ]),
+    ],
     content: `
       <article class="markdown-paper generated-article">
         <div class="reader-actions generated-actions">
@@ -61,7 +81,7 @@ function generateWhitepaperPage(paper) {
   });
 
   writeFile(path.join(outputDir, 'index.html'), html);
-  generatedUrls.push({ loc: canonicalUrl, priority: '0.8', changefreq: 'monthly' });
+  generatedUrls.push({ loc: canonicalUrl, lastmod, priority: '0.8', changefreq: 'monthly' });
 }
 
 function generateBlogPostPage(entry) {
@@ -84,13 +104,31 @@ function generateBlogPostPage(entry) {
   const outputDir = path.join(siteDir, 'blog', slug);
   const articleBody = stripLeadingMarkdownHeading(parsed.body || '');
   const metaParts = [formatPostDate(post.published_at), stringify(post.author)].filter(Boolean);
+  const lastmod = stringify(post.updated_at) || stringify(post.published_at) || gitLastModified(entry.markdownPath) || fileLastModified(markdownPath);
   const html = renderPage({
     depth: 2,
     title: `${title} | witwave`,
     description,
     canonicalUrl,
+    ogType: 'article',
     bodyClass: 'reader-page blog-reader-page generated-page',
     mainClass: '',
+    structuredData: [
+      articleSchema({
+        type: 'BlogPosting',
+        title,
+        description,
+        canonicalUrl,
+        authorName: stringify(post.author) || 'witwave',
+        datePublished: stringify(post.published_at),
+        dateModified: lastmod,
+      }),
+      breadcrumbSchema([
+        ['Home', `${siteUrl}/`],
+        ['Blog', `${siteUrl}/blog/`],
+        [title, canonicalUrl],
+      ]),
+    ],
     content: `
       <article class="markdown-paper generated-article blog-article-body">
         <div class="reader-actions generated-actions">
@@ -108,11 +146,20 @@ function generateBlogPostPage(entry) {
   });
 
   writeFile(path.join(outputDir, 'index.html'), html);
-  generatedUrls.push({ loc: canonicalUrl, priority: '0.7', changefreq: 'monthly' });
+  generatedUrls.push({ loc: canonicalUrl, lastmod, priority: '0.7', changefreq: 'monthly' });
 }
 
-function renderPage({ depth, title, description, canonicalUrl, bodyClass, mainClass, content }) {
+function renderPage({ depth, title, description, canonicalUrl, ogType = 'website', bodyClass, mainClass, structuredData = [], content }) {
   const prefix = '../'.repeat(depth);
+  const structuredDataHtml = structuredData.length
+    ? `    <script type="application/ld+json">
+${escapeScriptJson({
+  '@context': 'https://schema.org',
+  '@graph': structuredData,
+})}
+    </script>
+`
+    : '';
   const nav = [
     ['project', 'Project', `${prefix}project/`],
     ['whitepapers', 'Whitepapers', `${prefix}whitepapers/`],
@@ -121,6 +168,10 @@ function renderPage({ depth, title, description, canonicalUrl, bodyClass, mainCl
   ];
 
   return `<!doctype html>
+<!--
+  GENERATED FILE: Do not edit this HTML directly.
+  Update the Markdown source or content manifest in the witwave repository, then republish.
+-->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -129,7 +180,7 @@ function renderPage({ depth, title, description, canonicalUrl, bodyClass, mainCl
     <meta name="description" content="${escapeAttr(description)}" />
     <link rel="canonical" href="${escapeAttr(canonicalUrl)}" />
     <meta property="og:site_name" content="witwave" />
-    <meta property="og:type" content="article" />
+    <meta property="og:type" content="${escapeAttr(ogType)}" />
     <meta property="og:title" content="${escapeAttr(title)}" />
     <meta property="og:description" content="${escapeAttr(description)}" />
     <meta property="og:url" content="${escapeAttr(canonicalUrl)}" />
@@ -138,6 +189,7 @@ function renderPage({ depth, title, description, canonicalUrl, bodyClass, mainCl
     <meta name="twitter:title" content="${escapeAttr(title)}" />
     <meta name="twitter:description" content="${escapeAttr(description)}" />
     <meta name="twitter:image" content="${socialImage}" />
+${structuredDataHtml.trimEnd()}
     <link rel="icon" href="${prefix}assets/images/witwave-logo-terminal.svg" />
     <link rel="stylesheet" href="${prefix}assets/styles.css?v=copy-icon-only-20260514" />
   </head>
@@ -167,14 +219,36 @@ ${content.trimEnd()}
 `;
 }
 
+function rewritePublicArticleLinks(whitepapers) {
+  const pages = [
+    { file: 'index.html', rootPrefix: '', paperPrefix: 'whitepapers/' },
+    { file: 'project/index.html', rootPrefix: '../', paperPrefix: '../whitepapers/' },
+    { file: 'team/index.html', rootPrefix: '../', paperPrefix: '../whitepapers/' },
+    { file: 'whitepapers/index.html', rootPrefix: '../', paperPrefix: '' },
+  ];
+
+  for (const page of pages) {
+    const filePath = path.join(siteDir, page.file);
+    if (!fs.existsSync(filePath)) continue;
+
+    let html = fs.readFileSync(filePath, 'utf8');
+    for (const paper of whitepapers) {
+      const sourceHref = `${page.rootPrefix}reader/?paper=${paper.slug}`;
+      const staticHref = `${page.paperPrefix}${paper.slug}/`;
+      html = html.replaceAll(`href="${sourceHref}"`, `href="${staticHref}"`);
+    }
+    writeFile(filePath, html);
+  }
+}
+
 function writeSitemap(extraUrls) {
   const urls = [
-    { loc: `${siteUrl}/`, priority: '1.0', changefreq: 'weekly' },
-    { loc: `${siteUrl}/project/`, priority: '0.9', changefreq: 'weekly' },
-    { loc: `${siteUrl}/quickstart/`, priority: '0.8', changefreq: 'monthly' },
-    { loc: `${siteUrl}/whitepapers/`, priority: '0.8', changefreq: 'monthly' },
-    { loc: `${siteUrl}/team/`, priority: '0.7', changefreq: 'monthly' },
-    { loc: `${siteUrl}/blog/`, priority: '0.7', changefreq: 'weekly' },
+    { loc: `${siteUrl}/`, sourcePath: 'social/website/index.html', priority: '1.0', changefreq: 'weekly' },
+    { loc: `${siteUrl}/project/`, sourcePath: 'social/website/project/index.html', priority: '0.9', changefreq: 'weekly' },
+    { loc: `${siteUrl}/quickstart/`, sourcePath: 'social/website/quickstart/index.html', priority: '0.8', changefreq: 'monthly' },
+    { loc: `${siteUrl}/whitepapers/`, sourcePath: 'social/website/whitepapers/index.html', priority: '0.8', changefreq: 'monthly' },
+    { loc: `${siteUrl}/team/`, sourcePath: 'social/website/team/index.html', priority: '0.7', changefreq: 'monthly' },
+    { loc: `${siteUrl}/blog/`, sourcePath: 'social/website/blog/index.html', priority: '0.7', changefreq: 'weekly' },
     ...extraUrls,
   ];
 
@@ -182,7 +256,7 @@ function writeSitemap(extraUrls) {
     .map(
       (url) => `  <url>
     <loc>${escapeXml(url.loc)}</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${escapeXml(url.lastmod || gitLastModified(url.sourcePath) || today)}</lastmod>
     <changefreq>${url.changefreq}</changefreq>
     <priority>${url.priority}</priority>
   </url>`,
@@ -197,6 +271,69 @@ ${body}
 </urlset>
 `,
   );
+}
+
+function articleSchema({ type, title, description, canonicalUrl, authorName, datePublished, dateModified }) {
+  return compactObject({
+    '@type': type,
+    '@id': `${canonicalUrl}#article`,
+    headline: title,
+    description,
+    url: canonicalUrl,
+    image: socialImage,
+    author: {
+      '@type': authorName === 'witwave' ? 'Organization' : 'Person',
+      name: authorName,
+    },
+    publisher: organizationSchema(),
+    datePublished: datePublished || undefined,
+    dateModified: dateModified || datePublished || undefined,
+    mainEntityOfPage: canonicalUrl,
+  });
+}
+
+function breadcrumbSchema(items) {
+  return {
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map(([name, item], index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name,
+      item,
+    })),
+  };
+}
+
+function organizationSchema() {
+  return {
+    '@type': 'Organization',
+    '@id': organizationId,
+    name: 'witwave',
+    url: `${siteUrl}/`,
+    logo: `${siteUrl}/assets/images/witwave-logo-terminal.svg`,
+    sameAs: ['https://github.com/witwave-ai'],
+  };
+}
+
+function gitLastModified(relativePath) {
+  if (!relativePath) return '';
+
+  try {
+    return execFileSync('git', ['-C', repoRoot, 'log', '-1', '--format=%cs', '--', relativePath], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function fileLastModified(filePath) {
+  try {
+    return fs.statSync(filePath).mtime.toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
 }
 
 function renderMarkdown(markdown) {
@@ -506,6 +643,26 @@ function stringify(value) {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (Array.isArray(value)) return value.map(stringify).filter(Boolean).join(', ');
   return '';
+}
+
+function compactObject(value) {
+  if (Array.isArray(value)) {
+    return value.map(compactObject).filter((item) => item !== undefined);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined && entryValue !== '')
+        .map(([key, entryValue]) => [key, compactObject(entryValue)]),
+    );
+  }
+
+  return value;
+}
+
+function escapeScriptJson(value) {
+  return JSON.stringify(value, null, 6).replace(/</g, '\\u003c');
 }
 
 function escapeHtml(value) {

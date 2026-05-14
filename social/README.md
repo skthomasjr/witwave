@@ -11,7 +11,7 @@ content the team publishes to the world.
 ```
 social/
 ├── README.md                  (this file — the spec)
-├── papers/                    long-form whitepapers; standalone publications
+├── papers/                    whitepapers and standalone publications
 │   ├── three-phases-of-ai-adoption.md
 │   └── anatomy-of-an-agentic-team.md
 ├── website/                   public website source; GitHub Pages-ready static site
@@ -31,7 +31,7 @@ social/
 
 - **Posts** (`posts/`) — short or medium-form content destined for one or more social channels. These follow the spec
   below.
-- **Whitepapers** (`papers/`) — long-form framework pieces (e.g., `papers/three-phases-of-ai-adoption.md`). These don't
+- **Whitepapers** (`papers/`) — standalone framework pieces (e.g., `papers/three-phases-of-ai-adoption.md`). These don't
   follow the post spec; they're standalone publications. Treat them as source material that posts can reference.
 - **Website source** (`website/`) — the public website source managed in this repo and published through the dedicated
   GitHub Pages repository. The website makes the two whitepapers prominent, explains the project, hosts the Quick Start
@@ -128,7 +128,7 @@ CTA: <call-to-action line>
 
 ## Blog
 
-<long-form treatment, no length cap; markdown freeform>
+<project-owned treatment, no length cap; markdown freeform>
 ```
 
 For posts that don't multi-surface, just use the one section that applies. The file shape is the same.
@@ -145,7 +145,7 @@ before adding a new value in a post.
 | Mastodon           | `mastodon`          | `https://<instance>/@<user>/<id>`                        | 500 (default; instance-dependent)      | Federation-compatible across instances. 500 is the safe ceiling.                                                                          |
 | Threads            | `threads`           | `https://threads.net/@<user>/post/<id>`                  | 500                                    | Meta's. Similar shape to X.                                                                                                               |
 | Bluesky            | `bluesky`           | `https://bsky.app/profile/<handle>/post/<id>`            | 300                                    | AT Protocol; federation in progress.                                                                                                      |
-| Blog               | `blog`              | `https://witwave.ai/blog/<slug>/`                        | No cap                                 | Project-owned long-form. Markdown remains the source; publish generates static HTML pages for crawlers.                                    |
+| Blog               | `blog`              | `https://witwave.ai/blog/<slug>/`                        | No cap                                 | Project-owned essays and field notes. Markdown remains the source; publish generates static HTML pages for crawlers.                       |
 | GitHub Discussions | `github-discussion` | `https://github.com/witwave-ai/witwave/discussions/<n>`  | No hard cap (practical: ~10,000 chars) | Already in active use. For community-facing announcements that warrant a thread, not a shortform post.                                    |
 | Hacker News        | `hn`                | `https://news.ycombinator.com/item?id=<n>`               | Title only (80 chars)                  | Submission is a title + URL; no body. Body in the post file is the link-target text, usually the whitepaper or blog post being submitted. |
 | Newsletter         | `newsletter`        | `https://<provider>/issues/<id>` (Substack/Beehiiv/etc.) | No cap                                 | Provider TBD; reserve enum value for future use.                                                                                          |
@@ -252,7 +252,7 @@ Includes a 23-question self-assessment for where your team sits today.
 
 ## Whitepapers and longer pieces
 
-Standalone publications (whitepapers, framework essays, long-form thought pieces) don't follow the post spec — they're
+Standalone publications (whitepapers, framework essays, and related thought pieces) don't follow the post spec — they're
 standalone documents that live under `social/papers/`. Conventions:
 
 - File at `social/papers/<slug>.md` — same slug-style convention as posts.

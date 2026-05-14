@@ -40,8 +40,8 @@ published_urls:
 Post filenames should follow `yyyy-mm-dd-title-goes-here.md`, and the `slug` should normally match the filename without
 the `.md` extension.
 
-Only posts with `status: "published"` and `display: true` appear on the public blog index and reader. Drafts can remain
-in the manifest for local checks without appearing publicly.
+Only posts with `status: "published"` and `display: true` appear on the public blog index and generated article pages.
+Drafts can remain in the manifest for local checks without appearing publicly.
 
 ## Local preview
 

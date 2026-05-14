@@ -21,6 +21,7 @@ social/website/
 ├── README.md
 ├── .nojekyll                    # carry through when mirrored to GitHub Pages
 ├── CNAME                         # GitHub Pages custom domain: witwave.ai
+├── 404.html                      # GitHub Pages not-found page
 ├── robots.txt                    # crawler policy + sitemap pointer
 ├── sitemap.xml                   # public URL discovery for search engines
 ├── index.html                    # homepage
@@ -75,8 +76,10 @@ require a website-repo publish unless the site shell changes.
 
 The publishing workflow copies this site into a temporary build directory with symlinks resolved, then runs
 `scripts/generate-social-static-pages.mjs` to create crawler-friendly static HTML pages from the canonical whitepaper
-and blog Markdown. Those generated pages are published to the GitHub Pages repository but are not committed back into
-this source tree.
+and blog Markdown. The generator also rewrites published whitepaper links to the generated static URLs, expands the
+sitemap with generated article URLs and `lastmod` values, and leaves the JavaScript reader shells available but
+non-canonical. Generated pages are published to the GitHub Pages repository but are not committed back into this source
+tree.
 
 Publishing is automated from this repository by `.github/workflows/publish-social-website.yml`. The workflow builds
 `social/website/` with `scripts/sync-social-website.sh`, resolves symlinks, generates static Markdown-backed pages,
@@ -105,10 +108,10 @@ secret and exits cleanly without publishing when neither is configured.
 - Keep the compact "Join the conversation" strip pointed at GitHub Discussion category URLs unless the community
   surface changes. Pull category descriptions from GitHub Discussions before refreshing the rows; the public Questions
   row maps to GitHub's `general` category.
-- Keep SEO metadata in each HTML page aligned with its canonical `https://witwave.ai/...` URL. The source
+- Keep SEO metadata and JSON-LD in each HTML page aligned with its canonical `https://witwave.ai/...` URL. The source
   `sitemap.xml` covers indexable hand-authored pages; the publish generator expands the published sitemap with
-  generated whitepaper and blog URLs. JavaScript reader shells can stay usable but should remain `noindex,follow` when
-  generated pages are the canonical article URLs.
+  generated whitepaper and blog URLs plus `lastmod` values. JavaScript reader shells can stay usable but should remain
+  `noindex,follow` when generated pages are the canonical article URLs.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
   blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
@@ -116,8 +119,8 @@ secret and exits cleanly without publishing when neither is configured.
 - Prefer small static changes over introducing a build system until the publishing repo requires it.
 - Keep `quickstart/index.html` short, command-first, and grounded in `clients/ww/README.md` plus
   `clients/ww/WALKTHROUGH.md`; it should always name Kubernetes cluster access as a prerequisite.
-- If a paper title or slug changes, update `index.html`, `whitepapers/index.html`, `reader/index.html` links, and
-  `content/whitepapers.json` in the same change.
+- If a paper title or slug changes, update the source reader links, generated URL map, and `content/whitepapers.json` in
+  the same change. Published public links are rewritten to generated static whitepaper URLs during sync.
 - Name blog post files `yyyy-mm-dd-title-goes-here.md`.
 - If a blog slug changes, update its frontmatter, `social/posts/posts.json`, and any social `published_urls` together.
 

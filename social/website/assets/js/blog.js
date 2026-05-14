@@ -199,7 +199,7 @@ function renderBlogCard(post) {
       <p>${escapeHtml(summary)}</p>
       ${tags.length ? `<ul class="tag-list compact">${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul>` : ""}
       <div class="blog-card-actions">
-        <a class="text-link" href="post/?post=${encodeURIComponent(post.slug)}">Read post</a>
+        <a class="text-link" href="${escapeAttr(getPostHref(post))}">Read post</a>
         ${socialLinks}
       </div>
     </article>
@@ -263,6 +263,31 @@ function getPostTitle(post) {
 
 function getPostSummary(post) {
   return stringifyFrontmatterText(post?.summary);
+}
+
+function getPostHref(post) {
+  if (isLocalPreview()) {
+    return `post/?post=${encodeURIComponent(post.slug)}`;
+  }
+
+  const publishedUrl = post?.published_urls?.blog;
+  if (publishedUrl) {
+    try {
+      const url = new URL(publishedUrl);
+      if (url.origin === window.location.origin) {
+        return url.pathname;
+      }
+      return url.href;
+    } catch {
+      return publishedUrl;
+    }
+  }
+
+  return `${window.location.origin}/blog/${encodeURIComponent(post.slug)}/`;
+}
+
+function isLocalPreview() {
+  return window.location.protocol === "file:" || ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
 function stringifyFrontmatterText(value) {
