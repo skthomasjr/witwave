@@ -790,6 +790,24 @@ p {
   padding: clamp(1.5rem, 4vw, 2.3rem);
 }
 
+.project-thesis {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  align-items: start;
+}
+
+.project-thesis .thesis-copy {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-thesis .thesis-copy p {
+  margin-top: 0;
+}
+
+.project-thesis .text-link {
+  justify-self: start;
+}
+
 .paper-list {
   display: grid;
   gap: 1rem;

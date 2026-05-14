@@ -25,6 +25,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Add future-seat placeholders to the Team page for planned but not-yet-deployed agent roles.
 - **social**: Restyle the public website with a darker, higher-tech visual system while preserving the existing content
   structure.
+- **social**: Fold the standalone About positioning points into the Project page and simplify the primary site
+  navigation.
 
 ## [0.23.13] — 2026-05-11
 
