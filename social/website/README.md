@@ -99,6 +99,8 @@ secret and exits cleanly without publishing when neither is configured.
   `futureMembers` for visible placeholder roles.
 - Treat `social/posts/posts.json` as the browser-visible blog discovery manifest; GitHub Pages does not expose folder
   listings, so Markdown posts must be listed there before the website can load them.
+- Keep the compact "Join the conversation" strips pointed at GitHub Discussion category URLs unless the community
+  surface changes.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
   blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
@@ -113,16 +115,6 @@ secret and exits cleanly without publishing when neither is configured.
 
 ## Planned content improvements
 
-- **Lightweight Discussion links.** Add a low-weight community/help block without making Discussions the main story.
-  Piper's public surfaces are:
-  - Ideas: `https://github.com/witwave-ai/witwave/discussions/categories/ideas`;
-  - Bugs: `https://github.com/witwave-ai/witwave/discussions/categories/bugs`;
-  - Questions: `https://github.com/witwave-ai/witwave/discussions/categories/questions`;
-  - Announcements: `https://github.com/witwave-ai/witwave/discussions/categories/announcements`;
-  - Progress: `https://github.com/witwave-ai/witwave/discussions/categories/progress`.
-  Candidate placement: a compact "Join the conversation" strip near the Blog footer, Project footer, or homepage lower
-  section. Ideas, Bugs, and Questions are user-facing participation links; Announcements and Progress are follow-along
-  links.
 - **Wording posture.** Keep public copy in external-reader terms such as "working team" instead of internal repo terms
   such as "self team." Keep the adoption thesis framed as "agents provide immediate value; lifecycle-native integration
   is the compounding step."

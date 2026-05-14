@@ -268,10 +268,6 @@ p {
   margin-top: 2rem;
 }
 
-.home-hero-actions .primary {
-  margin-left: auto;
-}
-
 .button {
   display: inline-flex;
   align-items: center;
@@ -312,7 +308,8 @@ p {
 .quickstart-callout,
 .quickstart-preview,
 .quickstart-steps,
-.section-heading {
+.section-heading,
+.conversation-strip {
   margin-top: clamp(2rem, 5vw, 4rem);
 }
 
@@ -336,7 +333,8 @@ p {
 .split-panel,
 .quickstart-callout,
 .quickstart-preview,
-.command-card {
+.command-card,
+.conversation-strip {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: rgba(8, 19, 26, 0.72);
@@ -513,6 +511,76 @@ p {
 
 .blog-empty h2 {
   max-width: 760px;
+}
+
+.conversation-strip {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(420px, 1.25fr);
+  gap: clamp(1.3rem, 4vw, 2.5rem);
+  align-items: center;
+  overflow: hidden;
+  padding: clamp(1.4rem, 4vw, 2.3rem);
+  border-left: 8px solid var(--gold);
+  background:
+    linear-gradient(135deg, rgba(8, 20, 28, 0.92), rgba(3, 9, 13, 0.84)),
+    radial-gradient(circle at 92% 0%, rgba(49, 231, 211, 0.18), transparent 18rem),
+    radial-gradient(circle at 0% 100%, rgba(216, 255, 95, 0.12), transparent 18rem);
+}
+
+.conversation-strip::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(49, 231, 211, 0.08), transparent);
+  transform: translateX(-35%);
+}
+
+.conversation-strip > * {
+  position: relative;
+  z-index: 1;
+}
+
+.conversation-strip h2 {
+  font-size: clamp(1.9rem, 4vw, 3.2rem);
+}
+
+.conversation-strip p {
+  max-width: 680px;
+  margin-bottom: 0;
+}
+
+.conversation-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.4rem, 1fr));
+  gap: 0.55rem;
+}
+
+.conversation-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0.72rem 0.62rem;
+  border: 1px solid rgba(132, 199, 217, 0.22);
+  border-radius: 14px;
+  background: rgba(10, 24, 32, 0.82);
+  color: var(--moss-dark);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.conversation-links a:hover,
+.conversation-links a:focus-visible {
+  border-color: rgba(216, 255, 95, 0.42);
+  background: rgba(216, 255, 95, 0.1);
+  color: var(--ink);
 }
 
 .blog-meta p {
@@ -1418,8 +1486,13 @@ p {
   .quickstart-preview,
   .command-card,
   .blog-toolbar,
-  .blog-grid {
+  .blog-grid,
+  .conversation-strip {
     grid-template-columns: 1fr;
+  }
+
+  .conversation-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .avatar-cloud {
@@ -1567,10 +1640,6 @@ p {
     flex-direction: column;
   }
 
-  .home-hero-actions .primary {
-    margin-left: 0;
-  }
-
   .button,
   .reader-actions .button,
   .paper-detail .button {
@@ -1630,8 +1699,13 @@ p {
   .team-intro,
   .quickstart-callout,
   .quickstart-preview,
-  .command-card {
+  .command-card,
+  .conversation-strip {
     padding: 1.25rem;
+  }
+
+  .conversation-links {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1651,6 +1725,7 @@ p {
   .quickstart-callout,
   .quickstart-preview,
   .command-card,
+  .conversation-strip,
   .principle-grid article,
   .empty-state,
   .reader-sidebar,
