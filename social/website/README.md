@@ -22,6 +22,7 @@ social/website/
 ├── .nojekyll                    # carry through when mirrored to GitHub Pages
 ├── CNAME                         # GitHub Pages custom domain: witwave.ai
 ├── 404.html                      # GitHub Pages not-found page
+├── llms.txt                      # compact AI-readable project/site guide
 ├── robots.txt                    # crawler policy + sitemap pointer
 ├── sitemap.xml                   # public URL discovery for search engines
 ├── index.html                    # homepage
@@ -112,6 +113,8 @@ secret and exits cleanly without publishing when neither is configured.
   `sitemap.xml` covers indexable hand-authored pages; the publish generator expands the published sitemap with
   generated whitepaper and blog URLs plus `lastmod` values. JavaScript reader shells can stay usable but should remain
   `noindex,follow` when generated pages are the canonical article URLs.
+- Keep `llms.txt` concise and factual. It should summarize the public project for AI assistants, link to canonical
+  public pages and source Markdown, and avoid claims that are not already supported by the site or repository.
 - Optimize SEO for clarity and discoverability, not keyword stuffing. Page titles, headings, descriptions, article
   schema, and internal links should use the terms real readers would search for while preserving the site's voice:
   cloud-native autonomous agents, AI agent teams, Kubernetes, MCP tools, agentic AI adoption, and agent-native software
