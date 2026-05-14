@@ -543,47 +543,77 @@ p {
   line-height: 1.6;
 }
 
-.conversation-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
-  gap: 0.55rem;
+.conversation-list {
+  overflow: hidden;
+  border: 1px solid rgba(132, 199, 217, 0.18);
+  border-radius: 18px;
+  background: rgba(10, 24, 32, 0.68);
 }
 
-.conversation-card {
-  display: flex;
-  min-height: 128px;
-  flex-direction: column;
-  gap: 0.55rem;
-  justify-content: flex-start;
-  padding: 0.85rem;
-  border: 1px solid rgba(132, 199, 217, 0.18);
-  border-radius: 16px;
-  background: rgba(10, 24, 32, 0.68);
-  color: var(--moss-dark);
+.conversation-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  align-items: center;
+  min-height: 76px;
+  padding: 0.85rem 0.95rem;
+  border-top: 1px solid rgba(132, 199, 217, 0.14);
+  color: inherit;
   text-decoration: none;
 }
 
-.conversation-card span {
-  color: var(--ink);
+.conversation-row:first-child {
+  border-top: 0;
+}
+
+.conversation-lane {
+  color: var(--sea);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.conversation-card small {
+.conversation-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.conversation-copy strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.conversation-copy small {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 650;
   line-height: 1.45;
 }
 
-.conversation-card:hover,
-.conversation-card:focus-visible {
-  border-color: rgba(216, 255, 95, 0.42);
+.conversation-action {
+  padding: 0.32rem 0.5rem;
+  border: 1px solid rgba(132, 199, 217, 0.18);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.conversation-row:hover,
+.conversation-row:focus-visible {
   background: rgba(216, 255, 95, 0.1);
   color: var(--ink);
+}
+
+.conversation-row:hover .conversation-action,
+.conversation-row:focus-visible .conversation-action {
+  border-color: rgba(216, 255, 95, 0.42);
+  color: var(--gold);
 }
 
 .blog-meta p {
@@ -1497,8 +1527,8 @@ p {
     grid-template-columns: 1fr;
   }
 
-  .conversation-links {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .conversation-row {
+    grid-template-columns: 86px minmax(0, 1fr) auto;
   }
 
   .avatar-cloud {
@@ -1710,8 +1740,9 @@ p {
     padding: 1.25rem;
   }
 
-  .conversation-links {
+  .conversation-row {
     grid-template-columns: 1fr;
+    align-items: start;
   }
 }
 

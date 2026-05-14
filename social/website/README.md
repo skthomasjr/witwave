@@ -100,8 +100,8 @@ secret and exits cleanly without publishing when neither is configured.
 - Treat `social/posts/posts.json` as the browser-visible blog discovery manifest; GitHub Pages does not expose folder
   listings, so Markdown posts must be listed there before the website can load them.
 - Keep the compact "Join the conversation" strip pointed at GitHub Discussion category URLs unless the community
-  surface changes. Pull category descriptions from GitHub Discussions before refreshing the cards; the public Questions
-  card maps to GitHub's `general` category.
+  surface changes. Pull category descriptions from GitHub Discussions before refreshing the rows; the public Questions
+  row maps to GitHub's `general` category.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
   blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
