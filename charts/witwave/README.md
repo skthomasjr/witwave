@@ -126,15 +126,16 @@ purpose, default, and any interaction with other fields. `values.schema.json` va
 - `networkPolicy.*` — per-pod NetworkPolicies. Off by default; `egressOpen: false` flips to explicit allow-list mode.
 - `cors.*`, `storage.retainOnUninstall`, `podSecurity.readOnlyRootFilesystem`, `serviceMesh.*` — cross-cutting posture
   flags.
-- `harnessEnv.*` — first-class env-var overrides for harness production tunables (#1416, #1691). Each non-empty key is
-  rendered as a `name`/`value` env entry on every agent's harness container after the CORS*ALLOW_ORIGINS conditional and
-  before per-agent `.env` (which still wins). Values that ship commented-out in `values.yaml`:
+- `harnessEnv.*` — first-class env-var overrides for harness production tunables that do not need dedicated chart keys.
+  Each non-empty key is rendered as a `name`/`value` env entry on every agent's harness container after the
+  CORS*ALLOW_ORIGINS conditional and before per-agent `.env` (which still wins). Values that ship commented-out in
+  `values.yaml`:
   `SESSION_STREAM_MAX_PER_CALLER`,
-  `CONVERSATION_STREAM*\*`, `WEBHOOK_RETRY_BYTES_PER_SUB`, `WEBHOOK_ALLOW_LOOPBACK_HOSTS`, `A2A_SESSION_CONTEXT_CACHE_MAX`, `A2A_MAX_RESPONSE_BYTES`, `A2A_RETRY_POLICY`, `A2A_RETRY_FAST_ONLY_MS`, `HARNESS_PROXY_MAX_RESPONSE_BYTES`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`, `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`. See `values.yaml`
+  `CONVERSATION_STREAM_*`, `WEBHOOK_RETRY_BYTES_PER_SUB`, `WEBHOOK_ALLOW_LOOPBACK_HOSTS`, `A2A_SESSION_CONTEXT_CACHE_MAX`, `A2A_MAX_RESPONSE_BYTES`, `A2A_RETRY_POLICY`, `A2A_RETRY_FAST_ONLY_MS`, `HARNESS_PROXY_MAX_RESPONSE_BYTES`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`, `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`. See `values.yaml`
   for inline defaults + meaning of each.
 - MCP-tool-specific env vars (`MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`, `MCP_K8S_READ_SECRETS_DISABLED`,
-  `MCP_PROM_MAX_RESPONSE_BYTES`) are documented under each `mcpTools.<name>.env` block (#1692); the existing
-  `mcpTools.<name>.env` plumbing renders them onto the corresponding tool deployment.
+  `MCP_PROM_MAX_RESPONSE_BYTES`) are documented under each `mcpTools.<name>.env` block; `mcpTools.<name>.env` renders
+  them onto the corresponding tool deployment.
 - `defaults.resources.{harness,backend,backends.<name>}` — chart-wide resource-request defaults that per-agent and
   per-backend overrides replace.
 

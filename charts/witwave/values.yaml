@@ -748,10 +748,10 @@ cors:
   # across /triggers and /conversations.
   allowOrigins: []
 
-# Harness env-var overrides (#1416, #1691). First-class chart surface for
-# the production tunables AGENTS.md "Reference pointers" calls out as
-# "documented but needs values plumbing." Each entry is rendered as a
-# `name/value` env entry on every agent's harness container. Empty
+# Harness env-var overrides (#1691). First-class chart surface for
+# production tunables that do not need dedicated values keys. Each
+# entry is rendered as a `name/value` env entry on every agent's
+# harness container. Empty
 # strings (and missing keys) are skipped — operators only see what they
 # explicitly set in `kubectl describe pod`. Per-agent `agents[].env`
 # still wins (later-merged), matching the cors.allowOrigins precedence
@@ -1087,10 +1087,9 @@ mcpTools:
     # # resources: {}
     # # envFrom: []
     #
-    # # Tool-specific env vars (#1416, #1692). Pass through the
-    # # mcp-kubernetes server constants documented in AGENTS.md
-    # # "Reference pointers." Uncomment + edit to deviate from the
-    # # in-code defaults.
+    # # Tool-specific env vars (#1692). Pass through mcp-kubernetes
+    # # server constants. Uncomment + edit to deviate from the in-code
+    # # defaults.
     # env:
     #   # Refuse `read_secret_value` calls regardless of caller. Default
     #   # is "false" — the kubernetes MCP can read Secrets when its SA
@@ -1168,10 +1167,9 @@ mcpTools:
     # resources: {}
     # envFrom: []
     #
-    # # Tool-specific env vars (#1416, #1692). Pass through the
-    # # mcp-helm server's repo gates documented in AGENTS.md
-    # # "Reference pointers." Uncomment + edit to deviate from the
-    # # in-code defaults.
+    # # Tool-specific env vars (#1692). Pass through mcp-helm server
+    # # repo gates. Uncomment + edit to deviate from the in-code
+    # # defaults.
     # env:
     #   # Comma-separated list of host[:port] entries that `repo_add`
     #   # accepts (#1202). Empty list + ALLOW_ANY_REPO unset → fail
@@ -1247,7 +1245,7 @@ mcpTools:
     # Point at the cluster Prometheus HTTP endpoint. Required — the tool
     # refuses every call with a clear error until this is set.
     #
-    # Additional tool-specific env vars (#1416, #1692):
+    # Additional tool-specific env vars (#1692):
     #   MCP_PROM_MAX_RESPONSE_BYTES — caps the body size returned by a
     #     PromQL response so a pathological query (cardinality explosion,
     #     long history) cannot OOM the MCP pod. Default in code; set

@@ -526,15 +526,17 @@ Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `wi
 AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
 
 - **Chart values + env var reference** — `charts/witwave/values.yaml` and `charts/witwave-operator/values.yaml` carry
-  inline comments on every field. Service-specific env vars are declared in each Dockerfile's `ENV` directives. Env vars
-  added in later fix cycles that aren't yet surfaced as chart values (tracked by #1416 — documented but needs values
-  plumbing): `SESSION_STREAM_MAX_PER_CALLER`, `CONVERSATION_STREAM_{QUEUE_MAX,RING_MAX,GRACE_SEC,KEEPALIVE_SEC}`,
-  `WEBHOOK_RETRY_BYTES_PER_SUB`, `WEBHOOK_ALLOW_LOOPBACK_HOSTS`, `A2A_SESSION_CONTEXT_CACHE_MAX`,
-  `A2A_MAX_RESPONSE_BYTES`, `A2A_RETRY_POLICY` (fast-only | always | never; default fast-only), `A2A_RETRY_FAST_ONLY_MS`
-  (default 5000 — 5xx slower than this won't be retried under fast-only), `HARNESS_PROXY_MAX_RESPONSE_BYTES`,
-  `TASKS_SHUTDOWN_DRAIN_TIMEOUT`, `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`,
-  `MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`, `MCP_K8S_READ_SECRETS_DISABLED`,
-  `MCP_PROM_MAX_RESPONSE_BYTES`. All read via `os.environ.get(...)` at startup; no hot-reload.
+  inline comments on every field. Harness production tunables that do not need dedicated chart keys are surfaced through
+  `charts/witwave/values.yaml` `harnessEnv.*` and render onto every harness container unless a later per-agent
+  `agents[].env` entry overrides them. Common harness keys include `SESSION_STREAM_MAX_PER_CALLER`,
+  `CONVERSATION_STREAM_{QUEUE_MAX,RING_MAX,GRACE_SEC,KEEPALIVE_SEC}`, `WEBHOOK_RETRY_BYTES_PER_SUB`,
+  `WEBHOOK_ALLOW_LOOPBACK_HOSTS`, `A2A_SESSION_CONTEXT_CACHE_MAX`, `A2A_MAX_RESPONSE_BYTES`, `A2A_RETRY_POLICY`
+  (fast-only | always | never; default fast-only), `A2A_RETRY_FAST_ONLY_MS` (default 5000 — 5xx slower than this won't be
+  retried under fast-only), `HARNESS_PROXY_MAX_RESPONSE_BYTES`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`,
+  `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, and `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`. MCP tool tunables are surfaced under each
+  `mcpTools.<name>.env` block, including `MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`,
+  `MCP_K8S_READ_SECRETS_DISABLED`, and `MCP_PROM_MAX_RESPONSE_BYTES`. Service-specific env vars are also declared in
+  each Dockerfile's `ENV` directives. These values are read at startup; no hot-reload is promised.
 - **Metric catalog** — per-service `metrics.py`; rendered dashboards at `charts/witwave/dashboards/`; default alert
   thresholds at `charts/witwave/templates/prometheusrule.yaml`.
 - **Event stream wire contract** — `docs/events/README.md` + `docs/events/events.schema.json`.
