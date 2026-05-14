@@ -3,6 +3,8 @@
 A platform for building persistent, self-directed AI agents that can work autonomously on software projects — including
 improving themselves.
 
+Public site: [witwave.ai](https://witwave.ai)
+
 The primary use case is autonomous software development: agents that can triage issues, implement features, fix bugs,
 evaluate their own work, and iterate — continuously and without human intervention. The same platform can be pointed at
 any software project, not just this one.

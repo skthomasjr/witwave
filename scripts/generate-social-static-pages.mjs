@@ -185,10 +185,14 @@ ${escapeScriptJson({
     <meta property="og:description" content="${escapeAttr(description)}" />
     <meta property="og:url" content="${escapeAttr(canonicalUrl)}" />
     <meta property="og:image" content="${socialImage}" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:image:alt" content="witwave logo over a dark, high-tech interface background." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeAttr(title)}" />
     <meta name="twitter:description" content="${escapeAttr(description)}" />
     <meta name="twitter:image" content="${socialImage}" />
+    <meta name="twitter:image:alt" content="witwave logo over a dark, high-tech interface background." />
 ${structuredDataHtml.trimEnd()}
     <link rel="icon" href="${prefix}assets/images/witwave-logo-terminal.svg" />
     <link rel="stylesheet" href="${prefix}assets/styles.css?v=copy-icon-only-20260514" />

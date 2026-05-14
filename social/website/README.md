@@ -112,6 +112,11 @@ secret and exits cleanly without publishing when neither is configured.
   `sitemap.xml` covers indexable hand-authored pages; the publish generator expands the published sitemap with
   generated whitepaper and blog URLs plus `lastmod` values. JavaScript reader shells can stay usable but should remain
   `noindex,follow` when generated pages are the canonical article URLs.
+- Optimize SEO for clarity and discoverability, not keyword stuffing. Page titles, headings, descriptions, article
+  schema, and internal links should use the terms real readers would search for while preserving the site's voice:
+  cloud-native autonomous agents, AI agent teams, Kubernetes, MCP tools, agentic AI adoption, and agent-native software
+  engineering. Prefer one canonical URL per piece of content, static article pages for crawlers, and readable summaries
+  that accurately describe what the page offers.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
   blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
