@@ -42,6 +42,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Move whitepaper reader titles out of the sidebar so the main paper pane owns the document title.
 - **social**: Fine-tune the icon-only header mark slightly smaller.
 - **social**: Make blog and whitepaper reader sidebar buttons full-width for a uniform control stack.
+- **social**: Remove the Markdown download action from blog posts so field notes stay focused on reading and social distribution.
 
 ## [0.23.13] — 2026-05-11
 

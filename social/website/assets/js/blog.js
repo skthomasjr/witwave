@@ -53,7 +53,6 @@ async function loadPosts() {
         ...entry,
         ...parsed.data,
         markdownPath: entry.markdownPath,
-        sourceUrl: markdownUrl.href,
         body: parsed.body,
       };
     }),
@@ -148,7 +147,7 @@ function renderBlogPost(posts) {
 
   document.title = `${selectedTitle} | witwave`;
   blogPostTitle.textContent = "Reader controls";
-  blogPostSummary.textContent = "Choose a field note, download Markdown, or return to the blog archive.";
+  blogPostSummary.textContent = "Choose a field note or return to the blog archive.";
   blogPostMeta.innerHTML = "";
   blogPostActions.innerHTML = renderPostActions(selected);
   blogPostNav.innerHTML = renderPostNav(visiblePosts, selected.slug);
@@ -217,9 +216,6 @@ function renderPostActions(post) {
   const distribution = renderDistributionLinks(post, "reader-actions blog-distribution-links");
   return `
     <a class="button primary" href="../">All posts</a>
-    <a class="button secondary" href="${escapeAttr(post.sourceUrl)}" download="${escapeAttr(post.slug)}.md">
-      Download Markdown
-    </a>
     ${distribution || '<span class="source-note">Social links coming soon.</span>'}
   `;
 }
