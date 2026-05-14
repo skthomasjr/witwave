@@ -12,7 +12,7 @@ This test verifies the aggregation is working correctly.
 
 Send a request first to ensure at least one task has been processed (so counters are non-zero):
 
-```
+```text
 curl -s -X POST http://localhost:8099/ \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":"020","method":"message/send","params":{"message":{"role":"user","messageId":"msg-020","contextId":"metrics-test","parts":[{"kind":"text","text":"Respond with METRICS_TEST_OK."}]}}}'
@@ -22,7 +22,7 @@ Wait for the response to contain `METRICS_TEST_OK`.
 
 Then fetch the aggregated metrics:
 
-```
+```text
 curl -s http://localhost:9099/metrics
 ```
 

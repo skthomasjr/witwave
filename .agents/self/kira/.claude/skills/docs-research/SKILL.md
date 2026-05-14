@@ -136,13 +136,13 @@ Build a list of edits to apply to `<doc>`:
 
 For every prose change, the new content must end with an inline citation of the form:
 
-```
+```text
 (source: <url>, accessed YYYY-MM-DD)
 ```
 
 For multi-source claims:
 
-```
+```text
 (sources: <url1> and <url2>, accessed YYYY-MM-DD)
 ```
 

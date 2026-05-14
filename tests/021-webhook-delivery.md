@@ -14,7 +14,7 @@ This test exercises the full webhook chain:
 
 ## Step 1 — Send a prompt that produces WEBHOOK_FIRE
 
-```
+```text
 curl -s -X POST http://localhost:8099/ \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":"021","method":"message/send","params":{"message":{"role":"user","messageId":"msg-021","contextId":"webhook-chain-test","parts":[{"kind":"text","text":"Respond with exactly: WEBHOOK_FIRE"}]}}}'
@@ -24,10 +24,10 @@ Wait for the A2A response to contain `WEBHOOK_FIRE` (poll the response or wait u
 
 ## Step 2 — Wait for the webhook chain to complete
 
-After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the Bob conversation
-log until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
+After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the Bob conversation log
+until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
 
-```
+```text
 ww conversation list --namespace witwave-test --agent bob --expand
 ```
 

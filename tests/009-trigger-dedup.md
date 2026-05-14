@@ -9,7 +9,7 @@ requests in rapid succession — the second should arrive while the first is sti
 
 Step 1 — fire the first POST in the background (do not wait for it to return):
 
-```
+```text
 curl -s -o /dev/null \
   -X POST http://localhost:8099/triggers/ping \
   -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
@@ -20,7 +20,7 @@ FIRST_PID=$!
 
 Step 2 — immediately fire a second POST and capture its HTTP status code:
 
-```
+```text
 sleep 0.1
 SECOND_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \

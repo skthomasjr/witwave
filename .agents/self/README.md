@@ -119,7 +119,7 @@ deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
 
 ## Topology
 
-```
+```text
                   ╭──────────────────────────────────────╮
                   │                 ZORA                 │
                   │       manager / decision loop        │

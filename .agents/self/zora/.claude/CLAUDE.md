@@ -219,7 +219,7 @@ Code patterns, file paths, architecture (derivable by reading current state); gi
 
 Reading peers' memories is **central** to your work. Each heartbeat:
 
-```
+```text
 /workspaces/witwave-self/memory/agents/iris/MEMORY.md
 /workspaces/witwave-self/memory/agents/nova/MEMORY.md
 /workspaces/witwave-self/memory/agents/kira/MEMORY.md
@@ -365,7 +365,7 @@ Apply in order:
 
    **Decision:**
 
-   ```
+   ```text
    IF weighted_commits ≥ 3.0
      OR (any commit since tag matches `fix(security):` OR commit body contains "critical")  ← critical-fix fast-path
    AND CI is green on main HEAD

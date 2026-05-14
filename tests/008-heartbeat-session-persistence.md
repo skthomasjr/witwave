@@ -1,7 +1,9 @@
 ---
 description: Verifies that the heartbeat reuses the same deterministic session ID across multiple firings.
 enabled: false
-deferred-note: "Deferred under CLI gitSync: this spec mutates HEARTBEAT.md locally; convert to a precommitted fixture or push through the gitSync source before re-enabling."
+deferred-note:
+  "Deferred under CLI gitSync: this spec mutates HEARTBEAT.md locally; convert to a precommitted fixture or push through
+  the gitSync source before re-enabling."
 ---
 
 The heartbeat uses a deterministic session ID derived from the agent name: `uuid5(NAMESPACE_URL, "bob.heartbeat")` =
@@ -15,7 +17,7 @@ heartbeat schedule with a faster one, waits for two firings, then restores the o
 
 ## Setup — replace heartbeat with fast schedule
 
-```
+```text
 cp .agents/test/bob/.witwave/HEARTBEAT.md .agents/test/bob/.witwave/HEARTBEAT.md.bak
 
 cat > .agents/test/bob/.witwave/HEARTBEAT.md << 'EOF'
@@ -32,12 +34,12 @@ Wait 5 seconds for the file watcher to reload the heartbeat.
 
 ## Poll for two firings with the same session ID
 
-Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 5 seconds for up to 150 seconds until the
-session ID `9f058a6c-e2cf-5618-8e86-dd403353bbcf` appears at least twice.
+Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 5 seconds for up
+to 150 seconds until the session ID `9f058a6c-e2cf-5618-8e86-dd403353bbcf` appears at least twice.
 
 ## Restore original heartbeat
 
-```
+```text
 mv .agents/test/bob/.witwave/HEARTBEAT.md.bak .agents/test/bob/.witwave/HEARTBEAT.md
 ```
 

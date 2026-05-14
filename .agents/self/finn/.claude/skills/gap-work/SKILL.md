@@ -239,7 +239,7 @@ the edit, move to next candidate.
 
 If scoped tests pass, commit per candidate with a focused message:
 
-```
+```text
 fix(gap, <category>): <one-line description>
 
 Filled: <file>:<line> — <gap excerpt>

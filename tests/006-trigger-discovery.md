@@ -5,7 +5,7 @@ enabled: true
 
 Fetch the trigger discovery endpoint:
 
-```
+```text
 curl -s http://localhost:8099/.well-known/agent-triggers.json
 ```
 

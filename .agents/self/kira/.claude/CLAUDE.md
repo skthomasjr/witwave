@@ -80,7 +80,7 @@ Two-step process:
 
 2. Add a one-line pointer in that namespace's `MEMORY.md` index:
 
-   ```
+   ```text
    - [Title](file.md) â€” one-line hook
    ```
 
@@ -108,7 +108,7 @@ memory names a file or function, confirm it still exists. "The memory says X" â‰
 
 To check what a sibling knows, read their `MEMORY.md` first:
 
-```
+```text
 /workspaces/witwave-self/memory/agents/<name>/MEMORY.md
 ```
 

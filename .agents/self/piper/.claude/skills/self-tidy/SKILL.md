@@ -150,7 +150,7 @@ After iris reports the push outcome:
 
 Write a log entry to your namespace:
 
-```
+```text
 /workspaces/witwave-self/memory/agents/<own>/self_tidy_log.md
 ```
 

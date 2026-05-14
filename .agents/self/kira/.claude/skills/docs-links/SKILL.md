@@ -97,7 +97,7 @@ Edit tool (exact match the full `[text](old)` pattern → `[text](new)`).
 
 For each ambiguous case, append a one-line entry to your deferred-findings memory:
 
-```
+```text
 - doc-links: <file>:<line> — broken link to <target> (reason: <anchor-not-found | path-not-found | rename-ambiguous>)
 ```
 

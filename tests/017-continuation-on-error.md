@@ -3,7 +3,9 @@ description:
   Verifies that a continuation with on-error:true fires when the upstream fails, and that a success-only continuation
   does not fire on failure.
 enabled: false
-deferred-note: "Deferred under CLI gitSync: this spec creates transient trigger/continuation files locally; convert to precommitted fixtures before re-enabling."
+deferred-note:
+  "Deferred under CLI gitSync: this spec creates transient trigger/continuation files locally; convert to precommitted
+  fixtures before re-enabling."
 ---
 
 This test verifies the `on-error` and `on-success` flags on continuations by using a trigger that the backend cannot
@@ -20,7 +22,7 @@ Verify only the success continuation fires after a normal trigger execution.
 
 Create a trigger for this test:
 
-```
+```text
 cat > .agents/test/bob/.witwave/triggers/error-test-trigger.md << 'EOF'
 ---
 name: Error Test Trigger
@@ -33,7 +35,7 @@ EOF
 
 Create the success-only continuation (default behavior):
 
-```
+```text
 cat > .agents/test/bob/.witwave/continuations/on-success-test.md << 'EOF'
 ---
 name: On Success Test
@@ -48,7 +50,7 @@ EOF
 
 Create the error-only continuation:
 
-```
+```text
 cat > .agents/test/bob/.witwave/continuations/on-error-test.md << 'EOF'
 ---
 name: On Error Test
@@ -65,7 +67,7 @@ Wait 5 seconds for watchers to register the new files.
 
 ## Fire the trigger
 
-```
+```text
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/error-test-trigger \
   -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
@@ -77,11 +79,12 @@ Verify the response is 202.
 
 ## Poll
 
-Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 2 seconds for up to 60 seconds.
+Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 2 seconds for up
+to 60 seconds.
 
 ## Cleanup
 
-```
+```text
 rm .agents/test/bob/.witwave/triggers/error-test-trigger.md
 rm .agents/test/bob/.witwave/continuations/on-success-test.md
 rm .agents/test/bob/.witwave/continuations/on-error-test.md

@@ -24,7 +24,7 @@ The trigger dispatches a prompt to the backend which responds with `FEATURE_SINK
 
 The prompt must include a word between `EXTRACT_START` and `EXTRACT_END` so the extraction has something to find.
 
-```
+```text
 curl -s -X POST http://localhost:8099/ \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":"024","method":"message/send","params":{"message":{"role":"user","messageId":"msg-024","contextId":"webhook-extract-test","parts":[{"kind":"text","text":"Respond with exactly this text: WEBHOOK_EXTRACT_FIRE EXTRACT_START canary EXTRACT_END"}]}}}'
@@ -38,7 +38,7 @@ After `WEBHOOK_EXTRACT_FIRE` appears, the webhook runner fires asynchronously (i
 delivery). Poll the shared conversation log until `FEATURE_SINK_OK` appears, or until 60 seconds have elapsed (allow
 extra time for the extraction LLM call):
 
-```
+```text
 ww conversation list --namespace witwave-test --agent bob --expand
 ```
 

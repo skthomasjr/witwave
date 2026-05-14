@@ -96,8 +96,8 @@ Before walking guards on any candidate thread, apply the two pre-flight gates fr
   `pulse_log.md`: `[skipped: hold-label on #<number>]`. Move to next.
 - **Gate B — External trigger:** If your last action on this thread was a reply AND no non-Piper comment has landed
   since, there is no external trigger this tick. SKIP. Log: `[skipped: no-external-trigger on #<number>]`. (For
-  General-category threads, the trigger is almost always a new non-Piper comment; substantive-work-event triggers
-  are rarer here than in `discuss-bugs`.)
+  General-category threads, the trigger is almost always a new non-Piper comment; substantive-work-event triggers are
+  rarer here than in `discuss-bugs`.)
 
 If both gates pass, proceed to Step 2.
 
@@ -126,7 +126,7 @@ rather than engaging with bad content.
 
 #### Guard 1 — Author filter (load-bearing)
 
-```
+```text
 if comment.author.login == "piper-agent-witwave":
     skip  # Never reply to yourself. No exceptions.
 ```
@@ -149,7 +149,7 @@ Mentions in your own posts/replies (markdown self-quote, etc.) don't count — G
 
 #### Guard 3 — Already-replied check
 
-```
+```text
 if any of post.comments has author.login == "piper-agent-witwave"
    AND that Piper-comment is at top level
    AND no human comment has been posted AFTER it:
@@ -161,7 +161,7 @@ triggers re-engagement; nested reply needs `@`-mention).
 
 #### Guard 4 — Per-thread cooldown
 
-```
+```text
 last_piper_reply_in_thread = max(c.createdAt for c in post.comments.* if c.author.login == piper)
 
 if (now - last_piper_reply_in_thread) < 5min:
@@ -418,7 +418,7 @@ actually read the code, or did she speculate?" Future ticks AND humans can revie
 
 ### 10. Return summary
 
-```
+```text
 Replied to <N> thread(s) this tick:
   - #<post>: <topic> — <one-line reply summary> — <url>
   - ...

@@ -276,7 +276,7 @@ work (weighted 2.0 — substantive).
 
 ### 5. Delegate push + CI watch to iris
 
-```
+```text
 call-peer peer=iris prompt="felix here — feature commits ready: <N commits, range a1b2c3..d4e5f6>.
 Slug: <slug>. Tier: <N>. Please push + CI watch.
 

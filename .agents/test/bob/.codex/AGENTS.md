@@ -1,15 +1,18 @@
 # AGENTS.md
 
-Bob is a general-purpose test agent. Respond to requests simply and directly. You can search the web, fetch URLs, answer questions, and use available tools to help with tasks. Do not modify files or take autonomous actions beyond what is asked.
+Bob is a general-purpose test agent. Respond to requests simply and directly. You can search the web, fetch URLs, answer
+questions, and use available tools to help with tasks. Do not modify files or take autonomous actions beyond what is
+asked.
 
 ## Memory
 
 You have a persistent, file-based memory system mounted at `/workspaces/witwave-test/memory/` - the shared workspace
 volume. Use the same contract as the self team, with test-team paths:
 
-- **Your memory:** `/workspaces/witwave-test/memory/agents/bob/` - your private namespace. Only you write here. Sibling test agents can read it, which makes this a cross-agent collaboration channel.
-- **Team memory:** `/workspaces/witwave-test/memory/` (top level, alongside the `agents/` directory) - facts every
-  test agent should know. Any test agent can read or write here. Use it sparingly: only for genuinely shared facts, not
+- **Your memory:** `/workspaces/witwave-test/memory/agents/bob/` - your private namespace. Only you write here. Sibling
+  test agents can read it, which makes this a cross-agent collaboration channel.
+- **Team memory:** `/workspaces/witwave-test/memory/` (top level, alongside the `agents/` directory) - facts every test
+  agent should know. Any test agent can read or write here. Use it sparingly: only for genuinely shared facts, not
   backend-specific observations.
 
 Use this section directly whenever a test asks you to exercise memory. Do not look for a separate skill file.
@@ -46,12 +49,12 @@ Two-step process:
 
 2. Add a one-line pointer in that namespace's `MEMORY.md` index:
 
-   ```
+   ```text
    - [Title](file.md) - one-line hook
    ```
 
-`MEMORY.md` is an index, not a memory body. Never write full memory content directly to it. Keep entries concise.
-Each namespace has its own `MEMORY.md`.
+`MEMORY.md` is an index, not a memory body. Never write full memory content directly to it. Keep entries concise. Each
+namespace has its own `MEMORY.md`.
 
 ### What not to save
 
@@ -73,7 +76,7 @@ Memory can become stale. Before acting on a recommendation derived from memory, 
 
 To check what a sibling knows, read their `MEMORY.md` first:
 
-```
+```text
 /workspaces/witwave-test/memory/agents/<name>/MEMORY.md
 ```
 
@@ -85,15 +88,17 @@ instead.
 If a test explicitly asks you to exercise memory with a token:
 
 1. Ensure `/workspaces/witwave-test/memory/agents/bob/` exists.
-2. Write a `project` memory at `/workspaces/witwave-test/memory/agents/bob/codex-memory-check.md` with frontmatter and the token in the body.
+2. Write a `project` memory at `/workspaces/witwave-test/memory/agents/bob/codex-memory-check.md` with frontmatter and
+   the token in the body.
 3. Add or update this pointer in `/workspaces/witwave-test/memory/agents/bob/MEMORY.md`:
 
-   ```
+   ```text
    - [Codex memory check](codex-memory-check.md) - validates bob codex workspace memory
    ```
 
 4. Read both the memory file and `MEMORY.md` back.
-5. Reply with exactly one line: `MEMORY_OK <token> /workspaces/witwave-test/memory/agents/bob/codex-memory-check.md /workspaces/witwave-test/memory/agents/bob/MEMORY.md`.
+5. Reply with exactly one line:
+   `MEMORY_OK <token> /workspaces/witwave-test/memory/agents/bob/codex-memory-check.md /workspaces/witwave-test/memory/agents/bob/MEMORY.md`.
 
-If the memory volume is missing or the memory file/index cannot be written and read back, reply with `MEMORY_FAIL`
-and the concrete reason.
+If the memory volume is missing or the memory file/index cannot be written and read back, reply with `MEMORY_FAIL` and
+the concrete reason.

@@ -87,7 +87,7 @@ type: reference
 
 Then update `MEMORY.md` in the same directory: ensure there's a one-line index entry for this peer. Format:
 
-```
+```text
 - [Peer — <peer-name>](reference_peer_<peer-name>.md) — <one-line summary>
 ```
 

@@ -77,7 +77,7 @@ Convention (project-specific, follow what the well-commented values in the same 
   - What the value controls
   - The default (if not obvious from the literal in the YAML)
   - Known caveats / side effects
-- Use the `# -- ` prefix only if existing comments in the file use it; otherwise plain `# ` is fine.
+- Use the `# --` prefix only if existing comments in the file use it; otherwise plain `#` is fine.
 
 What to write:
 
@@ -101,7 +101,7 @@ What to write:
 
 - A 1-3 line `# ...` block immediately above the instruction.
 - State the _why_, not the _what_ — the line itself shows the what. Examples:
-  - `# Pinned to 0.43.0 because newer versions changed the `--config` flag behaviour we depend on.`
+  - `# Pinned to 0.43.0 because newer versions changed the --config flag behaviour we depend on.`
   - `# Layer ordering: package install runs before COPY . so that source-only changes don't bust the build cache.`
   - `# Dropped CAP_NET_ADMIN because the runtime can't modify iptables under PSS-restricted (#1260).`
 - Match the comment style of well-commented instructions elsewhere in the same Dockerfile.
@@ -246,7 +246,7 @@ git -C <checkout> commit -m "code: comment non-obvious workflow steps"
 One commit per category so a human reviewer can revert any single category's batch independently. The commit body should
 list each symbol documented:
 
-```
+```text
 docs added:
 - <package>.<symbol>  (file:line)
 - ...

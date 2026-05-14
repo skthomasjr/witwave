@@ -293,7 +293,11 @@ within the time-window — use whichever shape is reliable. The math is what mat
 - Update the `chosen_levers` block in `team_state.md` with the new value
 - Set `chosen_levers.set_at` to now (RFC3339 UTC)
 - Append paragraph to `chosen_levers.rationale`:
-  `[autotune] <timestamp>: stand_down_ratio=<S/T> over last 4h, no P1 fires. Tightened  <lever-name>: <old-value> → <new-value> (rule <N>: <one-line>). Next autotune eligible  at <set_at + 4h>.`
+
+  ```text
+  [autotune] <timestamp>: stand_down_ratio=<S/T> over last 4h, no P1 fires. Tightened  <lever-name>: <old-value> → <new-value> (rule <N>: <one-line>). Next autotune eligible  at <set_at + 4h>.
+  ```
+
 - Append entry to `decision_log.md` with `[autotune: tightened-<lever>]` marker
 - Proceed to Step 3 priority walk with the new values active for this tick
 
@@ -301,7 +305,11 @@ within the time-window — use whichever shape is reliable. The math is what mat
 
 - Do NOT modify `chosen_levers`
 - Append to `escalations.md`:
-  `[escalation: at-polish-floor-stand-down-high] <timestamp>: stand_down_ratio=<S/T> with all  levers at safety floors. Codebase may be at genuine polish floor for current quality bar.  User decides: relax bounds (e.g., concurrency 3, evan_bug 0.5h) or accept floor.`
+
+  ```text
+  [escalation: at-polish-floor-stand-down-high] <timestamp>: stand_down_ratio=<S/T> with all  levers at safety floors. Codebase may be at genuine polish floor for current quality bar.  User decides: relax bounds (e.g., concurrency 3, evan_bug 0.5h) or accept floor.
+  ```
+
 - Log to `decision_log.md` with `[autotune: at-floor]` marker
 - Proceed to Step 3 priority walk
 
@@ -334,13 +342,20 @@ Walk these in order. The first match wins; act and exit (after logging).
   Procedure:
 
   1. Fetch the failing job's logs:
+
      ```sh
      gh run view <run-id> --log-failed
      ```
+
   2. Extract the failing-step name + a tight context window (~30 lines around the first FAIL).
   3. `call-peer evan` with prompt:
-     `Run bug-work on <failing-workflow> failure on commit <sha[0:8]>. Failing step: <step>. Context: <log excerpt>. Goal: produce a fix commit that turns this workflow green. Use your existing fix-bar; if the fix is out of scope (config / infra / not bug-class), flag and report back.`
+
+     ```text
+     Run bug-work on <failing-workflow> failure on commit <sha[0:8]>. Failing step: <step>. Context: <log excerpt>. Goal: produce a fix commit that turns this workflow green. Use your existing fix-bar; if the fix is out of scope (config / infra / not bug-class), flag and report back.
+     ```
+
      Mark this dispatch with `[priority-1: red-ci-recovery]` so it doesn't share the cadence-driven dispatch budget.
+
   4. If two consecutive evan attempts fail to clear the red CI → escalate harder per the time-bounded escalation rules
      below; do NOT keep retrying evan indefinitely.
 
@@ -388,12 +403,15 @@ Walk these in order. The first match wins; act and exit (after logging).
      higher priority than the pending release; the team can fix red CI even with a release in flight (and arguably MUST
      — a red CI mid-release means the next tag is poisoned too).
   3. **Re-check on the next tick.** Use the same gh run list query that detected the pending state initially:
+
      ```sh
      gh run list --branch main --workflow="Release*" --limit 10 --json status,conclusion,name,databaseId
      ```
+
      If all release workflows have concluded (any combination of success/failure) — flow into either the "fully
      successful" path (resume cadence) or the `[release-workflow-failed]` path above. If still pending — repeat the hold
      for one more tick.
+
   4. **Pending-too-long escalation.** If a release workflow has been pending >45 minutes (3 consecutive ticks of
      `[release-workflow-pending]`), append `[escalation: release-workflow-stuck]` to `escalations.md` with the workflow
      name + run-id + initial-fire timestamp. Most release pipelines complete in ≤30min; >45min usually means GitHub
@@ -419,7 +437,7 @@ Walk these in order. The first match wins; act and exit (after logging).
     - **The exact commands** the user runs to perform each of the three recovery paths. Verbatim, copy-pasteable.
       Format:
 
-      ```
+      ```text
       Path (a) — INSPECT FIRST (safest):
         kubectl logs -n witwave-self <peer-pod> -c claude --since=3h
 
@@ -472,7 +490,7 @@ policy spells out the principle; this section is the mechanics.
 
 Read the current tier from `team_state.md`:
 
-```
+```text
 polish_tier_evan_bug:                <int, default 5>
 polish_tier_evan_risk:               <int, default 5>
 polish_tier_evan_bug_zero_streak:    <int, default 0>  # consecutive 0-finding runs at current tier
@@ -503,7 +521,7 @@ After the dispatch, when evan reports back, update `team_state.md`:
 
 Log the tier choice + reason in `decision_log.md` on each dispatch:
 
-```
+```text
 - evan bug-work dispatched at depth=7 (advanced from 5 — last 2 runs 0/0/0 at depth=5, no fresh source since).
 - evan risk-work dispatched at depth=5 (reset from 7 — fresh commits in operator/ since last run).
 ```
@@ -533,7 +551,7 @@ would.
 
 Read the current tier from `team_state.md`:
 
-```
+```text
 polish_tier_finn_gap:               <int, default 3>
 polish_tier_finn_gap_zero_streak:   <int, default 0>
 polish_tier_finn_gap_last_run_sha:  <sha, default latest tag at first run>
@@ -565,7 +583,7 @@ After the dispatch, when finn reports back, update `team_state.md`:
 
 Log the tier choice + reason in `decision_log.md` on each dispatch:
 
-```
+```text
 - finn gap-work dispatched at tier=3 (advanced from 1 — last 2 runs 0/0/0 at tier=1, no fresh source since).
 - finn gap-work dispatched at tier=1 (reset from 5 — fresh commits in operator/ since last run; cheap-pass
   first to catch any new low-risk gaps before climbing back).
@@ -582,7 +600,7 @@ authoring/research skill.
 
 Read from `team_state.md`:
 
-```
+```text
 polish_skill_nova:                <"code-cleanup" | "code-document", default "code-cleanup">
 polish_skill_kira:                <"docs-cleanup" | "docs-research", default "docs-cleanup">
 polish_skill_nova_zero_streak:    <int, default 0>
@@ -618,7 +636,7 @@ After the dispatch, when the peer reports back, update `team_state.md`:
 
 Log in `decision_log.md`:
 
-```
+```text
 - nova code-cleanup dispatched (held — last 2 runs found things, no streak).
 - nova code-document dispatched (advanced — code-cleanup returned 0/0/0 twice on stable source; one-shot deeper pass).
 - kira docs-research dispatched (advanced — docs-cleanup returned 0/0/0 twice; one-shot research refresh).
@@ -670,7 +688,7 @@ body containing the literal word `critical`. If found, set `critical_fix_present
 
 **Step 3: gate.**
 
-```
+```text
 IF (weighted_commits ≥ 3.0 OR critical_fix_present)
 AND no CI red on main HEAD
 AND no in-flight release pipeline (check gh for running "Release" / "Release — ww CLI" / "Release — Helm charts")

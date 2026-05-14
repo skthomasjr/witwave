@@ -1,7 +1,9 @@
 ---
 description: Verifies that repeated job executions use the same deterministic session ID.
 enabled: false
-deferred-note: "Deferred under CLI gitSync: this spec creates transient job files locally; convert to precommitted fixtures before re-enabling."
+deferred-note:
+  "Deferred under CLI gitSync: this spec creates transient job files locally; convert to precommitted fixtures before
+  re-enabling."
 ---
 
 The job scheduler generates a deterministic session ID for each job derived from the agent name and job filename. For a
@@ -15,7 +17,7 @@ in the conversation log share the same deterministic session ID.
 
 Create the run-once session probe job:
 
-```
+```text
 cat > .agents/test/bob/.witwave/jobs/session-probe.md << 'EOF'
 ---
 name: Session Probe
@@ -31,7 +33,7 @@ Wait 10 seconds for the job to fire and the response to land in the log.
 
 Delete and recreate the file to trigger a second run:
 
-```
+```text
 rm .agents/test/bob/.witwave/jobs/session-probe.md
 
 cat > .agents/test/bob/.witwave/jobs/session-probe.md << 'EOF'
@@ -47,7 +49,7 @@ Wait 10 seconds for the second run.
 
 ## Cleanup
 
-```
+```text
 rm .agents/test/bob/.witwave/jobs/session-probe.md
 ```
 

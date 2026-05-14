@@ -9,7 +9,7 @@ Bob has a continuation registered at `.agents/test/bob/.witwave/continuations/tr
 
 Step 1 — fire the upstream trigger:
 
-```
+```text
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
   -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
@@ -21,7 +21,7 @@ The trigger returns 202 immediately. After the trigger backend completes, the co
 
 Step 2 — poll the conversation log at:
 
-```
+```text
 ww conversation list --namespace witwave-test --agent bob --expand
 ```
 

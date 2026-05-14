@@ -32,7 +32,7 @@ take an action.
 
 Use this template — be explicit that you're requesting INFORMATION only, no action:
 
-```
+```text
 Hi <Peer> — Piper here, drafting a public post for GitHub Discussions. I need a quick clarification
 before posting. Not asking you to do anything; just need the fact.
 
@@ -46,7 +46,7 @@ authoritatively, say so — I'll defer the post rather than guess.
 
 ### 2. Dispatch via call-peer
 
-```
+```text
 call-peer peer=<peer> prompt=<the composed text above>
 ```
 

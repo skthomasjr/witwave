@@ -1,10 +1,11 @@
 ---
-description:
-  Deploys the operator-managed test team with ww and verifies Bob/Fred are ready before any tests run.
+description: Deploys the operator-managed test team with ww and verifies Bob/Fred are ready before any tests run.
 enabled: true
 ---
 
-> **Before you start.** Read [`tests/README.md`](./README.md) for the framework conventions, the trigger Bearer-auth contract, and the required tabular output format that the run must produce after the suite finishes. Every executed test must have a row in that table.
+> **Before you start.** Read [`tests/README.md`](./README.md) for the framework conventions, the trigger Bearer-auth
+> contract, and the required tabular output format that the run must produce after the suite finishes. Every executed
+> test must have a row in that table.
 
 Tear down any existing test agents and workspace before starting fresh:
 
@@ -132,6 +133,9 @@ ww conversation list --namespace witwave-test --agent bob --expand
 ww conversation list --namespace witwave-test --agent fred --expand
 ```
 
-If any step fails, do your best to diagnose and fix the issue. Fixing infrastructure issues to get the environment running is expected and encouraged. If a code bug in the system under test is the cause, mark init as failed and report the issue rather than fixing product code during the smoke run.
+If any step fails, do your best to diagnose and fix the issue. Fixing infrastructure issues to get the environment
+running is expected and encouraged. If a code bug in the system under test is the cause, mark init as failed and report
+the issue rather than fixing product code during the smoke run.
 
-Only respond with `INIT_OK` once Bob and Fred are ready, the port-forwards are active, and `ww conversation list` can read both agents.
+Only respond with `INIT_OK` once Bob and Fred are ready, the port-forwards are active, and `ww conversation list` can
+read both agents.

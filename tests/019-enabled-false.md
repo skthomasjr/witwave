@@ -3,7 +3,9 @@ description: Verifies that precommitted fixtures with enabled:false stay suppres
 enabled: true
 ---
 
-Bob carries several Codex fixtures under `.agents/test/bob/.witwave/jobs/` and `.agents/test/bob/.witwave/continuations/` with `enabled: false`. They are deliberately parked while the default test deployment is Claude-only.
+Bob carries several Codex fixtures under `.agents/test/bob/.witwave/jobs/` and
+`.agents/test/bob/.witwave/continuations/` with `enabled: false`. They are deliberately parked while the default test
+deployment is Claude-only.
 
 ## Verification
 
@@ -25,6 +27,8 @@ Check that none of these disabled-fixture markers appear:
 
 ## Pass/Fail Criteria
 
-The test passes if none of the disabled Codex fixtures appear in Bob's conversation log. It fails if any Codex fixture fires or any entry is attributed to `bob-codex` in the default deployment.
+The test passes if none of the disabled Codex fixtures appear in Bob's conversation log. It fails if any Codex fixture
+fires or any entry is attributed to `bob-codex` in the default deployment.
 
-**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the
+issue. Only fix tooling or execution problems that prevent the test itself from running.**

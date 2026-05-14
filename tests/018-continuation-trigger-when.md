@@ -3,7 +3,9 @@ description:
   Verifies that trigger-when filtering allows a continuation to fire only when the upstream response contains the
   expected string.
 enabled: false
-deferred-note: "Deferred under CLI gitSync: this spec creates transient continuation files locally; convert to precommitted fixtures before re-enabling."
+deferred-note:
+  "Deferred under CLI gitSync: this spec creates transient continuation files locally; convert to precommitted fixtures
+  before re-enabling."
 ---
 
 Bob has a continuation at `.agents/test/bob/.witwave/continuations/ping-delayed.md` with
@@ -17,7 +19,7 @@ This test uses a different approach — create two continuations on the same ups
 
 Create a continuation that should fire (trigger-when matches the response):
 
-```
+```text
 cat > .agents/test/bob/.witwave/continuations/trigger-when-match.md << 'EOF'
 ---
 name: Trigger When Match
@@ -31,7 +33,7 @@ EOF
 
 Create a continuation that should NOT fire (trigger-when does not match):
 
-```
+```text
 cat > .agents/test/bob/.witwave/continuations/trigger-when-nomatch.md << 'EOF'
 ---
 name: Trigger When No Match
@@ -47,7 +49,7 @@ Wait 5 seconds for watchers to register the files.
 
 ## Fire the upstream trigger
 
-```
+```text
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
   -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
@@ -59,11 +61,12 @@ Verify the response is 202.
 
 ## Poll
 
-Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 2 seconds for up to 60 seconds.
+Poll the conversation log at `ww conversation list --namespace witwave-test --agent bob --expand` every 2 seconds for up
+to 60 seconds.
 
 ## Cleanup
 
-```
+```text
 rm .agents/test/bob/.witwave/continuations/trigger-when-match.md
 rm .agents/test/bob/.witwave/continuations/trigger-when-nomatch.md
 ```

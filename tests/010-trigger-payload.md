@@ -5,7 +5,7 @@ enabled: true
 
 Send a POST request to bob's echo trigger with a JSON payload containing a unique token:
 
-```
+```text
 curl -s -X POST http://localhost:8099/triggers/echo \
   -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:?set TRIGGERS_AUTH_TOKEN before running smoke specs}" \
   -H "Content-Type: application/json" \
@@ -16,7 +16,7 @@ The trigger is asynchronous — it returns 202 immediately and the backend proce
 
 Wait up to 30 seconds for the backend to complete by polling the conversation log at:
 
-```
+```text
 ww conversation list --namespace witwave-test --agent bob --expand
 ```
 

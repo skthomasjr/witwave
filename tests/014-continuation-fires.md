@@ -3,7 +3,9 @@ description: Verifies that the precommitted job continuation fires after the pin
 enabled: true
 ---
 
-Bob has a precommitted recurring job at `.agents/test/bob/.witwave/jobs/ping.md` that responds with `JOB_OK`. Bob also has `.agents/test/bob/.witwave/continuations/ping.md`, which continues after `job:ping` and responds with `CONTINUATION_OK`.
+Bob has a precommitted recurring job at `.agents/test/bob/.witwave/jobs/ping.md` that responds with `JOB_OK`. Bob also
+has `.agents/test/bob/.witwave/continuations/ping.md`, which continues after `job:ping` and responds with
+`CONTINUATION_OK`.
 
 ## Verification
 
@@ -13,7 +15,8 @@ Poll Bob's conversation evidence:
 ww conversation list --namespace witwave-test --agent bob --expand
 ```
 
-Poll every 15 seconds for up to 16 minutes until both `JOB_OK` and `CONTINUATION_OK` appear in the same job session. The long timeout is intentional because the `ping` job runs every 15 minutes.
+Poll every 15 seconds for up to 16 minutes until both `JOB_OK` and `CONTINUATION_OK` appear in the same job session. The
+long timeout is intentional because the `ping` job runs every 15 minutes.
 
 ## Pass/Fail Criteria
 
@@ -24,4 +27,5 @@ The test passes if:
 
 The test fails if either string is absent within the timeout.
 
-**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the issue. Only fix tooling or execution problems that prevent the test itself from running.**
+**If the failure is caused by a code bug in the system under test, do not fix it; mark the test as failed and report the
+issue. Only fix tooling or execution problems that prevent the test itself from running.**

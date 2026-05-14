@@ -5,7 +5,7 @@ enabled: true
 
 Check each health endpoint on bob's witwave agent:
 
-```
+```text
 curl -s http://localhost:8099/health/start
 curl -s http://localhost:8099/health/live
 curl -s http://localhost:8099/health/ready

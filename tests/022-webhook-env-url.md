@@ -14,7 +14,7 @@ The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-env-url.md`. It 
 
 ## Step 1 — Send a prompt that produces WEBHOOK_ENV_URL_FIRE
 
-```
+```text
 curl -s -X POST http://localhost:8099/ \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":"022","method":"message/send","params":{"message":{"role":"user","messageId":"msg-022","contextId":"webhook-env-url-test","parts":[{"kind":"text","text":"Respond with exactly: WEBHOOK_ENV_URL_FIRE"}]}}}'
@@ -27,7 +27,7 @@ Wait for the A2A response to contain `WEBHOOK_ENV_URL_FIRE`.
 After `WEBHOOK_ENV_URL_FIRE` appears, the webhook runner fires asynchronously. Poll the shared conversation log until
 `FEATURE_SINK_OK` appears, or until 30 seconds have elapsed:
 
-```
+```text
 ww conversation list --namespace witwave-test --agent bob --expand
 ```
 

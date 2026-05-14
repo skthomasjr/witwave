@@ -106,7 +106,7 @@ Surface the failure with both the failing commit and the release commit so the c
 
 > "Refusing to release — main is not green:
 >
-> - `CI — ww CLI` failed (last run on commit `0dbd02b9`, https://github.com/.../runs/...)
+> - `CI — ww CLI` failed (last run on commit `0dbd02b9`, <https://github.com/.../runs/...>)
 > - `CI — Charts` succeeded
 > - `CI — docs` succeeded (latest on HEAD `<short-sha>`)
 >
@@ -330,13 +330,13 @@ Sample success response:
 >
 > Bump rationale: minor — found `feat(ww):` in 3 commits since v0.11.16 (no breaking markers).
 >
-> Tag: https://github.com/witwave-ai/witwave/releases/tag/v0.12.0
+> Tag: <https://github.com/witwave-ai/witwave/releases/tag/v0.12.0>
 >
 > Workflows in flight:
 >
-> - Release (container images, ~24m): https://github.com/.../runs/...
-> - Release — ww CLI (binary + brew, ~5m): https://github.com/.../runs/...
-> - Release — Helm charts (witwave + witwave-operator, ~5m): https://github.com/.../runs/...
+> - Release (container images, ~24m): <https://github.com/.../runs/...>
+> - Release — ww CLI (binary + brew, ~5m): <https://github.com/.../runs/...>
+> - Release — Helm charts (witwave + witwave-operator, ~5m): <https://github.com/.../runs/...>
 >
 > Once green, artifacts land at:
 >
@@ -404,7 +404,7 @@ Three branches per workflow:
   escalate.
 - **Any `failure` / `cancelled` / `timed_out`** → return failure to the caller with:
 
-  ```
+  ```text
   [release-workflow-failed]
     tag: vX.Y.Z (commit <short-sha>)
     failed: Release — ww CLI (<run-url>)
