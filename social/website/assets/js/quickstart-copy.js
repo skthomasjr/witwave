@@ -9,15 +9,16 @@ codeWindows.forEach((windowEl) => {
   }
 
   button.setAttribute('aria-label', 'Copy command');
+  button.setAttribute('title', 'Copy command');
   button.addEventListener('click', async () => {
     const command = code.textContent.trimEnd();
 
     try {
       await copyText(command);
-      setButtonState(button, 'Copied', 'copied');
+      setButtonState(button, 'Copied', 'copied', 'Command copied');
     } catch (error) {
       console.warn('Unable to copy command', error);
-      setButtonState(button, 'Copy failed', 'copy-failed');
+      setButtonState(button, 'Copy failed', 'copy-failed', 'Copy failed');
     }
   });
 });
@@ -57,15 +58,21 @@ async function copyText(text) {
   }
 }
 
-function setButtonState(button, label, className) {
+function setButtonState(button, label, className, ariaLabel) {
   const originalLabel = button.dataset.originalLabel || button.textContent;
+  const originalAriaLabel = button.dataset.originalAriaLabel || button.getAttribute('aria-label') || originalLabel;
   button.dataset.originalLabel = originalLabel;
+  button.dataset.originalAriaLabel = originalAriaLabel;
   button.textContent = label;
+  button.setAttribute('aria-label', ariaLabel);
+  button.setAttribute('title', ariaLabel);
   button.classList.remove('copied', 'copy-failed');
   button.classList.add(className);
 
   window.setTimeout(() => {
     button.textContent = originalLabel;
+    button.setAttribute('aria-label', originalAriaLabel);
+    button.setAttribute('title', originalAriaLabel);
     button.classList.remove(className);
   }, 1600);
 }

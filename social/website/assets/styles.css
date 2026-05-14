@@ -1010,18 +1010,17 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  width: 2rem;
   min-height: 2rem;
-  padding: 0.36rem 0.72rem;
-  border: 1px solid rgba(49, 231, 211, 0.28);
-  border-radius: 999px;
-  background: rgba(49, 231, 211, 0.08);
-  color: var(--sea);
+  padding: 0;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.72rem;
+  font-size: 0;
   font-weight: 800;
-  letter-spacing: 0.02em;
 }
 
 .copy-code-button::before {
@@ -1036,17 +1035,15 @@ p {
 
 .copy-code-button:hover,
 .copy-code-button:focus-visible {
-  border-color: rgba(49, 231, 211, 0.55);
+  color: var(--sea);
   background: rgba(49, 231, 211, 0.12);
 }
 
 .copy-code-button.copied {
-  border-color: rgba(216, 255, 95, 0.55);
   color: var(--gold);
 }
 
 .copy-code-button.copy-failed {
-  border-color: rgba(255, 123, 86, 0.55);
   color: var(--clay);
 }
 
