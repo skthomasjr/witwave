@@ -27,6 +27,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
   structure.
 - **social**: Fold the standalone About positioning points into the Project page and simplify the primary site
   navigation.
+- **social**: Switch the public website header to an icon-only witwave mark.
+- **social**: Temper the public website hero heading scale so top-level copy reads as bold instead of oversized.
 
 ## [0.23.13] — 2026-05-11
 
