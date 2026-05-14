@@ -79,6 +79,7 @@ main {
 
 .brand,
 .nav a,
+.header-cta,
 .paper-card a,
 .text-link,
 .site-footer a {
@@ -129,11 +130,25 @@ main {
   color: var(--paper-strong);
 }
 
-.nav a.nav-cta {
-  margin-left: clamp(0.85rem, 2vw, 1.35rem);
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(0.85rem, 2vw, 1.35rem);
+  margin-left: auto;
+}
+
+.header-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.64rem 1.15rem;
   border: 1px solid rgba(231, 247, 255, 0.36);
+  border-radius: 999px;
   background: linear-gradient(135deg, var(--sea), var(--gold));
   color: #031014;
+  font-size: 0.92rem;
   font-weight: 800;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -142,8 +157,8 @@ main {
     0 0 24px rgba(49, 231, 211, 0.22);
 }
 
-.nav a.nav-cta:hover,
-.nav a.nav-cta:focus-visible {
+.header-cta:hover,
+.header-cta:focus-visible {
   background: var(--ink);
   color: var(--paper-strong);
 }
@@ -1362,6 +1377,14 @@ p {
     justify-content: space-between;
   }
 
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .nav {
+    flex: 1;
+  }
+
   .feature-strip,
   .paper-grid,
   .principle-grid,
@@ -1464,15 +1487,20 @@ p {
     border-radius: 24px;
   }
 
+  .header-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
   .nav a {
     padding: 0.55rem 0.35rem;
     font-size: 0.84rem;
     text-align: center;
   }
 
-  .nav a.nav-cta {
-    grid-column: 1 / -1;
-    margin-left: 0;
+  .header-cta {
+    width: 100%;
   }
 
   .hero,
