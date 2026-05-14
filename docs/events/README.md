@@ -10,7 +10,7 @@ Server-Sent Events (SSE). Each message is a JSON object serialised on a single `
 monotonic `id:` so reconnecting clients can pass `Last-Event-ID` and receive missed events from the server's in-memory
 ring.
 
-```
+```text
 event: job.fired
 id: 4217
 data: {"type":"job.fired","version":1,"id":"4217","ts":"2026-04-19T12:00:00.003Z","agent_id":"iris","payload":{"name":"daily-report","schedule":"0 9 * * *","duration_ms":420,"outcome":"success"}}
@@ -54,25 +54,33 @@ removing, or retyping a field remains a version bump per the rules below.
 ## Event types
 
 Phase 1 ships eleven harness-emitted types; phase 3 (#1110) adds three backend-emitted types that flow over the
-backend→harness event channel (`POST /internal/events/publish`) and are fanned out on the same SSE stream:
+backend→harness event channel (`POST /internal/events/publish`) and are fanned out on the same SSE stream.
 
-| Type                    | Emitted by                     | Payload summary                                                      |
-| ----------------------- | ------------------------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------- |
-| `job.fired`             | harness jobs scheduler         | `{name, schedule, duration_ms, outcome, error?}`                     |
-| `task.fired`            | harness tasks scheduler        | `{name, window, duration_ms, outcome, error?}`                       |
-| `heartbeat.fired`       | harness heartbeat              | `{schedule, duration_ms, outcome, error?}`                           |
-| `continuation.fired`    | harness continuations          | `{name, upstream_kind, upstream_name, duration_ms, outcome, error?}` |
-| `trigger.fired`         | harness triggers               | `{name, endpoint, duration_ms, outcome, error?}`                     |
-| `webhook.delivered`     | harness webhooks               | `{name, url_host, status_code, duration_ms}`                         |
-| `webhook.failed`        | harness webhooks               | `{name, url_host, reason, duration_ms}`                              |
-| `hook.decision`         | bus.py (from backends)         | `{backend, session_id_hash, tool, decision, rule_id?}`               |
-| `a2a.request.received`  | harness A2A relay              | `{concern, model?}`                                                  |
-| `a2a.request.completed` | harness A2A relay              | `{concern, outcome, duration_ms}`                                    |
-| `agent.lifecycle`       | harness or backends            | `{backend, event: started                                            | stopped                                                                                       | config_reloaded                      | credential_rotated}` |
-| `conversation.turn`     | backends (claude/codex/gemini) | `{session_id_hash, role: user                                        | assistant, content_bytes, model?}`                                                            |
-| `conversation.chunk`    | backends (claude/codex/gemini) | `{session_id_hash, role: user                                        | assistant, seq, content, final}`— per-session drill-down stream only (not on`/events/stream`) |
-| `tool.use`              | backends (claude/codex/gemini) | `{session_id_hash, tool, duration_ms, outcome: ok                    | error                                                                                         | denied, result_size_bytes?, error?}` |
-| `trace.span`            | backends (claude/codex/gemini) | `{session_id_hash?, span_name, duration_ms, status: ok               | error, service}`— only emitted for`{llm.request, shell, mcp.handler, backend.mcp.tools_call}` |
+Current event catalog:
+
+- `job.fired` — harness jobs scheduler; payload includes `name`, `schedule`, `duration_ms`, `outcome`, and optional
+  `error`.
+- `task.fired` — harness tasks scheduler; payload includes `name`, `window`, `duration_ms`, `outcome`, and optional
+  `error`.
+- `heartbeat.fired` — harness heartbeat; payload includes `schedule`, `duration_ms`, `outcome`, and optional `error`.
+- `continuation.fired` — harness continuations; payload includes upstream identity, duration, outcome, and optional
+  `error`.
+- `trigger.fired` — harness triggers; payload includes `name`, `endpoint`, `duration_ms`, `outcome`, and optional
+  `error`.
+- `webhook.delivered` — harness webhooks; payload includes `name`, `url_host`, `status_code`, and `duration_ms`.
+- `webhook.failed` — harness webhooks; payload includes `name`, `url_host`, `reason`, and `duration_ms`.
+- `hook.decision` — backend hook decisions carried through `bus.py`; payload includes backend, session hash, tool,
+  decision, and optional rule id.
+- `a2a.request.received` — harness A2A relay; payload includes `concern` and optional `model`.
+- `a2a.request.completed` — harness A2A relay; payload includes `concern`, `outcome`, and `duration_ms`.
+- `agent.lifecycle` — harness or backend lifecycle; payload includes backend and lifecycle event.
+- `conversation.turn` — backend conversation summary; payload includes session hash, role, content byte count, and
+  optional model.
+- `conversation.chunk` — backend per-session drill-down only; payload includes session hash, role, sequence, content,
+  and finality.
+- `tool.use` — backend tool execution; payload includes session hash, tool, duration, outcome, optional result size, and
+  optional error.
+- `trace.span` — backend trace span summary; payload includes session hash, span name, duration, status, and service.
 
 See `events.schema.json` for the full JSON Schema.
 
@@ -145,7 +153,7 @@ session_id stays in the per-backend conversation stream (drill-down only, where 
 `Authorization: Bearer <harness_token>` on every request. No query-param token fallback — clients that can't set headers
 natively (browser `EventSource`) use the `fetch` + `ReadableStream` pattern instead.
 
-## Versioning
+## Schema Versioning
 
 Every envelope carries a required `version: integer` field (starts at `1`). Bump rules:
 

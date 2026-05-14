@@ -42,7 +42,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Move whitepaper reader titles out of the sidebar so the main paper pane owns the document title.
 - **social**: Fine-tune the icon-only header mark slightly smaller.
 - **social**: Make blog and whitepaper reader sidebar buttons full-width for a uniform control stack.
-- **social**: Remove the Markdown download action from blog posts so field notes stay focused on reading and social distribution.
+- **social**: Remove the Markdown download action from blog posts so field notes stay focused on reading and social
+  distribution.
 - **social**: Shorten the whitepaper reader download action to `Download MD`.
 - **social**: Soften the public AI-adoption thesis so existing and hybrid agent workflows are described as valuable,
   while lifecycle-native integration is framed as the compounding step.
@@ -587,8 +588,8 @@ running once per 24h on a staggered cron across all five peers.
 - **zora**: polish-tier depth control extended across the team. evan dispatches now pick the depth tier per cadence
   (reset to 3 on fresh source, advance 3 → 5 → 7 → 9 after 2 consecutive 0/0/0 runs, hold otherwise) and the polish
   baseline raises 3 → 5 once cheap-pass ground has been swept. Same advance/reset/hold logic extends to nova
-  (`code-cleanup` ↔ `code-document` one-shot) and kira (`docs-cleanup` ↔ `docs-research` one-shot) — deeper passes fire
-  as one-shots when the default tier returns 0/0/0 for 2 consecutive runs on stable source, then flip back. State
+  (`code-cleanup` ↔ `code-document` one-shot) and kira (`docs-cleanup` ↔ `docs-research` one-shot) — deeper passes
+  fire as one-shots when the default tier returns 0/0/0 for 2 consecutive runs on stable source, then flip back. State
   tracked per skill in `team_state.md`. Dispatches/hour cap raised 5 → 8 to give the tightened cadence floors breathing
   room. kira `docs-cleanup` cadence floor tightens 24h → 6h so docs sweeps keep pace with the team's commit rate.
 
@@ -1555,6 +1556,7 @@ once after pulling).
   are easy to discover.
 
   Built-in catalog ships per backend type:
+
   - claude: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
     `AWS_SESSION_TOKEN`, `AWS_REGION`
   - codex: `OPENAI_API_KEY`, `OPENAI_ORG`, `OPENAI_PROJECT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`,
@@ -1564,9 +1566,11 @@ once after pulling).
 
   User-extensible via a new `[tui.expected_env_vars]` block in `~/.witwave/config.toml`:
 
-      [tui.expected_env_vars]
-      claude = ["MY_CUSTOM_VAR"]
-      codex  = ["MY_OPENAI_PROXY_KEY"]
+  ```toml
+  [tui.expected_env_vars]
+  claude = ["MY_CUSTOM_VAR"]
+  codex  = ["MY_OPENAI_PROXY_KEY"]
+  ```
 
   Custom entries MERGE with the built-ins (dedup + sort) — adding your own can never accidentally drop the canonical
   suggestions. Removing built-ins isn't supported yet (block-list semantics would land if anyone asks).
@@ -1581,6 +1585,7 @@ once after pulling).
 - **`ww tui` create modal — secrets section is now dynamic per-pair** (Phase 2). Replaces the multi-line "Backend
   secrets" TextArea with a list of editable `KEY` / `VALUE` InputField pairs that grows and shrinks at runtime. Two new
   buttons in the form's button row:
+
   - `[+ Secret]` appends a fresh empty pair and lands focus on the new pair's KEY field so the user can type
     immediately.
   - `[− Secret]` pops the trailing pair (no-op when empty) and lands focus on the previous pair's VALUE — or on the
@@ -1607,6 +1612,7 @@ once after pulling).
 
 - **`ww tui` create modal — secrets redesign (Phase 1)**. Dropped the Auth mode dropdown entirely. The four old modes
   (none / profile / from-env / existing-secret / set-inline) collapse into two more focused fields:
+
   - **Existing Secret name (optional)** — single-line. When set, references a pre-built K8s Secret as-is (verified,
     never modified). Wins over the secrets block.
   - **Backend secrets** — multi-line. One `KEY=VALUE` per line. Values prefixed with `$` are lifted from the shell
@@ -1615,9 +1621,11 @@ once after pulling).
 
   Examples in the placeholder cover both shapes:
 
-      ANTHROPIC_API_KEY=sk-ant-literal-value
-      GITHUB_TOKEN=$GITHUB_PAT     (leading $ → read from shell env)
-      CUSTOM_HEADER=hello-world
+  ```text
+  ANTHROPIC_API_KEY=sk-ant-literal-value
+  GITHUB_TOKEN=$GITHUB_PAT     (leading $ → read from shell env)
+  CUSTOM_HEADER=hello-world
+  ```
 
   Old `[tui.create_defaults]` schema keys (`auth_mode`, `auth_value`) are no longer read. Users with a saved file from
   earlier versions get fresh fallback defaults on next launch and new state on next successful create. Pre-1.0; the
@@ -1936,6 +1944,7 @@ ww agent backend remove consensus smoke --remove-repo-folder   # drop it cleanly
 
 - **Multi-backend agents** — `ww agent create` and `ww agent scaffold` both gain a repeatable `--backend` flag. Two
   shapes accepted per entry:
+
   - `<type>` — name = type (e.g. `--backend claude`), the single- backend shortcut
   - `<name>:<type>` — explicit name + type pair (e.g. `--backend echo-1:echo --backend echo-2:echo`), required when two
     backends of the same type must coexist on one agent Each declared backend gets a distinct container name, distinct
@@ -1945,7 +1954,7 @@ ww agent backend remove consensus smoke --remove-repo-folder   # drop it cleanly
     post-scaffold. This unlocks the multi-model consensus pattern the framework has always supported at the CRD level
     but that the CLI couldn't express until now:
 
-  ```
+  ```bash
   ww agent create consensus --backend claude --backend codex
   ```
 

@@ -88,7 +88,7 @@ Write the comment body in plain markdown.
 
 Every comment posted by this skill must end with a signature block, separated from the comment body by a blank line:
 
-```
+```text
 — <agent-name> · <skill-name> v<skill-version>
 ```
 

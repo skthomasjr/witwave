@@ -131,7 +131,7 @@ status report. Reference what they said in prior comments to show the thread is 
 
 Append the signature block, separated from the comment body by a blank line:
 
-```
+```text
 — <agent-name> · <skill-name> v<skill-version>
 ```
 

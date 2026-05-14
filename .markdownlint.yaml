@@ -10,3 +10,5 @@ MD024:
 MD029: false # Allow intentional numbering across code-block-interrupted lists
 MD033: false # Allow inline HTML
 MD041: false # First line need not be a top-level heading (e.g. frontmatter files)
+MD046:
+  style: fenced # Match Prettier and the repo's preferred explicit code-block style

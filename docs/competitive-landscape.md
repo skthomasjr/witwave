@@ -697,8 +697,8 @@ The closed learning loop: execution → skill synthesis → future reuse. Hermes
 completing complex tasks; Google's Always-On Memory Agent continuously consolidates in the background. The 2026 frame:
 "can the agent remember what it learned yesterday and do it better tomorrow?" This project has Claude-oriented
 skill-document infrastructure (`.claude/skills/`) and cross-backend identity documents (`CLAUDE.md`, `AGENTS.md`,
-`GEMINI.md`) plus Gemini session-history memory, but no execution-to-skill synthesis path.
-Candidate: post-task skill synthesis that evaluates whether a completed run yielded a reusable pattern.
+`GEMINI.md`) plus Gemini session-history memory, but no execution-to-skill synthesis path. Candidate: post-task skill
+synthesis that evaluates whether a completed run yielded a reusable pattern.
 
 ### Cost / Token Management
 
@@ -712,7 +712,7 @@ figure before citing). This project has `get_context_usage()` wired; `task_budge
 
 ## Gap Analysis
 
-_Last updated: 2026-04-07 by local-agent_
+Last updated: 2026-04-07 by local-agent.
 
 - **Memory and knowledge management:** Flat markdown memory files work for prose notes but are fragile for structured
   data. Hermes Agent (NousResearch, February 2026) ships SQLite FTS5 with LLM-powered summarization and a pluggable

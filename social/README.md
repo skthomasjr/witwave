@@ -8,7 +8,7 @@ content the team publishes to the world.
 
 ## Folder layout
 
-```
+```text
 social/
 ├── README.md                  (this file — the spec)
 ├── papers/                    whitepapers and standalone publications
@@ -90,7 +90,7 @@ tone: conversational # formal | conversational | casual | technical
 | `slug`           | string, required | Usually matches the filename without `.md`.                                                                                                                                                                                        |
 | `status`         | enum, required   | See "Status lifecycle" below.                                                                                                                                                                                                      |
 | `display`        | boolean          | `true` means the website may show the post when status is `published`.                                                                                                                                                             |
-| `sample`         | boolean          | `true` only for intentionally fake/demo posts. Keep public launch content `false`.                                                                                                                                                  |
+| `sample`         | boolean          | `true` only for intentionally fake/demo posts. Keep public launch content `false`.                                                                                                                                                 |
 | `surfaces`       | list, required   | Which channels this post targets. Each value must match a key in `published_urls`. Empty `[]` is invalid — use `status: archived` instead.                                                                                         |
 | `created`        | date, optional   | The day the file was authored, in `YYYY-MM-DD`.                                                                                                                                                                                    |
 | `scheduled_for`  | ISO 8601 / null  | When the post should publish. Required when `status: scheduled`.                                                                                                                                                                   |
@@ -145,7 +145,7 @@ before adding a new value in a post.
 | Mastodon           | `mastodon`          | `https://<instance>/@<user>/<id>`                        | 500 (default; instance-dependent)      | Federation-compatible across instances. 500 is the safe ceiling.                                                                          |
 | Threads            | `threads`           | `https://threads.net/@<user>/post/<id>`                  | 500                                    | Meta's. Similar shape to X.                                                                                                               |
 | Bluesky            | `bluesky`           | `https://bsky.app/profile/<handle>/post/<id>`            | 300                                    | AT Protocol; federation in progress.                                                                                                      |
-| Blog               | `blog`              | `https://witwave.ai/blog/<slug>/`                        | No cap                                 | Project-owned essays and field notes. Markdown remains the source; publish generates static HTML pages for crawlers.                       |
+| Blog               | `blog`              | `https://witwave.ai/blog/<slug>/`                        | No cap                                 | Project-owned essays and field notes. Markdown remains the source; publish generates static HTML pages for crawlers.                      |
 | GitHub Discussions | `github-discussion` | `https://github.com/witwave-ai/witwave/discussions/<n>`  | No hard cap (practical: ~10,000 chars) | Already in active use. For community-facing announcements that warrant a thread, not a shortform post.                                    |
 | Hacker News        | `hn`                | `https://news.ycombinator.com/item?id=<n>`               | Title only (80 chars)                  | Submission is a title + URL; no body. Body in the post file is the link-target text, usually the whitepaper or blog post being submitted. |
 | Newsletter         | `newsletter`        | `https://<provider>/issues/<id>` (Substack/Beehiiv/etc.) | No cap                                 | Provider TBD; reserve enum value for future use.                                                                                          |
@@ -177,7 +177,7 @@ section is a reading aid.
 
 ### Status lifecycle
 
-```
+```text
 draft → ready → scheduled → published → archived
 ```
 
@@ -268,7 +268,7 @@ standalone documents that live under `social/papers/`. Conventions:
 Image / video / audio files referenced by posts and papers live under `social/assets/<slug>/`. Keeps each piece's media
 co-located and prunable.
 
-```
+```text
 social/
 ├── README.md
 ├── papers/

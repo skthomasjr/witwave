@@ -78,7 +78,7 @@ compatibility:
 
 The core platform is the agent runtime. The following support workloads surround it:
 
-**Shipped**
+### Shipped
 
 - **UI** — Vue 3 + PrimeVue web dashboard (`clients/dashboard/`) for monitoring agent activity, reviewing logs,
   triggering ad-hoc prompts, and managing GitHub Issues — aimed at the individual and small-team audience. Enabled via
@@ -87,7 +87,7 @@ The core platform is the agent runtime. The following support workloads surround
   Grafana dashboards (`charts/witwave/dashboards/`), and opinionated default alerts via `PrometheusRule`
   (`charts/witwave/templates/prometheusrule.yaml`). See F-008.
 
-**On the roadmap**
+### On the Roadmap
 
 - **Shared memory service** — a structured key-value store accessible to all agents on the team, replacing the current
   flat markdown memory files for data that requires reliable read/write semantics (see F-003)

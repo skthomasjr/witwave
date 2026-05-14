@@ -54,7 +54,7 @@ one-liner and exits 0. Safe to leave in scripts.
 
 What you should see:
 
-```
+```text
 Target cluster:  docker-desktop  (context: docker-desktop)
 Namespace:       witwave-system
 Action:          install witwave-operator (embedded chart)
@@ -88,7 +88,7 @@ ww agent create hello \
 
 Expected output:
 
-```
+```text
 Target cluster:  docker-desktop  (context: docker-desktop)
 Namespace:       witwave
 Action:          create WitwaveAgent "hello"
@@ -157,7 +157,7 @@ ww agent send hello "ping from the walkthrough" \
 
 Expected response:
 
-```
+```text
 echo backend — no LLM configured.
 
 You said: ping from the walkthrough
@@ -198,7 +198,7 @@ ww agent create consensus \
 
 Expected:
 
-```
+```text
 Backends:        echo-1:echo/8001, echo-2:echo/8002
 ...
 Created WitwaveAgent consensus ...
@@ -323,7 +323,7 @@ ww agent scaffold consensus \
 
 Expected:
 
-```
+```text
 Action:        scaffold agent "consensus"
 Repo:          <you>/my-witwave-config
 Branch:        main
@@ -398,7 +398,7 @@ ww agent git add consensus \
 
 Expected output (Option A):
 
-```
+```text
 Action:    attach gitSync "my-witwave-config" to WitwaveAgent "consensus" in witwave
   gitSync  "my-witwave-config"  repo=<you>/my-witwave-config  ref=<remote default>  period=60s
     credentials: minted Secret "consensus-git-credentials" from `gh auth token`
@@ -490,7 +490,7 @@ ww agent backend add consensus claude \
 
 Expected:
 
-```
+```text
 Action:    add backend "claude" (type=claude, port=8002) on WitwaveAgent "consensus" in witwave
   credentials: profile "oauth" → mint Secret "consensus-claude"
   backend.yaml (gitSync-managed) — edit the repo's file to list the new backend (routing still flows through the primary)
@@ -511,7 +511,7 @@ Pushed main.
 4. Operator reconciled a new pod (4 containers now — harness + echo
    - claude + git-sync) and rolled it in.
 
-**Guard rails**
+#### Guard Rails
 
 - Backend name must be DNS-1123 and unique on this agent.
 - The CRD caps `spec.backends` at 50 items — a nicer error message than the apiserver's schema blob when you hit it.
@@ -547,7 +547,7 @@ ww agent backend rename consensus echo-2 echo-backup \
 
 Expected:
 
-```
+```text
 Action:    rename backend "echo-2" → "echo-backup" on WitwaveAgent "consensus" in witwave
   CR:     spec.backends[].name + gitMappings + inline backend.yaml
   Repo:   <you>/my-witwave-config/echo-2/ → <you>/my-witwave-config/echo-backup/  on ... (branch main)
@@ -578,7 +578,7 @@ ww agent backend remove consensus echo-backup \
 
 Expected:
 
-```
+```text
 Action:    remove backend "echo-backup" from WitwaveAgent "consensus" in witwave
   backend   "echo-backup" (removed)
   remaining [echo-1]

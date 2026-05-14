@@ -423,7 +423,7 @@ ww agent scaffold hello --repo owner/repo --force
 
 **Layout produced** (flat default, no group):
 
-```
+```text
 .agents/hello/
 ├── README.md              # short human-readable description + next-step hints
 ├── .witwave/
