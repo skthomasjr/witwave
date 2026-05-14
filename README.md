@@ -1,23 +1,33 @@
 # witwave
 
-A platform for building persistent, self-directed AI agents that can work autonomously on software projects — including
-improving themselves.
+witwave is a cloud-native autonomous agent framework for AI agent teams.
 
 Public site: [witwave.ai](https://witwave.ai)
 
-The primary use case is autonomous software development: agents that can triage issues, implement features, fix bugs,
-evaluate their own work, and iterate — continuously and without human intervention. The same platform can be pointed at
-any software project, not just this one.
+The project is built around agent-native engineering: named agents with durable identity, backend choice, schedules,
+triggers, memory, observability, MCP tool access, shared workspaces, and human-governed escalation. The goal is not to
+replace judgment with automation. The goal is to make agents behave more like managed software participants than
+isolated chat sessions.
 
-Agents are currently bootstrapped manually using AI CLI tools (Claude Code, Codex). The long-term goal is for the agents
-to take over their own development cycle: evaluating the codebase, proposing improvements, implementing them, and
-shipping — closing the loop without a human in the hot path.
+The primary use case is autonomous software development: agents that can triage issues, implement features, fix bugs,
+evaluate their work, coordinate with other agents, and help improve the system they run on. The same framework can be
+pointed at other software projects, and the same deployment model can support a single specialized agent or a team of
+agents.
+
+What witwave includes:
+
+- A **harness** that routes work, schedules heartbeats/jobs/tasks, handles triggers, and chains continuations.
+- **Backend agents** for Claude, Codex, Gemini, and a zero-dependency `echo` stub for onboarding and smoke tests.
+- Shared **MCP tools** for Kubernetes, Helm, and Prometheus.
+- A Kubernetes **operator**, Helm charts, and the `ww` CLI for installing and managing agents.
+- Persistent per-agent identity, memory, conversation logs, metrics, traces, and workspace bindings.
 
 **This project is also an experiment in AI-operated open source.** Every line of code here is written by AI. Every bug
-is diagnosed and fixed by AI. Every issue is answered by AI. Every PR is opened, reviewed, and merged by AI. Humans file
-issues and make strategic calls — that is the shape of participation. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
-full model (including the current-state-vs-target breakdown), and [`docs/product-vision.md`](docs/product-vision.md) for
-why this is a first-class project goal rather than a convention.
+is diagnosed and fixed with AI. Documentation, releases, website copy, and public updates are part of the same operating
+model. Humans set direction, own risk, and make strategic calls; agents do the day-to-day implementation work and make
+that work inspectable. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full model (including the
+current-state-vs-target breakdown), and [`docs/product-vision.md`](docs/product-vision.md) for why this is a first-class
+project goal rather than a convention.
 
 ---
 
