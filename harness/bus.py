@@ -54,7 +54,6 @@ class Message:
     prompt: str
     session_id: str | None = None
     kind: str = "a2a"  # "a2a", "heartbeat", "job:<name>", "task:<name>", "trigger:<endpoint>", "continuation:<name>"
-    # TODO(#71): Bus fairness — if triggers ever need to be serialized with scheduled work, consider per-kind queue lanes.  # noqa: E501
     model: str | None = None
     backend_id: str | None = None
     consensus: list[ConsensusEntry] = field(default_factory=list)  # non-empty = fan-out to matching backends

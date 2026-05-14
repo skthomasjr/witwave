@@ -1090,7 +1090,6 @@ async def main():
 
     async def trigger_handler(request: Request) -> JSONResponse:
         endpoint = request.path_params["endpoint"]
-        # TODO(#71): HEAD /triggers/{endpoint} returns 405 (Starlette default). Should it return 200 with metadata?
 
         # Warmup shield (#785): while backends_ready is unset, return 503
         # with Retry-After so load balancers back off rather than
@@ -2145,6 +2144,10 @@ async def main():
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/.well-known/agent-runs.json", runs_discovery, methods=["GET"]),
+        # Intentionally POST-only: trigger endpoints dispatch work. Discovery
+        # and metadata live on GET /triggers and /.well-known/agent-triggers.json.
+        # Leaving HEAD unsupported avoids creating a second readiness/auth
+        # contract for per-trigger URLs.
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
         Route("/jobs/{name}/run", jobs_run_handler, methods=["POST"]),
         Route("/tasks/{name}/run", tasks_run_handler, methods=["POST"]),

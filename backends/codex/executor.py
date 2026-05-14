@@ -481,7 +481,7 @@ def _pre_tool_use_gate(
     tool_input: dict,
     rules: list | None = None,
 ) -> tuple[str, str] | None:
-    """Centralised PreToolUse gate for non-shell tools (#799, SCAFFOLD).
+    """Centralised PreToolUse gate for non-shell tools (#1862, SCAFFOLD).
 
     Invokes ``shared/hooks_engine.evaluate_pre_tool_use`` with the tool name
     and a dict-shaped input payload. Returns ``None`` on allow, or a
@@ -509,7 +509,7 @@ def _pre_tool_use_gate(
         if denied is not None:
             raise HookDenyError(*denied)
 
-    TODO(#799): subclass ``WebSearchTool`` / ``ComputerTool`` / add an MCP
+    TODO(#1862): subclass ``WebSearchTool`` / ``ComputerTool`` / add an MCP
     proxy wrapper and route every invocation through this gate. When done,
     remove the "scaffold" wording from this docstring and add coverage in
     backends/codex/tests/.
@@ -642,7 +642,8 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         # executor carries its own equivalent for the full PreToolUse
         # surface; codex emits only on shell-baseline denials today
         # since those are the only hooks it evaluates. gemini is
-        # blocked on #808 (AFC-disable) before it can emit similarly.
+        # blocked on #1863 (AFC/tool-loop interposition) before it can
+        # emit similarly.
         try:
             import hook_events as _hook_events
 

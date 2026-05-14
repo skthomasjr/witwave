@@ -54,7 +54,9 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 ]
 ```
 
-**Discovery endpoint** — `GET /.well-known/agent-triggers.json` returns a JSON array of all enabled trigger descriptors:
+**Discovery endpoint** — `GET /.well-known/agent-triggers.json` returns a JSON array of all enabled trigger descriptors.
+Per-trigger URLs are intentionally `POST`-only because they dispatch work; use discovery rather than
+`HEAD /triggers/{endpoint}` for metadata checks:
 
 ```json
 [

@@ -68,9 +68,10 @@ if _genai_version is not None:
 from exceptions import BudgetExceededError, PromptTooLargeError
 
 # Hooks engine facade (#631). Imported even though the gemini tool-call path
-# is not wired yet (blocked on #640) — this lands the infrastructure so the
+# is not wired yet (tracked by #1863) — this lands the infrastructure so the
 # executor can register the hooks_config_watcher alongside existing watchers
-# and #640 can drop `evaluate_pre_tool_use` in without further plumbing.
+# and the eventual tool-loop interposition can drop `evaluate_pre_tool_use`
+# in without further plumbing.
 from hooks import (
     BASELINE_RULES,
     HOOKS_BASELINE_ENABLED,
@@ -180,7 +181,7 @@ def _pre_tool_use_gate(
     *,
     state: "HookState | None" = None,
 ) -> tuple[str, str] | None:
-    """PreToolUse gate for gemini tool calls (#808, SCAFFOLD).
+    """PreToolUse gate for gemini tool calls (#1863, SCAFFOLD).
 
     Centralises the ``hooks_engine.evaluate_pre_tool_use`` call so a future
     AFC-off path can invoke deny/warn evaluation between the SDK's
@@ -191,10 +192,10 @@ def _pre_tool_use_gate(
     Calling (AFC) runs the tool ping-pong inside ``generate_content`` /
     ``send_message_stream``; there is no pre-invoke callback exposed, so
     this helper cannot be wired into the live tool path yet. Fully closing
-    #808 requires either:
+    #1863 requires either:
 
       1. Disabling AFC and hand-rolling the ``function_call`` /
-         ``function_response`` loop (issue #640 option 2) so there is an
+         ``function_response`` loop so there is an
          interposition point, or
       2. A wrapper around ``ClientSession.call_tool`` that every gemini
          MCP invocation must route through — non-trivial because AFC owns
@@ -202,11 +203,11 @@ def _pre_tool_use_gate(
 
     Until one of those lands, this helper exists so the evaluate site is
     consistent across backends (codex has the same-shaped scaffold from
-    #799). Baseline rules and hooks.yaml extensions continue to load via
+    #1862). Baseline rules and hooks.yaml extensions continue to load via
     ``hooks_config_watcher`` so ``self._hook_state`` is always current;
     wiring is the only missing piece.
 
-    TODO(#808): switch to AFC-off + hand-rolled tool loop, call this gate
+    TODO(#1863): switch to AFC-off + hand-rolled tool loop, call this gate
     between SDK emission and ``ClientSession.call_tool``, and add coverage
     under ``backends/gemini/tests/``.
     """
@@ -331,7 +332,7 @@ _MCP_CONFIG_PATH_ALLOWED_PREFIX = os.environ.get(
 
 # #1100: scaffold for the eventual gemini allow-list enforcement. The
 # AFC tool loop inside send_message_stream today runs every bound tool
-# without consulting a deny/allow surface; once #640 hand-rolls the
+# without consulting a deny/allow surface; once #1863 interposes on the
 # loop, this parsed list will gate each tool call. Landing the env var
 # + metric now means dashboards already have series registered when the
 # enforcement flips on, avoiding a churn wave.
@@ -2161,8 +2162,8 @@ async def run_query(
 
             client = _get_client()
 
-            # NOTE(#640): AFC-internal — hook enforcement requires disabling AFC;
-            # see issue body option 2. The google-genai SDK's Automatic Function
+            # NOTE(#1863): AFC-internal — hook enforcement requires tool-loop
+            # interposition. The google-genai SDK's Automatic Function
             # Calling (AFC) runs the tool ping-pong inside ``generate_content``,
             # so a ``PreToolUse``-style ``evaluate_pre_tool_use`` call site here
             # cannot intercept MCP tool invocations without disabling AFC and
@@ -2805,7 +2806,7 @@ class AgentExecutor(A2AAgentExecutor):
         # extensions list starts empty and is populated by
         # ``hooks_config_watcher`` on startup and on every subsequent
         # hooks.yaml change. Held by reference so any future tool-call path
-        # (#640) sees the latest rule set without re-reading the file.
+        # (#1863) sees the latest rule set without re-reading the file.
         self._hook_state: HookState = HookState(
             baseline_enabled=HOOKS_BASELINE_ENABLED,
             baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
@@ -2816,13 +2817,13 @@ class AgentExecutor(A2AAgentExecutor):
         # so PreToolUse hooks never fire even when hooks.yaml is loaded.
         # We publish the "skeleton" sentinel (0) so dashboards and alert
         # rules can distinguish this from the claude backend's
-        # "enforcing" (1).  When #640 disables AFC we can flip this
+        # "enforcing" (1). When #1863 adds tool-loop interposition we can flip this
         # to 1 in one place.
         if backend_hooks_enforcement_mode is not None:
             backend_hooks_enforcement_mode.labels(**_LABELS).set(0)
         # hook.decision harness side-channel (#963). Skeleton only: the
         # AFC-off path that will actually evaluate PreToolUse denies
-        # lands in #640 / #808. Wiring the import + helper now means the
+        # lands in #1863. Wiring the import + helper now means the
         # eventual enforcement path calls a function that already exists
         # and uses the same shared/hook_events.schedule_post transport as
         # claude + codex, avoiding a drift window where gemini evaluates
@@ -2902,8 +2903,8 @@ class AgentExecutor(A2AAgentExecutor):
     ) -> None:
         """Post a hook.decision event to the harness side-channel (#963).
 
-        gemini's PreToolUse path is blocked on the AFC-off work in
-        #640/#808, so this helper has no inline caller yet. Adding the
+        gemini's PreToolUse path is blocked on the tool-loop interposition
+        tracked by #1863, so this helper has no inline caller yet. Adding the
         full wiring now means the eventual enforcement path can
         decide-then-post in one call without a second plumbing change,
         keeping gemini consistent with claude (#779) and codex (#937).
@@ -3478,11 +3479,11 @@ class AgentExecutor(A2AAgentExecutor):
             # neither in the current config nor in `removed` drop out.
             self._mcp_known_servers = new_names | removed
 
-            # Startup warning re: AFC vs hooks asymmetry (#640). Logged once
+            # Startup warning re: AFC vs hooks asymmetry (#1863). Logged once
             # per stack bring-up so operators see it on every reload when
             # both sides are active. hooks skeleton in #631 cannot intercept
             # tool calls that AFC runs inside the SDK; the hand-rolled-loop
-            # option lives in the #640 issue body.
+            # enforcement work is tracked by #1863.
             if (
                 new_live
                 and os.environ.get("HOOKS_CONFIG_PATH")
@@ -3491,8 +3492,8 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.warning(
                     "gemini hooks skeleton (#631) cannot intercept MCP tool calls "
                     "because google-genai's AFC runs the loop internally. "
-                    "See #640 issue body option 2 to disable AFC and hand-roll the "
-                    "loop if policy enforcement is required."
+                    "See #1863 for the AFC/tool-loop interposition work required "
+                    "before policy enforcement can cover Gemini MCP calls."
                 )
 
     async def _acquire_mcp_stack(self) -> tuple[list, "AsyncExitStack | None"]:
@@ -3652,8 +3653,8 @@ class AgentExecutor(A2AAgentExecutor):
         policy.
 
         Note: this runs even though the gemini tool-call path is not yet
-        exercising the engine (blocked on #640). Keeping the watcher active
-        means rules are ready the moment #640 plumbs ``evaluate_pre_tool_use``
+        exercising the engine (tracked by #1863). Keeping the watcher active
+        means rules are ready the moment #1863 plumbs ``evaluate_pre_tool_use``
         into the dispatch path.
         """
         from watchfiles import awatch as _awatch
