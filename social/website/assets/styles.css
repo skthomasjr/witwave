@@ -130,7 +130,7 @@ main {
 }
 
 .nav a.nav-cta {
-  margin-left: 0.28rem;
+  margin-left: clamp(0.85rem, 2vw, 1.35rem);
   border: 1px solid rgba(231, 247, 255, 0.36);
   background: linear-gradient(135deg, var(--sea), var(--gold));
   color: #031014;
