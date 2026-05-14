@@ -15,7 +15,7 @@ wait days for ticket clarification, human review, security signoff, release wind
 visible activity goes up. The system-level flow barely moves.
 
 That is the central warning of this paper: **the stable default is not agent-native engineering. The stable default is
-agents trapped inside a human-shaped development lifecycle.**
+real agent value constrained by a human-shaped development lifecycle.**
 
 This paper describes three practical phases of agentic AI adoption:
 
@@ -34,7 +34,8 @@ criteria, internal context, documentation, version control, automated tests, age
 policy, identity, least-privilege tool access, review design, memory, decision logs, telemetry, work-in-progress limits,
 measurement, and human escalation.
 
-If those pieces do not change, agents produce more output without producing a reliably better system.
+If those pieces do not change, agents can still create useful local leverage, but they may produce more output without
+producing a reliably better system.
 
 Self-improving agent teams are an important future capability, but they should not be treated as a fourth adoption
 phase. They are a compounding layer that becomes possible only after an organization has built a safe, observable,

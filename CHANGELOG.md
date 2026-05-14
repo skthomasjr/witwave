@@ -44,6 +44,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Make blog and whitepaper reader sidebar buttons full-width for a uniform control stack.
 - **social**: Remove the Markdown download action from blog posts so field notes stay focused on reading and social distribution.
 - **social**: Shorten the whitepaper reader download action to `Download MD`.
+- **social**: Soften the public AI-adoption thesis so existing and hybrid agent workflows are described as valuable,
+  while lifecycle-native integration is framed as the compounding step.
 
 ## [0.23.13] — 2026-05-11
 

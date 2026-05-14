@@ -2,9 +2,9 @@
 
 ## Core thesis
 
-Agentic AI does not transform software delivery just because teams use agents. Transformation starts when agents become
-part of the development lifecycle: work routing, context, evals, quality gates, memory, observability, and human
-escalation.
+Agentic AI creates real value in existing and hybrid software delivery lifecycles. The larger transformation starts when
+agents become part of the development lifecycle itself: work routing, context, evals, quality gates, memory,
+observability, and human escalation.
 
 ## Public framing
 
