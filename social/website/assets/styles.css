@@ -584,6 +584,29 @@ p {
   gap: 1.1rem;
 }
 
+.team-future {
+  margin-top: clamp(2.5rem, 6vw, 4.5rem);
+  padding-top: clamp(2rem, 5vw, 3.4rem);
+  border-top: 1px solid var(--line);
+}
+
+.team-future-heading {
+  max-width: 780px;
+  margin-bottom: clamp(1.4rem, 3vw, 2.2rem);
+}
+
+.team-future-heading h2 {
+  font-size: clamp(2rem, 4vw, 3.3rem);
+}
+
+.team-future-heading p {
+  max-width: 720px;
+}
+
+.team-future-grid {
+  margin-top: 0;
+}
+
 .team-card {
   position: relative;
   overflow: hidden;

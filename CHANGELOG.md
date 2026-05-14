@@ -31,6 +31,9 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Temper the public website hero heading scale so top-level copy reads as bold instead of oversized.
 - **social**: Restyle the homepage lead team avatar card so Zora's highlight fits the dark visual system.
 - **social**: Slightly reduce the icon-only header logo scale after the larger-logo pass.
+- **social**: Move planned future agent cards into a distinct section below the active Team roster.
+- **social**: Add GitHub profile links to active Team cards.
+- **social**: Move Team ahead of Blog in the public website navigation.
 
 ## [0.23.13] — 2026-05-11
 
