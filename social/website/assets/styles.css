@@ -26,6 +26,7 @@ html {
 
 body {
   margin: 0;
+  overflow-x: hidden;
   color: var(--ink);
   font-family: "Space Grotesk", sans-serif;
   background:
@@ -195,6 +196,7 @@ h3 {
   font-family: "Space Grotesk", sans-serif;
   letter-spacing: -0.055em;
   line-height: 0.95;
+  overflow-wrap: anywhere;
   text-wrap: balance;
 }
 
@@ -215,6 +217,7 @@ h3 {
 p {
   color: var(--muted);
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .hero-copy,
@@ -1244,6 +1247,136 @@ p {
   .team-card-human {
     grid-column: 1 / -1;
     text-align: center;
+  }
+}
+
+@media (max-width: 520px) {
+  .site-header,
+  .site-footer,
+  main {
+    width: min(1120px, calc(100% - 20px));
+  }
+
+  .site-header {
+    gap: 0.9rem;
+    padding: 20px 0;
+  }
+
+  .brand-logo {
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+  }
+
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: 24px;
+  }
+
+  .nav a {
+    padding: 0.55rem 0.35rem;
+    font-size: 0.84rem;
+    text-align: center;
+  }
+
+  .hero,
+  .page-hero {
+    padding: clamp(1.45rem, 7vw, 2rem);
+    border-radius: 24px;
+  }
+
+  .hero::before,
+  .page-hero::before {
+    inset: 0.65rem;
+    border-radius: 18px;
+  }
+
+  .hero::after,
+  .page-hero::after {
+    right: -170px;
+    bottom: -180px;
+    width: 300px;
+    height: 300px;
+    border-width: 30px;
+  }
+
+  h1,
+  .team-hero h1 {
+    font-size: clamp(2.05rem, 10vw, 2.75rem);
+  }
+
+  h2 {
+    font-size: clamp(1.8rem, 8vw, 2.55rem);
+  }
+
+  .hero-copy,
+  .page-hero p,
+  .section-heading p {
+    font-size: 1rem;
+  }
+
+  .hero-actions,
+  .reader-actions,
+  .blog-card-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .button,
+  .reader-actions .button,
+  .paper-detail .button {
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+  }
+
+  .reader-sidebar,
+  .markdown-paper {
+    border-radius: 24px;
+  }
+
+  .reader-sidebar {
+    padding: 1.25rem;
+  }
+
+  .reader-sidebar h1 {
+    font-size: clamp(1.7rem, 8vw, 2.35rem);
+  }
+
+  .reader-paper-link {
+    padding: 0.8rem;
+  }
+
+  .markdown-paper {
+    padding: 1.25rem;
+  }
+
+  .markdown-paper h1 {
+    font-size: clamp(1.95rem, 9vw, 2.7rem);
+  }
+
+  .markdown-paper h2 {
+    font-size: clamp(1.7rem, 7.5vw, 2.35rem);
+  }
+
+  .markdown-paper p,
+  .markdown-paper li {
+    font-size: 1rem;
+  }
+
+  .markdown-paper blockquote {
+    padding: 1rem;
+  }
+
+  .markdown-paper blockquote p {
+    font-size: 1.2rem;
+  }
+
+  .paper-detail,
+  .blog-toolbar,
+  .team-intro {
+    padding: 1.25rem;
   }
 }
 

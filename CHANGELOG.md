@@ -37,6 +37,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 - **social**: Bottom-align Team card profile badges and put Scott's LinkedIn badge before GitHub.
 - **social**: Add Piper's X profile badge to the public Team page.
 - **social**: Put Piper's GitHub Team badge before her X badge.
+- **social**: Tighten narrow mobile website layouts so navigation, heroes, and reader sidebars do not overflow.
 
 ## [0.23.13] — 2026-05-11
 
