@@ -99,7 +99,7 @@ secret and exits cleanly without publishing when neither is configured.
   `futureMembers` for visible placeholder roles.
 - Treat `social/posts/posts.json` as the browser-visible blog discovery manifest; GitHub Pages does not expose folder
   listings, so Markdown posts must be listed there before the website can load them.
-- Keep the compact "Join the conversation" strips pointed at GitHub Discussion category URLs unless the community
+- Keep the compact "Join the conversation" strip pointed at GitHub Discussion category URLs unless the community
   surface changes.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
   blog/updates.

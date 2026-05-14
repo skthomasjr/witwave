@@ -514,61 +514,56 @@ p {
 }
 
 .conversation-strip {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(420px, 1.25fr);
-  gap: clamp(1.3rem, 4vw, 2.5rem);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.35rem;
   align-items: center;
-  overflow: hidden;
-  padding: clamp(1.4rem, 4vw, 2.3rem);
-  border-left: 8px solid var(--gold);
+  justify-content: space-between;
+  padding: clamp(1.1rem, 3vw, 1.45rem);
+  border-color: rgba(132, 199, 217, 0.16);
   background:
-    linear-gradient(135deg, rgba(8, 20, 28, 0.92), rgba(3, 9, 13, 0.84)),
-    radial-gradient(circle at 92% 0%, rgba(49, 231, 211, 0.18), transparent 18rem),
-    radial-gradient(circle at 0% 100%, rgba(216, 255, 95, 0.12), transparent 18rem);
-}
-
-.conversation-strip::before {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  content: "";
-  background: linear-gradient(90deg, transparent, rgba(49, 231, 211, 0.08), transparent);
-  transform: translateX(-35%);
-}
-
-.conversation-strip > * {
-  position: relative;
-  z-index: 1;
+    linear-gradient(135deg, rgba(8, 20, 28, 0.78), rgba(3, 9, 13, 0.72)),
+    radial-gradient(circle at 100% 0%, rgba(49, 231, 211, 0.08), transparent 16rem);
 }
 
 .conversation-strip h2 {
-  font-size: clamp(1.9rem, 4vw, 3.2rem);
+  font-size: clamp(1.35rem, 2.2vw, 1.85rem);
+  letter-spacing: -0.035em;
+}
+
+.conversation-strip .eyebrow {
+  margin-bottom: 0.35rem;
+  color: var(--sea);
 }
 
 .conversation-strip p {
-  max-width: 680px;
+  max-width: 620px;
+  margin-top: 0.45rem;
   margin-bottom: 0;
+  font-size: 0.98rem;
+  line-height: 1.6;
 }
 
 .conversation-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.4rem, 1fr));
-  gap: 0.55rem;
+  display: flex;
+  flex: 1 1 360px;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
 }
 
 .conversation-links a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 46px;
-  padding: 0.72rem 0.62rem;
-  border: 1px solid rgba(132, 199, 217, 0.22);
-  border-radius: 14px;
-  background: rgba(10, 24, 32, 0.82);
+  min-height: 38px;
+  padding: 0.52rem 0.72rem;
+  border: 1px solid rgba(132, 199, 217, 0.18);
+  border-radius: 999px;
+  background: rgba(10, 24, 32, 0.68);
   color: var(--moss-dark);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-align: center;
@@ -1486,13 +1481,13 @@ p {
   .quickstart-preview,
   .command-card,
   .blog-toolbar,
-  .blog-grid,
-  .conversation-strip {
+  .blog-grid {
     grid-template-columns: 1fr;
   }
 
   .conversation-links {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-basis: 100%;
+    justify-content: flex-start;
   }
 
   .avatar-cloud {
@@ -1705,7 +1700,8 @@ p {
   }
 
   .conversation-links {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
