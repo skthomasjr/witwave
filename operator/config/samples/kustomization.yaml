@@ -1,5 +1,6 @@
 ## Witwave sample resources ##
 resources:
   - witwave_v1alpha1_witwaveagent.yaml
+  - witwave_v1alpha1_witwaveprompt.yaml
   - witwave_v1alpha1_witwaveworkspace.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

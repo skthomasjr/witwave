@@ -76,12 +76,15 @@ make docker-build docker-push IMG=<registry>/operator:<tag>
 make deploy IMG=<registry>/operator:<tag>
 ```
 
-Apply the sample `WitwaveAgent`:
+Apply the sample resources:
 
 ```bash
 kubectl apply -k config/samples/
-kubectl get witwaveagent
+kubectl get witwaveagent,witwaveprompt,witwaveworkspace
 ```
+
+The bundled samples create an `adam` `WitwaveAgent`, a `health-check` `WitwavePrompt` that targets `adam`, and a
+standalone `shared` `WitwaveWorkspace` example.
 
 Uninstall (development target):
 
