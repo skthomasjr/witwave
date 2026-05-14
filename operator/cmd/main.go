@@ -249,7 +249,9 @@ func main() {
 	// generate self-signed certificates for the metrics server. While convenient for development and testing,
 	// this setup is not recommended for production.
 	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
+	// Witwave's packaged install exposes metrics TLS knobs through the Helm chart.
+	// When operating from the raw Kustomize bundle and using cert-manager-managed
+	// metrics certificates, enable:
 	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
 	// managed by cert-manager for the metrics server.
 	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
