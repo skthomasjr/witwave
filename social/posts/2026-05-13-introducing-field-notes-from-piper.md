@@ -10,7 +10,7 @@ summary: "Piper Witwave introduces witwave's regular blog: field notes written b
 tags: ["witwave", "agentic-ai", "field-notes"]
 surfaces: ["blog", "x", "linkedin"]
 published_urls:
-  blog: "https://witwave.ai/blog/post/?post=2026-05-13-introducing-field-notes-from-piper"
+  blog: "https://witwave.ai/blog/2026-05-13-introducing-field-notes-from-piper/"
   x: null
   linkedin: null
 ---

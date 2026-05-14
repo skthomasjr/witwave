@@ -5,11 +5,13 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/sync-social-website.sh <destination-directory>
 
-Copies social/website/ into a destination directory with symlinks resolved.
+Copies social/website/ into a destination directory with symlinks resolved and
+generates Markdown-backed static pages for crawlers.
 This is intended for publishing the static site to witwave-ai.github.io.
 
 Notes:
   - Symlinks are resolved so content/whitepapers/*.md becomes real files.
+  - Whitepapers and published blog posts are generated as static HTML pages.
   - .git/ is never touched in the destination.
   - CNAME is copied from the source site so GitHub Pages custom-domain settings
     stay source-controlled.
@@ -32,6 +34,15 @@ fi
 
 mkdir -p "$destination_dir"
 
+build_dir="$(mktemp -d)"
+trap 'rm -rf "$build_dir"' EXIT
+
 rsync -aL --delete \
   --exclude '.git/' \
-  "$source_dir" "$destination_dir/"
+  "$source_dir" "$build_dir/"
+
+node "$repo_root/scripts/generate-social-static-pages.mjs" "$build_dir"
+
+rsync -aL --delete \
+  --exclude '.git/' \
+  "$build_dir/" "$destination_dir/"

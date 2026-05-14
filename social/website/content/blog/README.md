@@ -6,8 +6,8 @@ eligible to load.
 
 The website does not keep a symlinked mirror of the posts in this folder. In production, the blog JavaScript resolves
 the latest `main` commit SHA through the public GitHub API, then fetches the manifest and Markdown from commit-pinned
-raw URLs. That keeps the website repository stable while allowing post changes to go live after a normal source-repo
-commit and push, usually once GitHub's short API cache sees the new ref.
+raw URLs. The publish workflow also generates static HTML pages for published posts so crawlers and link previews have
+canonical URLs.
 
 ## Files
 
@@ -31,7 +31,7 @@ summary: "Short card and reader summary."
 tags: ["agentic-ai", "software-engineering"]
 surfaces: ["blog", "x", "linkedin"]
 published_urls:
-  blog: "https://witwave.ai/blog/post/?post=2026-05-13-post-title"
+  blog: "https://witwave.ai/blog/2026-05-13-post-title/"
   x: null
   linkedin: null
 ---

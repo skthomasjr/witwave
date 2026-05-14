@@ -10,7 +10,7 @@ content strategy and page copy remains the `witwave` repository.
   - `social/papers/three-phases-of-ai-adoption.md`
   - `social/papers/anatomy-of-an-agentic-team.md`
 - Provide a clear project entry point that explains the framework and links to the GitHub repository.
-- Provide a home for long-form blog entries derived from `social/posts/` and future essays.
+- Provide a home for project posts derived from `social/posts/` and future essays.
 - Hold lightweight marketing/positioning copy for the public site.
 - Keep the site easy for AI agents to maintain: simple files, explicit content maps, clear publishing rules.
 
@@ -21,6 +21,8 @@ social/website/
 ├── README.md
 ├── .nojekyll                    # carry through when mirrored to GitHub Pages
 ├── CNAME                         # GitHub Pages custom domain: witwave.ai
+├── robots.txt                    # crawler policy + sitemap pointer
+├── sitemap.xml                   # public URL discovery for search engines
 ├── index.html                    # homepage
 ├── project/
 │   └── index.html                # project overview + GitHub entry point
@@ -71,15 +73,16 @@ and the browser resolves the latest `main` commit SHA from the public `witwave-a
 commit-pinned raw Markdown. That means blog content changes need a normal source-repo commit and push, but they do not
 require a website-repo publish unless the site shell changes.
 
-The publishing workflow copies this site into another repository with symlinks resolved so whitepaper Markdown content
-is materialised as normal files. Later, if the site needs generated pages from Markdown, this folder can grow into an
-Astro, Vite, or other static-site build without changing the content model.
+The publishing workflow copies this site into a temporary build directory with symlinks resolved, then runs
+`scripts/generate-social-static-pages.mjs` to create crawler-friendly static HTML pages from the canonical whitepaper
+and blog Markdown. Those generated pages are published to the GitHub Pages repository but are not committed back into
+this source tree.
 
-Publishing is automated from this repository by `.github/workflows/publish-social-website.yml`. The workflow copies
-`social/website/` to `witwave-ai/witwave-ai.github.io` using `scripts/sync-social-website.sh`, resolves symlinks, and
-copies the source-controlled `CNAME` file for the GitHub Pages custom domain. During high-iteration website work, the
-workflow runs on every push to `main`; if the published site has no material changes, the publisher exits without
-creating a commit in `witwave-ai.github.io`.
+Publishing is automated from this repository by `.github/workflows/publish-social-website.yml`. The workflow builds
+`social/website/` with `scripts/sync-social-website.sh`, resolves symlinks, generates static Markdown-backed pages,
+copies the source-controlled `CNAME` file for the GitHub Pages custom domain, and syncs the result to
+`witwave-ai/witwave-ai.github.io`. During high-iteration website work, the workflow runs on every push to `main`; if the
+published site has no material changes, the publisher exits without creating a commit in `witwave-ai.github.io`.
 
 Required setup before the workflow can push:
 
@@ -102,6 +105,10 @@ secret and exits cleanly without publishing when neither is configured.
 - Keep the compact "Join the conversation" strip pointed at GitHub Discussion category URLs unless the community
   surface changes. Pull category descriptions from GitHub Discussions before refreshing the rows; the public Questions
   row maps to GitHub's `general` category.
+- Keep SEO metadata in each HTML page aligned with its canonical `https://witwave.ai/...` URL. The source
+  `sitemap.xml` covers indexable hand-authored pages; the publish generator expands the published sitemap with
+  generated whitepaper and blog URLs. JavaScript reader shells can stay usable but should remain `noindex,follow` when
+  generated pages are the canonical article URLs.
 - Keep the homepage focused: one thesis, one clear project entry point, two foundational papers, and one path to
   blog/updates.
 - Do not bury the whitepapers behind a generic resources page.
