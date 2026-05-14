@@ -93,14 +93,14 @@ main {
 
 .brand-logo {
   display: block;
-  width: clamp(64px, 5.4vw, 78px);
-  height: clamp(64px, 5.4vw, 78px);
+  width: clamp(58px, 4.8vw, 70px);
+  height: clamp(58px, 4.8vw, 70px);
   border: 2px solid rgba(49, 231, 211, 0.58);
-  border-radius: 20px;
+  border-radius: 18px;
   box-shadow:
     0 0 0 1px rgba(231, 247, 255, 0.08),
-    0 0 42px rgba(49, 231, 211, 0.32),
-    0 0 86px rgba(49, 231, 211, 0.14);
+    0 0 38px rgba(49, 231, 211, 0.3),
+    0 0 76px rgba(49, 231, 211, 0.12);
 }
 
 .nav {
@@ -539,8 +539,18 @@ p {
 }
 
 .avatar-token.lead {
-  background: var(--ink);
-  color: var(--paper-strong);
+  border-color: rgba(216, 255, 95, 0.42);
+  background:
+    linear-gradient(135deg, rgba(49, 231, 211, 0.2), rgba(216, 255, 95, 0.1)),
+    rgba(5, 13, 18, 0.88);
+  color: var(--ink);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.3),
+    0 0 34px rgba(49, 231, 211, 0.14);
+}
+
+.avatar-token.lead img {
+  border-color: rgba(216, 255, 95, 0.58);
 }
 
 .team-hero {

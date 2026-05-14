@@ -29,6 +29,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
   navigation.
 - **social**: Switch the public website header to an icon-only witwave mark.
 - **social**: Temper the public website hero heading scale so top-level copy reads as bold instead of oversized.
+- **social**: Restyle the homepage lead team avatar card so Zora's highlight fits the dark visual system.
+- **social**: Slightly reduce the icon-only header logo scale after the larger-logo pass.
 
 ## [0.23.13] — 2026-05-11
 
