@@ -94,8 +94,8 @@ main {
 
 .brand-logo {
   display: block;
-  width: clamp(58px, 4.8vw, 70px);
-  height: clamp(58px, 4.8vw, 70px);
+  width: clamp(56px, 4.6vw, 68px);
+  height: clamp(56px, 4.6vw, 68px);
   border: 2px solid rgba(49, 231, 211, 0.58);
   border-radius: 18px;
   box-shadow:
@@ -1288,8 +1288,8 @@ p {
   }
 
   .brand-logo {
-    width: 54px;
-    height: 54px;
+    width: 52px;
+    height: 52px;
     border-radius: 16px;
   }
 
