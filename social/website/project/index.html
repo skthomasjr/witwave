@@ -10,7 +10,7 @@
     />
     <meta property="og:image" content="../assets/images/witwave-social-preview.png" />
     <link rel="icon" href="../assets/images/witwave-logo-terminal.svg" />
-    <link rel="stylesheet" href="../assets/styles.css?v=sidebar-buttons-full-width-20260514" />
+    <link rel="stylesheet" href="../assets/styles.css?v=quickstart-terminal-20260514" />
   </head>
   <body>
     <header class="site-header">
@@ -19,6 +19,7 @@
       </a>
       <nav class="nav" aria-label="Primary navigation">
         <a href="./">Project</a>
+        <a class="nav-cta" href="../quickstart/">Quick Start</a>
         <a href="../whitepapers/">Whitepapers</a>
         <a href="../team/">Team</a>
         <a href="../blog/">Blog</a>
@@ -35,7 +36,8 @@
           pieces can support a single specialized agent.
         </p>
         <div class="hero-actions">
-          <a class="button primary" href="https://github.com/witwave-ai/witwave">View the GitHub project</a>
+          <a class="button primary" href="../quickstart/">Quick Start</a>
+          <a class="button secondary" href="https://github.com/witwave-ai/witwave">View the GitHub project</a>
           <a class="button secondary" href="../whitepapers/">Read the whitepapers</a>
         </div>
       </section>
@@ -56,6 +58,29 @@
           <h2>Govern the loop</h2>
           <p>Keep work observable with metrics, traces, logs, readiness checks, explicit routing, and human escalation.</p>
         </article>
+      </section>
+
+      <section class="quickstart-preview" aria-label="Quick Start preview">
+        <div>
+          <p class="eyebrow">Try it</p>
+          <h2>Start with the CLI and a cluster.</h2>
+          <p>
+            Install <code>ww</code>, point it at a Kubernetes cluster, install the operator, and create an echo-backed
+            agent that needs no LLM API key.
+          </p>
+        </div>
+        <div class="quickstart-mini-command">
+          <div class="terminal-window">
+            <div class="terminal-title">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>Terminal window</span>
+            </div>
+            <pre><code>curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
+ww operator install --if-missing --yes
+ww agent create hello --namespace witwave --create-namespace</code></pre>
+          </div>
+          <a class="button primary" href="../quickstart/">Open Quick Start</a>
+        </div>
       </section>
 
       <section class="split-panel project-thesis">

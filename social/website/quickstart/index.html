@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Start | witwave</title>
+    <meta
+      name="description"
+      content="Install the ww CLI, connect to a Kubernetes cluster, install the witwave operator, and run a hello-world agent."
+    />
+    <meta property="og:image" content="../assets/images/witwave-social-preview.png" />
+    <link rel="icon" href="../assets/images/witwave-logo-terminal.svg" />
+    <link rel="stylesheet" href="../assets/styles.css?v=quickstart-terminal-20260514" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../index.html" aria-label="witwave home">
+        <img class="brand-logo" src="../assets/images/witwave-logo-terminal.svg" alt="" aria-hidden="true" />
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="../project/">Project</a>
+        <a class="nav-cta" href="./">Quick Start</a>
+        <a href="../whitepapers/">Whitepapers</a>
+        <a href="../team/">Team</a>
+        <a href="../blog/">Blog</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="page-hero quickstart-hero">
+        <p class="eyebrow">Quick Start</p>
+        <h1>Install the CLI. Point it at Kubernetes. Run an agent.</h1>
+        <p>
+          The fastest path into witwave starts with <code>ww</code>, the command-line tool that installs the operator,
+          creates agents, sends prompts, and shows logs/events without needing a browser or local port-forward.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#commands">Run the commands</a>
+          <a class="button secondary" href="https://github.com/witwave-ai/witwave/blob/main/clients/ww/WALKTHROUGH.md">
+            Full walkthrough
+          </a>
+        </div>
+      </section>
+
+      <section class="quickstart-callout" aria-label="Prerequisites">
+        <div>
+          <p class="eyebrow">Before you start</p>
+          <h2>You need a Kubernetes cluster.</h2>
+        </div>
+        <p>
+          Docker Desktop, Rancher Desktop, kind, minikube, or a remote cluster can work. The important part is that your
+          current kubeconfig context points at a cluster where you can install CRDs, create namespaces, and run pods.
+        </p>
+      </section>
+
+      <section class="quickstart-steps" id="commands" aria-label="Quick Start commands">
+        <article class="command-card">
+          <div class="step-number">01</div>
+          <div>
+            <p class="card-kicker">Install</p>
+            <h2>Install <code>ww</code>.</h2>
+            <p>The universal installer works on Linux and macOS and verifies the release checksum.</p>
+            <div class="terminal-window">
+              <div class="terminal-title">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>Terminal window</span>
+              </div>
+              <pre><code>curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh</code></pre>
+            </div>
+            <p class="source-note">macOS alternative:</p>
+            <div class="terminal-window compact">
+              <div class="terminal-title">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>Terminal window</span>
+              </div>
+              <pre><code>brew install witwave-ai/homebrew-ww/ww</code></pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="command-card">
+          <div class="step-number">02</div>
+          <div>
+            <p class="card-kicker">Confirm</p>
+            <h2>Check your CLI and cluster context.</h2>
+            <p>Make sure <code>ww</code> is on your path and your kubeconfig is pointed at the cluster you intend to use.</p>
+            <div class="terminal-window">
+              <div class="terminal-title">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>Terminal window</span>
+              </div>
+              <pre><code>ww version
+kubectl config current-context</code></pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="command-card">
+          <div class="step-number">03</div>
+          <div>
+            <p class="card-kicker">Operator</p>
+            <h2>Install the witwave operator.</h2>
+            <p>
+              The operator reconciles <code>WitwaveAgent</code>, <code>WitwavePrompt</code>, and
+              <code>WitwaveWorkspace</code> resources into running infrastructure.
+            </p>
+            <div class="terminal-window">
+              <div class="terminal-title">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>Terminal window</span>
+              </div>
+              <pre><code>ww operator install --if-missing --yes
+ww operator status</code></pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="command-card">
+          <div class="step-number">04</div>
+          <div>
+            <p class="card-kicker">Hello agent</p>
+            <h2>Create and ping an echo-backed agent.</h2>
+            <p>
+              The default echo backend needs no LLM API key, so it is the safest first smoke test before wiring Claude,
+              Codex, Gemini, workspaces, or git-backed configuration.
+            </p>
+            <div class="terminal-window">
+              <div class="terminal-title">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>Terminal window</span>
+              </div>
+              <pre><code>ww agent create hello --namespace witwave --create-namespace
+ww agent status hello --namespace witwave
+ww agent send hello "ping from quick start" --namespace witwave</code></pre>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="split-panel quickstart-next">
+        <div>
+          <p class="eyebrow">Next</p>
+          <h2>Go from hello-world to a real agent.</h2>
+        </div>
+        <p>
+          The walkthrough continues into multi-backend agents, credentials, gitOps wiring, logs, events, and cleanup.
+          Use this page to get moving; use the docs when you are ready to shape an actual agent team.
+        </p>
+        <a class="text-link" href="https://github.com/witwave-ai/witwave/blob/main/clients/ww/README.md">
+          Read the CLI reference
+        </a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Quick Start gets the operator and a no-key agent running; the full walkthrough takes you deeper.</p>
+      <a href="https://github.com/witwave-ai/witwave/blob/main/clients/ww/WALKTHROUGH.md">Open walkthrough</a>
+    </footer>
+  </body>
+</html>

@@ -129,6 +129,25 @@ main {
   color: var(--paper-strong);
 }
 
+.nav a.nav-cta {
+  margin-left: 0.28rem;
+  border: 1px solid rgba(231, 247, 255, 0.36);
+  background: linear-gradient(135deg, var(--sea), var(--gold));
+  color: #031014;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow:
+    0 0 0 1px rgba(49, 231, 211, 0.16),
+    0 0 24px rgba(49, 231, 211, 0.22);
+}
+
+.nav a.nav-cta:hover,
+.nav a.nav-cta:focus-visible {
+  background: var(--ink);
+  color: var(--paper-strong);
+}
+
 .hero,
 .page-hero {
   position: relative;
@@ -271,6 +290,9 @@ p {
 .team-intro,
 .team-grid,
 .team-source,
+.quickstart-callout,
+.quickstart-preview,
+.quickstart-steps,
 .section-heading {
   margin-top: clamp(2rem, 5vw, 4rem);
 }
@@ -292,7 +314,10 @@ p {
 .paper-detail,
 .principle-grid article,
 .empty-state,
-.split-panel {
+.split-panel,
+.quickstart-callout,
+.quickstart-preview,
+.command-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: rgba(8, 19, 26, 0.72);
@@ -305,7 +330,8 @@ p {
 }
 
 .feature-strip span,
-.paper-number {
+.paper-number,
+.step-number {
   color: var(--sea);
   font-family: "Space Grotesk", sans-serif;
   font-size: 2rem;
@@ -869,6 +895,141 @@ p {
   justify-self: start;
 }
 
+.quickstart-hero {
+  background:
+    linear-gradient(135deg, rgba(10, 24, 32, 0.96), rgba(5, 13, 18, 0.82)),
+    radial-gradient(circle at 18% 20%, rgba(216, 255, 95, 0.2), transparent 25rem),
+    radial-gradient(circle at 88% 10%, rgba(49, 231, 211, 0.3), transparent 28rem);
+}
+
+.quickstart-callout,
+.quickstart-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(1.3rem, 4vw, 2.5rem);
+  align-items: center;
+  padding: clamp(1.5rem, 4vw, 2.4rem);
+}
+
+.quickstart-callout {
+  border-left: 8px solid var(--gold);
+}
+
+.quickstart-callout h2,
+.quickstart-preview h2,
+.command-card h2 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+}
+
+.quickstart-preview {
+  background:
+    linear-gradient(135deg, rgba(8, 20, 28, 0.92), rgba(3, 9, 13, 0.82)),
+    radial-gradient(circle at 90% 0%, rgba(216, 255, 95, 0.16), transparent 18rem);
+}
+
+.quickstart-mini-command {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.quickstart-mini-command .button {
+  justify-self: start;
+}
+
+.quickstart-steps {
+  display: grid;
+  gap: 1rem;
+}
+
+.command-card {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: clamp(1rem, 4vw, 2rem);
+  padding: clamp(1.4rem, 4vw, 2.4rem);
+  background:
+    linear-gradient(135deg, rgba(8, 20, 28, 0.92), rgba(3, 9, 13, 0.86)),
+    radial-gradient(circle at 0% 0%, rgba(49, 231, 211, 0.12), transparent 18rem);
+}
+
+.command-card > div:last-child,
+.quickstart-preview > * {
+  min-width: 0;
+}
+
+.terminal-window {
+  overflow: hidden;
+  max-width: 100%;
+  margin: 1rem 0;
+  border: 1px solid rgba(49, 231, 211, 0.22);
+  border-radius: 18px;
+  background: #03090d;
+  box-shadow:
+    inset 0 0 0 1px rgba(231, 247, 255, 0.04),
+    0 18px 46px rgba(0, 0, 0, 0.3);
+}
+
+.terminal-window.compact {
+  margin-top: 0.6rem;
+}
+
+.terminal-title {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.62rem 0.82rem;
+  border-bottom: 1px solid rgba(132, 199, 217, 0.16);
+  background:
+    linear-gradient(90deg, rgba(49, 231, 211, 0.12), rgba(216, 255, 95, 0.04)),
+    rgba(10, 24, 32, 0.9);
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.terminal-dots {
+  display: inline-flex;
+  gap: 0.34rem;
+}
+
+.terminal-dots i {
+  display: block;
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 50%;
+  background: var(--clay);
+}
+
+.terminal-dots i:nth-child(2) {
+  background: var(--gold);
+}
+
+.terminal-dots i:nth-child(3) {
+  background: var(--sea);
+}
+
+.terminal-window pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.terminal-window code {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--moss-dark);
+  font-size: clamp(0.78rem, 1.8vw, 0.92rem);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .paper-list {
   display: grid;
   gap: 1rem;
@@ -1209,6 +1370,9 @@ p {
   .team-preview,
   .team-intro,
   .team-grid,
+  .quickstart-callout,
+  .quickstart-preview,
+  .command-card,
   .blog-toolbar,
   .blog-grid {
     grid-template-columns: 1fr;
@@ -1304,6 +1468,11 @@ p {
     padding: 0.55rem 0.35rem;
     font-size: 0.84rem;
     text-align: center;
+  }
+
+  .nav a.nav-cta {
+    grid-column: 1 / -1;
+    margin-left: 0;
   }
 
   .hero,
@@ -1405,7 +1574,10 @@ p {
 
   .paper-detail,
   .blog-toolbar,
-  .team-intro {
+  .team-intro,
+  .quickstart-callout,
+  .quickstart-preview,
+  .command-card {
     padding: 1.25rem;
   }
 }
@@ -1423,6 +1595,9 @@ p {
   .blog-toolbar,
   .blog-card,
   .team-source,
+  .quickstart-callout,
+  .quickstart-preview,
+  .command-card,
   .principle-grid article,
   .empty-state,
   .reader-sidebar,

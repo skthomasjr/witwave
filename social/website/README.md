@@ -24,6 +24,8 @@ social/website/
 ├── index.html                    # homepage
 ├── project/
 │   └── index.html                # project overview + GitHub entry point
+├── quickstart/
+│   └── index.html                # prominent ww CLI + Kubernetes first-run path
 ├── assets/
 │   ├── styles.css                # shared visual system
 │   ├── js/
@@ -103,6 +105,8 @@ secret and exits cleanly without publishing when neither is configured.
 - Do not bury the whitepapers behind a generic resources page.
 - Keep marketing claims grounded in the two papers unless a source is added.
 - Prefer small static changes over introducing a build system until the publishing repo requires it.
+- Keep `quickstart/index.html` short, command-first, and grounded in `clients/ww/README.md` plus
+  `clients/ww/WALKTHROUGH.md`; it should always name Kubernetes cluster access as a prerequisite.
 - If a paper title or slug changes, update `index.html`, `whitepapers/index.html`, `reader/index.html` links, and
   `content/whitepapers.json` in the same change.
 - Name blog post files `yyyy-mm-dd-title-goes-here.md`.
@@ -110,14 +114,6 @@ secret and exits cleanly without publishing when neither is configured.
 
 ## Planned content improvements
 
-- **Prominent Quick Start path.** Add a first-class Quick Start surface for people who want to try the CLI immediately.
-  It should be visible from the homepage and Project page, likely as a primary or secondary CTA near "Explore the
-  project." Keep it short and practical:
-  - prerequisite: access to a Kubernetes cluster and a working kubeconfig context;
-  - install: `curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh`;
-  - macOS alternate: `brew install witwave-ai/homebrew-ww/ww`;
-  - first cluster step: `ww operator install`, then `ww operator status`;
-  - next path: link to `clients/ww/README.md` and the walkthrough for agent creation.
 - **Lightweight Discussion links.** Add a low-weight community/help block without making Discussions the main story.
   Piper's public surfaces are:
   - Ideas: `https://github.com/witwave-ai/witwave/discussions/categories/ideas`;
