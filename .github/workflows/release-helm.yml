@@ -1,4 +1,4 @@
-name: Release — Helm charts
+name: Release — Helm Charts
 
 # Canonical publisher for every Helm chart under charts/ (currently
 # charts/witwave and charts/witwave-operator). release.yaml used to publish

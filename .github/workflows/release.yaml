@@ -1,4 +1,4 @@
-name: Release
+name: Release — Container Images
 
 # Chart publishing lives in .github/workflows/release-helm.yml — this workflow
 # only builds and pushes container images. The previous `publish-charts` job

@@ -1,4 +1,4 @@
-# CI — docs (#1481)
+# CI — Docs (#1481)
 #
 # Two jobs split on event type:
 #
@@ -24,7 +24,7 @@
 #
 # Excludes live in .prettierignore + .markdownlintignore (the two
 # files mirror each other so both jobs agree on the file set).
-name: CI — docs
+name: CI — Docs
 
 on:
   pull_request:

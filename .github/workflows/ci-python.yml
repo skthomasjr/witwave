@@ -1,4 +1,4 @@
-name: CI — Python
+name: CI — Python Services
 
 # Gates Python source under harness/, shared/, backends/, and the MCP tools
 # that don't already have CI elsewhere (tools/helm has its pytest job in
@@ -98,7 +98,7 @@ jobs:
         # tests that import from shared.* work the same way locally and
         # in CI without per-section sys.path tweaks.
         run: |
-          if find "${{ matrix.section }}" -maxdepth 2 -name 'test_*.py' | read; then
+          if find "${{ matrix.section }}" -maxdepth 2 -name 'test_*.py' | read -r; then
             pytest -q "${{ matrix.section }}/"
           else
             echo "no test files under ${{ matrix.section }}; skipping"

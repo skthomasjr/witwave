@@ -1,4 +1,4 @@
-name: Publish social website
+name: Publish — Social Website
 
 on:
   workflow_dispatch:

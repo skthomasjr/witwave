@@ -1,4 +1,4 @@
-name: CI — install.sh
+name: CI — Installer
 
 # Validates the universal curl installer (scripts/install.sh) on every
 # change. Two layers:
