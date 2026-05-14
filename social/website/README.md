@@ -78,9 +78,9 @@ require a website-repo publish unless the site shell changes.
 The publishing workflow copies this site into a temporary build directory with symlinks resolved, then runs
 `scripts/generate-social-static-pages.mjs` to create crawler-friendly static HTML pages from the canonical whitepaper
 and blog Markdown. The generator also rewrites published whitepaper links to the generated static URLs, expands the
-sitemap with generated article URLs and `lastmod` values, and leaves the JavaScript reader shells available but
-non-canonical. Generated pages are published to the GitHub Pages repository but are not committed back into this source
-tree.
+sitemap with generated article URLs and `lastmod` values, writes `feed.xml` for published blog posts, and leaves the
+JavaScript reader shells available but non-canonical. Generated pages are published to the GitHub Pages repository but
+are not committed back into this source tree.
 
 Publishing is automated from this repository by `.github/workflows/publish-social-website.yml`. The workflow builds
 `social/website/` with `scripts/sync-social-website.sh`, resolves symlinks, generates static Markdown-backed pages,
@@ -115,6 +115,8 @@ secret and exits cleanly without publishing when neither is configured.
   `noindex,follow` when generated pages are the canonical article URLs.
 - Keep `llms.txt` concise and factual. It should summarize the public project for AI assistants, link to canonical
   public pages and source Markdown, and avoid claims that are not already supported by the site or repository.
+- Keep the RSS feed generated from `social/posts/posts.json` and published post frontmatter. Do not hand-edit
+  `feed.xml` in the publish repository; update the post source instead.
 - Optimize SEO for clarity and discoverability, not keyword stuffing. Page titles, headings, descriptions, article
   schema, and internal links should use the terms real readers would search for while preserving the site's voice:
   cloud-native autonomous agents, AI agent teams, Kubernetes, MCP tools, agentic AI adoption, and agent-native software

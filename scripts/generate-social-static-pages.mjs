@@ -11,6 +11,7 @@ const siteUrl = 'https://witwave.ai';
 const socialImage = `${siteUrl}/assets/images/witwave-social-preview.png`;
 const organizationId = `${siteUrl}/#organization`;
 const today = new Date().toISOString().slice(0, 10);
+const publishedPosts = [];
 
 if (!fs.existsSync(siteDir)) {
   console.error(`site directory not found: ${siteDir}`);
@@ -30,6 +31,7 @@ for (const entry of postsCatalog.posts || []) {
 }
 
 rewritePublicArticleLinks(whitepaperCatalog.whitepapers || []);
+writeRssFeed(publishedPosts);
 writeSitemap(generatedUrls);
 console.log(`Generated ${generatedUrls.length} social website pages into ${path.relative(repoRoot, siteDir) || siteDir}.`);
 
@@ -105,6 +107,15 @@ function generateBlogPostPage(entry) {
   const articleBody = stripLeadingMarkdownHeading(parsed.body || '');
   const metaParts = [formatPostDate(post.published_at), stringify(post.author)].filter(Boolean);
   const lastmod = stringify(post.updated_at) || stringify(post.published_at) || gitLastModified(entry.markdownPath) || fileLastModified(markdownPath);
+  publishedPosts.push({
+    title,
+    description,
+    canonicalUrl,
+    author: stringify(post.author) || 'witwave',
+    publishedAt: stringify(post.published_at),
+    lastmod,
+    categories: Array.isArray(post.tags) ? post.tags.map(stringify).filter(Boolean) : [],
+  });
   const html = renderPage({
     depth: 2,
     title: `${title} | witwave`,
@@ -194,6 +205,7 @@ ${escapeScriptJson({
     <meta name="twitter:image" content="${socialImage}" />
     <meta name="twitter:image:alt" content="witwave logo over a dark, high-tech interface background." />
 ${structuredDataHtml.trimEnd()}
+    <link rel="alternate" type="application/rss+xml" title="witwave field notes" href="${siteUrl}/feed.xml" />
     <link rel="icon" href="${prefix}assets/images/witwave-logo-terminal.svg" />
     <link rel="stylesheet" href="${prefix}assets/styles.css?v=copy-icon-only-20260514" />
   </head>
@@ -243,6 +255,40 @@ function rewritePublicArticleLinks(whitepapers) {
     }
     writeFile(filePath, html);
   }
+}
+
+function writeRssFeed(posts) {
+  const sortedPosts = [...posts].sort((left, right) => getDateTime(right.publishedAt || right.lastmod) - getDateTime(left.publishedAt || left.lastmod));
+  const items = sortedPosts
+    .map(
+      (post) => `    <item>
+      <title>${escapeXml(post.title)}</title>
+      <link>${escapeXml(post.canonicalUrl)}</link>
+      <guid isPermaLink="true">${escapeXml(post.canonicalUrl)}</guid>
+      <description>${escapeXml(post.description)}</description>
+      <dc:creator>${escapeXml(post.author)}</dc:creator>
+      <pubDate>${escapeXml(toRssDate(post.publishedAt || post.lastmod))}</pubDate>
+      ${post.categories.map((category) => `<category>${escapeXml(category)}</category>`).join('\n      ')}
+    </item>`,
+    )
+    .join('\n');
+
+  writeFile(
+    path.join(siteDir, 'feed.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>witwave field notes</title>
+    <link>${siteUrl}/blog/</link>
+    <atom:link href="${siteUrl}/feed.xml" rel="self" type="application/rss+xml" />
+    <description>Field notes on agent-native engineering, autonomous agent teams, and the witwave project.</description>
+    <language>en-us</language>
+    <lastBuildDate>${escapeXml(toRssDate(today))}</lastBuildDate>
+${items}
+  </channel>
+</rss>
+`,
+  );
 }
 
 function writeSitemap(extraUrls) {
@@ -338,6 +384,18 @@ function fileLastModified(filePath) {
   } catch {
     return '';
   }
+}
+
+function getDateTime(value) {
+  if (!value) return 0;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(timestamp) ? Date.parse(value) || 0 : timestamp;
+}
+
+function toRssDate(value) {
+  const timestamp = getDateTime(value);
+  const date = timestamp ? new Date(timestamp) : new Date();
+  return date.toUTCString();
 }
 
 function renderMarkdown(markdown) {

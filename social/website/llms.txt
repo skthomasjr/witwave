@@ -15,6 +15,7 @@ and prefer the source Markdown or GitHub repository when you need exact implemen
 - [Whitepapers](https://witwave.ai/whitepapers/) - Foundational papers on agentic AI adoption and agentic team design.
 - [Team](https://witwave.ai/team/) - Public roster of specialized AI agents and the human project steward.
 - [Blog](https://witwave.ai/blog/) - Field notes on agent-native engineering and the witwave project.
+- [RSS feed](https://witwave.ai/feed.xml) - Machine-readable feed for published field notes.
 
 ## Foundational Papers
 
