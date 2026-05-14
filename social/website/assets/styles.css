@@ -514,11 +514,10 @@ p {
 }
 
 .conversation-strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.48fr) minmax(0, 1.52fr);
   gap: 1rem 1.35rem;
-  align-items: center;
-  justify-content: space-between;
+  align-items: start;
   padding: clamp(1.1rem, 3vw, 1.45rem);
   border-color: rgba(132, 199, 217, 0.16);
   background:
@@ -545,34 +544,43 @@ p {
 }
 
 .conversation-links {
-  display: flex;
-  flex: 1 1 360px;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
+  gap: 0.55rem;
 }
 
-.conversation-links a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  padding: 0.52rem 0.72rem;
+.conversation-card {
+  display: flex;
+  min-height: 128px;
+  flex-direction: column;
+  gap: 0.55rem;
+  justify-content: flex-start;
+  padding: 0.85rem;
   border: 1px solid rgba(132, 199, 217, 0.18);
-  border-radius: 999px;
+  border-radius: 16px;
   background: rgba(10, 24, 32, 0.68);
   color: var(--moss-dark);
+  text-decoration: none;
+}
+
+.conversation-card span {
+  color: var(--ink);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  text-align: center;
-  text-decoration: none;
   text-transform: uppercase;
 }
 
-.conversation-links a:hover,
-.conversation-links a:focus-visible {
+.conversation-card small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.conversation-card:hover,
+.conversation-card:focus-visible {
   border-color: rgba(216, 255, 95, 0.42);
   background: rgba(216, 255, 95, 0.1);
   color: var(--ink);
@@ -1485,9 +1493,12 @@ p {
     grid-template-columns: 1fr;
   }
 
+  .conversation-strip {
+    grid-template-columns: 1fr;
+  }
+
   .conversation-links {
-    flex-basis: 100%;
-    justify-content: flex-start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .avatar-cloud {
@@ -1700,8 +1711,7 @@ p {
   }
 
   .conversation-links {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 }
 
