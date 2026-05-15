@@ -1,4 +1,9 @@
 creation_rules:
+  - path_regex: ^\.secrets/.*\.partial\.sops\.ya?ml$
+    encrypted_regex: ^(password|token|secret|client_secret|api_key|private_key)$
+    age: >-
+      age19p7ndqxdk8xr4ty93e82say4uvh5wyffpek8x9rsau3gdnhyhyfq8gx7ka,
+      age1mfuqx9xernpa36hhc5k8nc7xacffvzpsyeddlk6gdvmy9u8aef5qds8arf
   - path_regex: .*\.sops\.(env|json|ya?ml)$
     age: >-
       age19p7ndqxdk8xr4ty93e82say4uvh5wyffpek8x9rsau3gdnhyhyfq8gx7ka,

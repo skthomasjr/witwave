@@ -1,0 +1,30 @@
+google_search_console:
+    purpose: Google Search Console access for witwave.ai domain verification and indexing.
+    domain_property: witwave.ai
+    url: https://search.google.com/search-console
+    account_email: witwave.admin@gmail.com
+    password: ENC[AES256_GCM,data:3z/qJgLNFOVLDFrNw2kiWw==,iv:qZ9GC/BnHY35jceSVTunom3XmdoRsPCOpr/DePz8adA=,tag:gdMk24CSGxj/Hf3CvM8jIw==,type:str]
+sops:
+    age:
+        - recipient: age19p7ndqxdk8xr4ty93e82say4uvh5wyffpek8x9rsau3gdnhyhyfq8gx7ka
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB2K0ZiSXoreExSMEFtcFZN
+            V1dsSVIvVS9MYnZNRSs5ZjEzVjlUemZ0QjFnClRRR2g4OWl0RXRqYUl0VllDN21Y
+            NnQyU0haTjlBdE1UclBBblBtekNINDgKLS0tIDcvaWlycTZ3Vyt3LzJIZlc5cGd1
+            UnhBQkF0U1FKQzJsTWtzbERodExXMHMKo+p2QMIMnTciV4hWVl+7wcngdJBK70fg
+            ppTw6YR/RI4vpdGPv2gAl/Y6J5Xi5ABDTKZfpVL9NSxUPb//gh75Jg==
+            -----END AGE ENCRYPTED FILE-----
+        - recipient: age1mfuqx9xernpa36hhc5k8nc7xacffvzpsyeddlk6gdvmy9u8aef5qds8arf
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBSU0JZSzBMN3hyNlJLV0kx
+            UVI5TWFCdUxyY084SUxoWHVGMTBFZkd6MFN3Ckx3M2NxcXRXckg1M0F0VlhCN05q
+            ZUc4NlVjT1NUcGVmNjV1TDB1NkNPQW8KLS0tIDRjYXRPbEs4VGVnZnRvT2pNU3BY
+            TU9TSzBqdUxEdkpzS0M5Y0lqRDNLUkUKS7TGK3Yb2yR/Ta5HRTyKxt8uN4+0rnpJ
+            AihIcqdDGQ0uexUBAwKPjjsmhAX7ihMmrh2hX/Q9PYSdMyGYZryrLA==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-05-15T15:08:05Z"
+    mac: ENC[AES256_GCM,data:JVErRwi3+quYbNH7IEcTS2HyLFn9XU4gfaMEsGNlYIKbgyXEhgNDK8KzrzpyhwpdzowtBN5iphxUtjuC7aI/6gtVyJzu4RDseow9kJIOdlK4bhSf3wSoV8n7RLHizgHN1Kqlinm0TU5Ch5z/Eya1o15r2HmEn375YQ5wWCM7BJs=,iv:e8KUaz6CH6q9odnKZwyPwo71ZoVhQygpsGy51/8MhSM=,tag:EOj++URZORGHZK7H6ReXWw==,type:str]
+    encrypted_regex: ^password$
+    version: 3.12.1
