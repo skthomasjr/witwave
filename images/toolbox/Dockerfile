@@ -11,9 +11,12 @@
 #   controller-gen, govulncheck, gosec) currently compile from source
 #   in every backend × every platform = 42 redundant compiles per
 #   release. Here they compile once, ship as binaries.
+# - The `ww` CLI is also currently built from source in every backend
+#   image; here it builds once in a dedicated stage and ships as a
+#   binary alongside the Go tools.
 # - The Go compiler (~500 MB) currently survives in every final
-#   backend image just to do those `go install`s. Here it lives in a
-#   builder stage that gets discarded; the final toolbox image carries
+#   backend image just to do those `go install`s. Here it lives in
+#   builder stages that get discarded; the final toolbox image carries
 #   only the resulting binaries.
 # - Tool versions are pinned in exactly one place. Bumping a version
 #   touches this file and the toolbox version tag; no chance of three
@@ -23,11 +26,12 @@
 # install so Phase 2 is a clean drop-in swap with no behavioural drift.
 
 # -----------------------------------------------------------------------------
-# Stage 1 — Go compiler + the seven Go tools.
-# Compiler discarded; the seven binaries flow to Stage 3 via COPY.
+# Stage 1 — Shared Go-toolchain base. Two downstream stages (go-build
+# and ww-build) extend this; defining it once cuts the Go install +
+# extract from twice to once per platform under buildx layer cache.
 # -----------------------------------------------------------------------------
 
-FROM debian:bookworm-20260316-slim AS go-build
+FROM debian:bookworm-20260316-slim AS go-toolchain
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -55,6 +59,13 @@ ENV PATH="/usr/local/go/bin:$PATH" \
     GOFLAGS="-mod=mod" \
     GOTOOLCHAIN=local
 
+# -----------------------------------------------------------------------------
+# Stage 2 — Go hygiene/analyzer tools. Compiler discarded; the seven
+# binaries flow to the final stage via COPY.
+# -----------------------------------------------------------------------------
+
+FROM go-toolchain AS go-build
+
 ARG GOIMPORTS_VERSION=v0.27.0
 ARG STATICCHECK_VERSION=2026.1
 ARG ERRCHECK_VERSION=v1.10.0
@@ -72,8 +83,29 @@ RUN go install "golang.org/x/tools/cmd/goimports@${GOIMPORTS_VERSION}" \
     && go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
 
 # -----------------------------------------------------------------------------
-# Stage 2 — Python tools-venv with hygiene + test deps.
-# Carried over to Stage 3 as a self-contained venv at /opt/tools-venv.
+# Stage 3 — Build the `ww` CLI from in-repo source. Previously rebuilt
+# in every backend × every platform; centralised here. Build context
+# is the repo root (set by the workflow), so `clients/ww/` is reachable.
+# -----------------------------------------------------------------------------
+
+FROM go-toolchain AS ww-build
+
+# Two-step COPY so `go mod download` stays in its own cache layer —
+# layers above invalidate only when go.mod/go.sum change, not on every
+# clients/ww/ source edit.
+COPY clients/ww/go.mod clients/ww/go.sum /tmp/ww-src/
+RUN cd /tmp/ww-src \
+    && GOCACHE=/tmp/gocache go mod download
+
+COPY clients/ww/ /tmp/ww-src/
+RUN cd /tmp/ww-src \
+    && GOCACHE=/tmp/gocache CGO_ENABLED=0 \
+       go build -trimpath -ldflags="-s -w" -o /usr/local/bin/ww . \
+    && /usr/local/bin/ww version
+
+# -----------------------------------------------------------------------------
+# Stage 4 — Python tools-venv with hygiene + test deps.
+# Carried over to the final stage as a self-contained venv at /opt/tools-venv.
 # -----------------------------------------------------------------------------
 
 FROM debian:bookworm-20260316-slim AS python-build
@@ -104,8 +136,9 @@ RUN python3 -m venv /opt/tools-venv \
         'bandit==1.9.4'
 
 # -----------------------------------------------------------------------------
-# Stage 3 — final image: shellcheck + helm + downloaded binaries + venv.
-# This is what gets published as ghcr.io/witwave-ai/images/toolbox.
+# Stage 5 — final image: shellcheck + helm + downloaded binaries + venv
+# + Go-tool binaries + ww. This is what gets published as
+# ghcr.io/witwave-ai/images/toolbox.
 # -----------------------------------------------------------------------------
 
 FROM debian:bookworm-20260316-slim AS final
@@ -124,8 +157,11 @@ RUN apt-get update && apt-get install -y \
     shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
-# Go binaries from Stage 1.
+# Go hygiene/analyzer binaries from Stage 2.
 COPY --from=go-build /usr/local/gopath/bin/ /usr/local/bin/
+
+# `ww` CLI binary from Stage 3.
+COPY --from=ww-build /usr/local/bin/ww /usr/local/bin/ww
 
 # shfmt — shell-script formatter.
 ARG SHFMT_VERSION=3.10.0
@@ -205,6 +241,7 @@ RUN set -euo pipefail \
     && gitleaks version >/dev/null \
     && trivy --version >/dev/null \
     && helm version --short >/dev/null \
+    && ww version >/dev/null \
     && /opt/tools-venv/bin/ruff --version >/dev/null \
     && /opt/tools-venv/bin/yamllint --version >/dev/null \
     && /opt/tools-venv/bin/pytest --version >/dev/null \
