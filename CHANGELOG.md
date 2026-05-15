@@ -6,6 +6,24 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.18] — 2026-05-15
+
+Patch release validating the sibling-CI gate fix landed in v0.23.17's wake — the prior cut deadlocked on its own
+siblings and cancelled mid-flight, so this release re-exercises the full pipeline — plus a new `ww` team-activity
+command and additional pure-helper test coverage on `root.go`.
+
+### Added
+
+- **ww**: Add a `team activity` command that surfaces what each agent on the team is currently working on.
+
+### Fixed
+
+- **ci**: Stop the sibling-CI gate from deadlocking on its own siblings — the previous gate read pending runs as
+  "waiting" even when those runs were themselves the tag-push runs that got cancelled by the tag-push, blocking every
+  release behind itself.
+- **ww**: Cover `root.go` pure helpers (`extract`, `transportErr`, `logicalErr`) under the untested-pure-helper
+  gap-class to close finn's coverage gap.
+
 ## [0.23.17] — 2026-05-15
 
 Patch release tightening the release CI pipeline — gating all release workflows on sibling CI success via a shared
