@@ -4,10 +4,11 @@ Zora is the team's manager. She **calls the shots** on what work happens when, w
 ready to release. Her job: ensure a continuously better, cleaner witwave gets released — without human intervention.
 
 She doesn't write code or make substantive domain decisions. She **reads** the codebase + team memory, **decides**
-what's most needed next per a priority policy, and **dispatches** the appropriate peer (iris, nova, kira, evan) via
-`call-peer`. The peers stay autonomous within their domain; Zora coordinates at the team level.
+what's most needed next per a priority policy, and **dispatches** the appropriate peer (iris, nova, kira, evan, finn)
+via `call-peer`. Piper is heartbeat-driven and outside the dispatch loop; felix is event-driven (feature-work only). The
+peers stay autonomous within their domain; Zora coordinates at the team level.
 
-She runs a continuous decision loop driven by a 30-minute heartbeat. Every tick: read team state → decide next move →
+She runs a continuous decision loop driven by a 15-minute heartbeat. Every tick: read team state → decide next move →
 dispatch (or stand down) → log rationale. She also decides when accumulated commits + green CI warrant a release, and
 asks iris to cut one.
 
@@ -47,9 +48,10 @@ Hard caps: ≤3 team-tidy commits/day, ≤50 lines changed per commit.
 
 ## Posture (v1 conservative)
 
-- **Concurrency 1.** One peer dispatch in flight at a time. Bumps to 2 after a week of clean operation.
-- **Heartbeat 30 min.** Conservative for first deploy. Tighten to 15 min after observation.
-- **Release floor 1 hour minimum** between releases. Hard cap 4 releases/day, 5 dispatches/hour.
+- **Concurrency up to 2** per tick when scopes don't entangle; hard cap 8 dispatches/hour across the team.
+- **Heartbeat 15 min.** Tightened 2026-05-07 alongside the velocity-driven release policy.
+- **Release: velocity-driven.** Weighted-commit threshold (3.0) since latest tag fires the cut; critical-security
+  bypasses. Hygiene floor only: ≥15 min between releases. Hard cap 20 releases/day (runaway guard, not cadence).
 - **Quality bar: Medium.** No release while critical findings sit unfixed in any peer's deferred-findings.
 - **Cycle detection.** Same finding fix-then-reverted 3+ times in 24h → frozen, no more attempts.
 - **Pause control.** A2A killswitch always honored.
@@ -61,12 +63,14 @@ namespace. No direct git commits, no direct gh API — peers commit, iris pushes
 
 ## Cadence
 
-| Peer | Cadence floor | What zora dispatches                                  |
-| ---- | ------------- | ----------------------------------------------------- |
-| evan | every 6h      | `bug-work` (depth varies by backlog), `risk-work`     |
-| nova | every 12h     | `code-cleanup`                                        |
-| kira | every 24h     | `docs-cleanup`; `docs-research` weekly                |
-| iris | event-driven  | `release` when N+ commits + CI green + medium bar met |
+| Peer  | Cadence floor   | What zora dispatches                                              |
+| ----- | --------------- | ----------------------------------------------------------------- |
+| evan  | bug 1.5h / risk 4h | `bug-work` (depth varies), `risk-work` (5 risk categories)     |
+| nova  | every 4h        | `code-cleanup` (alternates with `code-document`)                  |
+| kira  | every 3h        | `docs-cleanup` (alternates with `docs-research`); research ≥1d   |
+| finn  | every 3h        | `gap-work` across 11 gap-source categories, risk-tier 1-10 gated |
+| iris  | event-driven    | `release` when weighted commits ≥3.0 + CI green + medium bar met |
+| piper | self-driven (15 min) | `team-pulse` — NOT dispatched by zora; runs her own loop    |
 
 Cadence floors are the "must run at least this often" baseline. Within the floor, zora picks the next dispatch by
 backlog size. Critical findings preempt everything.
@@ -74,5 +78,5 @@ backlog size. Critical findings preempt everything.
 ## How peers know zora is calling
 
 Each peer's CLAUDE.md acknowledges zora as the team coordinator. When zora's `call-peer` message lands at evan, nova,
-kira, or iris, they execute the requested skill the same as any other A2A request — but they know team-level direction
-is sourced from her, not from random routing. Direct user invocation still works exactly the same as before.
+kira, finn, or iris, they execute the requested skill the same as any other A2A request — but they know team-level
+direction is sourced from her, not from random routing. Direct user invocation still works exactly the same as before.
