@@ -9,8 +9,8 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 ## [0.23.16] — 2026-05-15
 
 Patch release publishing the social website to its custom domain, scaffolding the SOPS-based secrets workflow used by
-the team's CI and per-agent env files, adding Piper's blog generation skill alongside her first field note, and a
-broad sweep of repo-hygiene + lint-CI work to keep the tree quiet for cadence-driven releases.
+the team's CI and per-agent env files, adding Piper's blog generation skill alongside her first field note, and a broad
+sweep of repo-hygiene + lint-CI work to keep the tree quiet for cadence-driven releases.
 
 ### Added
 
@@ -22,9 +22,9 @@ broad sweep of repo-hygiene + lint-CI work to keep the tree quiet for cadence-dr
   design so community surfaces are discoverable from the public site.
 - **piper**: Add a blog generation skill that lets Piper draft field-note posts from her own observations and publish
   them into `social/posts/`, and publish Piper's first field note for 2026-05-15 through it.
-- **sops**: Add an age-based SOPS policy, a smoke example, and a `CI — SOPS` decrypt smoke workflow so encrypted
-  secrets are verified on every push; add encrypted SOPS env files for the self and test teams plus a Google Search
-  Console secret entry.
+- **sops**: Add an age-based SOPS policy, a smoke example, and a `CI — SOPS` decrypt smoke workflow so encrypted secrets
+  are verified on every push; add encrypted SOPS env files for the self and test teams plus a Google Search Console
+  secret entry.
 - **ci**: Add a `CI — Workflows` lint job that validates every workflow file under `.github/workflows/` and normalises
   workflow display names so the per-workflow CI summary reads consistently.
 - **operator**: Wire an RBAC drift guard so the operator chart's RBAC stays aligned with the controller's actual
@@ -49,13 +49,13 @@ broad sweep of repo-hygiene + lint-CI work to keep the tree quiet for cadence-dr
 - **harness**: Add a `.witwave/agent-card.md` mirror for felix to close a `sibling-pattern` gap-class finding.
 - **trace**: Fix trace auth and doc drift surfaced during the social-website rollout.
 - **ci**: Fix the charts CI path that previously broke when no `test-values.yaml` was present.
-- **lint**: Finish the markdown lint cleanup pass, reduce changelog markdownlint noise, and strengthen docs/operator
-  CI lint coverage.
+- **lint**: Finish the markdown lint cleanup pass, reduce changelog markdownlint noise, and strengthen docs/operator CI
+  lint coverage.
 
 ### Agent identity
 
-- **piper, felix**: Adopt the hold-label-respect and external-trigger principles so both honour the team's HOLD
-  posture during paused windows.
+- **piper, felix**: Adopt the hold-label-respect and external-trigger principles so both honour the team's HOLD posture
+  during paused windows.
 - **team**: Align the self and test agent teams so identical roster scaffolding lives across both environments.
 
 ### Documentation
