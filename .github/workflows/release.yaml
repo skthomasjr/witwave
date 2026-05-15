@@ -6,6 +6,23 @@ name: Release — Container Images
 # charts/witwave to oci://ghcr.io/.../charts), producing duplicate OCI pushes
 # and occasionally two differing chart manifests for the same version
 # (#1257). Keep image builds here; charts are owned by release-helm.yml.
+#
+# Multi-platform structure: each (image, platform) builds on its NATIVE
+# runner — linux/amd64 on `ubuntu-latest`, linux/arm64 on `ubuntu-24.04-arm`.
+# The previous shape used `docker/setup-qemu-action` to cross-build arm64
+# under emulation on amd64 runners, which made the claude/codex/gemini
+# images take 35-50 minutes each (the `go install` of the seven Go tools
+# baked into the image is especially miserable under QEMU). Native arm64
+# brings those down to 10-15 minutes. Per-arch images push by digest
+# only; a `merge` job per image stitches the digests into a multi-arch
+# manifest list at the user-facing tags and signs that manifest with
+# cosign.
+#
+# BuildKit layer cache lives in the registry at
+# `:buildcache-linux-<arch>` per image; populated on each successful
+# build (`mode=max`) and consulted by the next release. Releases where
+# the Dockerfile substance hasn't changed get nearly free rebuilds on
+# the heavy `apt-get` / `go install` / `pip install` layers.
 
 on:
   push:
@@ -24,77 +41,44 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/wait-for-sibling-ci
 
-  build-and-push:
+  build:
     needs: gate
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.image }} (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+        image:
+          - { name: harness,        file: harness/Dockerfile,          context: .                  }
+          - { name: claude,         file: backends/claude/Dockerfile,  context: .                  }
+          - { name: codex,          file: backends/codex/Dockerfile,   context: .                  }
+          - { name: gemini,         file: backends/gemini/Dockerfile,  context: .                  }
+          - { name: echo,           file: backends/echo/Dockerfile,    context: .                  }
+          - { name: operator,       file: operator/Dockerfile,         context: operator           }
+          - { name: git-sync,       file: helpers/git-sync/Dockerfile, context: helpers/git-sync   }
+          - { name: mcp-kubernetes, file: tools/kubernetes/Dockerfile, context: .                  }
+          - { name: mcp-helm,       file: tools/helm/Dockerfile,       context: .                  }
+          - { name: mcp-prometheus, file: tools/prometheus/Dockerfile, context: .                  }
+          - { name: dashboard,      file: clients/dashboard/Dockerfile, context: .                 }
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
-      # #1460: OIDC token for cosign keyless signing. The token is
-      # scoped per-job and expires in minutes; GitHub's OIDC endpoint
-      # is the authoritative issuer and cosign exchanges this for a
-      # short-lived Fulcio certificate bound to the workflow identity.
-      # No long-lived signing key in this repo.
+      # #1460: OIDC token for cosign keyless signing. Per-arch images
+      # carry their own SLSA provenance + SBOM via buildx; the manifest
+      # list itself is signed in the merge job.
       id-token: write
 
-    strategy:
-      matrix:
-        include:
-          - image: harness
-            file: harness/Dockerfile
-            context: .
-          - image: claude
-            file: backends/claude/Dockerfile
-            context: .
-          - image: codex
-            file: backends/codex/Dockerfile
-            context: .
-          - image: gemini
-            file: backends/gemini/Dockerfile
-            context: .
-          - image: echo
-            file: backends/echo/Dockerfile
-            context: .
-          - image: operator
-            file: operator/Dockerfile
-            context: operator
-          - image: git-sync
-            file: helpers/git-sync/Dockerfile
-            context: helpers/git-sync
-          - image: mcp-kubernetes
-            file: tools/kubernetes/Dockerfile
-            context: .
-          - image: mcp-helm
-            file: tools/helm/Dockerfile
-            context: .
-          - image: mcp-prometheus
-            file: tools/prometheus/Dockerfile
-            context: .
-          - image: dashboard
-            file: clients/dashboard/Dockerfile
-            context: .
-
     steps:
+      - name: Compute platform pair
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
-
-      # #1598 prerequisite: buildx with the docker-container driver is
-      # required to attach attestations (provenance / SBOM) to the
-      # pushed image. The default `docker` driver on the GHA runner
-      # rejects `provenance: true` with "Attestation is not supported
-      # for the docker driver." setup-buildx-action installs a fresh
-      # builder backed by docker-container, which BuildKit drives via
-      # gRPC and which fully supports the OCI attestation referrer
-      # graph. No extra config — the action handles install + register.
-      # QEMU emulators are required to cross-build linux/arm64 from the
-      # default linux/amd64 GitHub runners. Without this, the buildx
-      # platform fan-out below silently falls back to host-arch only —
-      # which is how every release through v0.11.1 shipped amd64-only
-      # manifests and broke Apple Silicon (linux/arm64) deployments.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -106,16 +90,98 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Strip the leading `v` from the tag so VERSION matches the image
-      # tag docker-metadata-action actually writes to GHCR. Without this,
-      # the operator binary gets DefaultImageTag=v0.7.2 while the images
-      # publish as `:0.7.2`, and the reconciler's ImagePullBackOffs are
-      # indistinguishable from "image doesn't exist." For non-tag runs
-      # (branch pushes), GITHUB_REF_NAME has no `v` prefix and the strip
-      # is a no-op — safe either way.
+      # See header comment on the v-strip rationale (operator
+      # DefaultImageTag must match the tag GHCR receives).
       - name: Compute stripped version
         id: tag_version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata (labels only at build time)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Push by digest only — no user-facing tag at this stage.
+          # The `merge` job downstream stitches per-arch digests into
+          # a multi-arch manifest list at the real tags.
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
+          # #1598: SLSA provenance + SBOM attached to the per-arch
+          # image. The multi-arch manifest list itself is signed (not
+          # attested) in the merge job.
+          provenance: true
+          sbom: true
+          # BuildKit registry cache, scoped per (image, platform).
+          # First build after this change is cold; subsequent releases
+          # hit nearly every heavy layer (apt, Go toolchain, pip).
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }}:buildcache-${{ env.PLATFORM_PAIR }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }}:buildcache-${{ env.PLATFORM_PAIR }},mode=max
+          build-args: |
+            VERSION=${{ steps.tag_version.outputs.version }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    name: Merge ${{ matrix.image }} manifest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - harness
+          - claude
+          - codex
+          - gemini
+          - echo
+          - operator
+          - git-sync
+          - mcp-kubernetes
+          - mcp-helm
+          - mcp-prometheus
+          - dashboard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Download digests for ${{ matrix.image }}
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
@@ -127,69 +193,35 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref, '-beta.') }}
 
-      - name: Build and push ${{ matrix.image }}
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
-          # Multi-arch fan-out. Apple Silicon and AWS Graviton both need
-          # linux/arm64 — single-arch was a 11.x-and-earlier defect that
-          # broke `ww operator install` on any non-amd64 cluster with
-          # ImagePullBackOff: "no matching manifest for linux/arm64/v8".
-          # Buildx publishes a multi-arch manifest list at the tag; the
-          # registry serves the right per-arch image at pull time.
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # #1598: SLSA 2 attestations attached as OCI referrers next to
-          # the image manifest. Buildx generates both at build time:
-          #   - provenance — SLSA build provenance predicate (what was
-          #     built, when, by whom, with what inputs). mode=max
-          #     includes the full build graph; default for public repos.
-          #   - sbom — Software Bill of Materials via the BuildKit
-          #     scanner (syft underneath). Lists every package and
-          #     version baked into the image.
-          # Verifiable post-release with `cosign verify-attestation
-          # --type slsaprovenance|spdxjson <image>@<digest>`. SECURITY.md
-          # carries the consumer-side recipe.
-          provenance: true
-          sbom: true
-          # VERSION is consumed by Dockerfiles that need to embed the release
-          # version into the binary at build time — currently the operator
-          # uses it for ldflags injection of DefaultImageTag (#440). Other
-          # images ignore the build-arg, which is harmless.
-          #
-          # Uses VERSION from the stripped-tag computed above so it
-          # matches the actual image tag on GHCR (docker-metadata-action
-          # strips `v` from semver tags — images land as `foo:0.7.2`,
-          # not `foo:v0.7.2`). Before this match, the operator was built
-          # with `DefaultImageTag=v0.7.2` and the reconciler would
-          # request e.g. `git-sync:v0.7.2`, which GHCR rejected with
-          # ImagePullBackOff. See #<pending-issue>.
-          build-args: |
-            VERSION=${{ steps.tag_version.outputs.version }}
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}@sha256:%s ' *)
 
-      # #1460: cosign keyless signing of every pushed image. Uses
-      # Sigstore's public-good Fulcio CA + Rekor transparency log —
-      # no long-lived key material in this repo. The signature is
-      # written to GHCR as a sibling OCI artifact next to the image
-      # (same registry path, suffix .sig on the digest). Verification
-      # recipe lives in SECURITY.md § Verifying signed container
-      # images.
-      #
-      # Signed BY DIGEST, not tag: tags are mutable (a `latest` push
-      # reuses the tag); digests are immutable content hashes. Signing
-      # the tag would let a later mutation leave an old signature
-      # attached to new bits. Signing the digest means the signature
-      # is tied to the exact content we just pushed, full stop.
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect \
+            ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}:${{ steps.meta.outputs.version }}
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Sign ${{ matrix.image }} image
+      # #1460: cosign keyless signature on the multi-arch manifest
+      # list. Per-arch images each carry their own provenance + SBOM
+      # attestations from the build step above; the manifest list
+      # itself gets the cosign signature so `cosign verify <image>:<tag>`
+      # resolves cleanly for consumers pulling by tag.
+      - name: Sign manifest list
         env:
           IMAGE_REF: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}
-          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_VERSION: ${{ steps.meta.outputs.version }}
         run: |
+          set -euo pipefail
+          DIGEST=$(
+            docker buildx imagetools inspect "${IMAGE_REF}:${IMAGE_VERSION}" --format '{{json .Manifest}}' \
+              | jq -r .digest
+          )
           cosign sign --yes "${IMAGE_REF}@${DIGEST}"
