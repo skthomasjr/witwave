@@ -250,8 +250,8 @@ docker build -f backends/echo/Dockerfile -t echo:latest .
 
 SOPS is the committed encrypted source for repo-managed team secrets. The policy in `.sops.yaml` applies to
 `*.sops.env`, `*.sops.yaml`, `*.sops.yml`, and `*.sops.json` anywhere in the repo. A more specific
-`.secrets/*.partial.sops.yaml` rule keeps non-secret metadata readable while encrypting secret-shaped keys
-(`password`, `token`, `secret`, `client_secret`, `api_key`, `private_key`). Current encrypted mirrors:
+`.secrets/*.partial.sops.yaml` rule keeps non-secret metadata readable while encrypting secret-shaped keys (`password`,
+`token`, `secret`, `client_secret`, `api_key`, `private_key`). Current encrypted mirrors:
 
 - `.agents/self/team.sops.env` — shared self-team credentials.
 - `.agents/self/<agent>/agent.sops.env` — per-agent GitHub identity, with in-container names like `GITHUB_TOKEN` and
