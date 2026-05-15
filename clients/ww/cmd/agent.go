@@ -1150,11 +1150,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Per-entry --gitsync-secret values win on collision (precedence: explicit "+
 			"per-entry > agent-wide --gitsync-secret-from-env).")
 	cmd.Flags().StringArrayVar(&persist, "persist", nil,
-		"Provision a per-backend PVC for session/memory persistence (repeatable). "+
+		"Provision a per-backend PVC for session/memory/log persistence (repeatable). "+
 			"Form: <backend-name>=<size>[@<storage-class>]. Operator creates a PVC named "+
 			"<agent>-<backend>-data and projects it into the container at default mount "+
-			"paths derived from the backend's TYPE: claude → projects/sessions/backups/memory, "+
-			"codex → memory/sessions, gemini → memory, echo → memory (symbolic). Pair with "+
+			"paths derived from the backend's TYPE: claude → projects/sessions/backups/memory/logs, "+
+			"codex → memory/sessions/logs, gemini → memory/logs, echo → memory (symbolic). Pair with "+
 			"--persist-mount to override the default mount list with an explicit one.")
 	cmd.Flags().StringArrayVar(&persistMounts, "persist-mount", nil,
 		"Override the default mount list on a backend's PVC (repeatable). Form: "+
@@ -1165,8 +1165,8 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&withPersistence, "with-persistence", false,
 		"Provision a per-backend PVC for every declared --backend using type-derived "+
 			"defaults (size + mount layout). Echo → 1Gi/memory; claude → 10Gi with "+
-			"projects/sessions/backups/memory; codex → 5Gi with memory/sessions; gemini → "+
-			"5Gi/memory. Override per-type defaults in ~/.config/ww/config.toml under "+
+			"projects/sessions/backups/memory/logs; codex → 5Gi with memory/sessions/logs; gemini → "+
+			"5Gi/memory/logs. Override per-type defaults in ~/.config/ww/config.toml under "+
 			"[persist.defaults.<type>] (size, storageClassName, and mounts). Explicit "+
 			"--persist <name>=<size> takes precedence — --with-persistence only fills in "+
 			"backends that weren't named explicitly.")

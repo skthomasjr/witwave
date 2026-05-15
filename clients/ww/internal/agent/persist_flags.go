@@ -50,9 +50,9 @@ type BackendStorageSpec struct {
 // Defaults reflect typical disk pressure per backend type:
 //
 //   - echo:   1Gi  — symbolic mount; echo writes nothing real
-//   - claude: 10Gi — projects/sessions/backups/memory accumulate
-//   - codex:  5Gi  — memory + sessions, lighter footprint
-//   - gemini: 5Gi  — JSON session store grows with conversation length
+//   - claude: 10Gi — projects/sessions/backups/memory/logs accumulate
+//   - codex:  5Gi  — memory + sessions + logs, lighter footprint
+//   - gemini: 5Gi  — JSON session store + logs grow with conversation length
 var BackendStorageSizeDefaults = map[string]string{
 	"echo":   "1Gi",
 	"claude": "10Gi",
@@ -63,7 +63,8 @@ var BackendStorageSizeDefaults = map[string]string{
 // BackendStoragePresets enumerates the default subPath → mountPath
 // fan-out for each known backend type. Mirrors the chart's example
 // values (charts/witwave/values.yaml ~line 1488) and the dirs each
-// backend's image expects to find under `/home/agent/.<type>/`.
+// backend's image expects to find under `/home/agent/.<type>/`, plus
+// `/home/agent/logs` for Witwave conversation/trace JSONL durability.
 //
 // Backend types not listed here have no defaults — the CLI rejects
 // `--persist <name>=<size>` for them with an actionable error rather
@@ -74,16 +75,19 @@ var BackendStoragePresets = map[string][]BackendStorageMount{
 		{SubPath: "sessions", MountPath: "/home/agent/.claude/sessions"},
 		{SubPath: "backups", MountPath: "/home/agent/.claude/backups"},
 		{SubPath: "memory", MountPath: "/home/agent/.claude/memory"},
+		{SubPath: "logs", MountPath: "/home/agent/logs"},
 	},
 	"codex": {
 		{SubPath: "memory", MountPath: "/home/agent/.codex/memory"},
 		{SubPath: "sessions", MountPath: "/home/agent/.codex/sessions"},
+		{SubPath: "logs", MountPath: "/home/agent/logs"},
 	},
 	"gemini": {
 		// gemini stores conversation JSON under memory/sessions/ per
 		// SESSION_STORE_DIR's default, and persisted memory files at
 		// memory/. One PVC, two subPaths.
 		{SubPath: "memory", MountPath: "/home/agent/.gemini/memory"},
+		{SubPath: "logs", MountPath: "/home/agent/logs"},
 	},
 	"echo": {
 		// Echo's intentional non-scope (backends/echo/README.md) means

@@ -163,7 +163,7 @@ The status output should show the workspace `Ready` with both volumes provisione
 
 Iris is a WitwaveAgent with one `claude` backend, bound to the `witwave-self` workspace, with its identity (prompts,
 hooks, Claude Code config) sourced from `.agents/self/iris/` in this repo, and per-backend persistent storage for
-session + memory state. One command:
+session, memory, and Witwave conversation/trace logs. One command:
 
 ```bash
 mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/iris/agent.sops.env -- \

@@ -236,9 +236,14 @@ func TestResolvePersistDefaults(t *testing.T) {
 				t.Errorf("%q size = %q, want %q", typeName, spec.Size, wantSize)
 			}
 		}
-		// Claude's preset has four mount entries — verify it carried through.
-		if mounts := got["claude"].Mounts; len(mounts) != 4 {
-			t.Errorf("claude mounts = %d, want 4", len(mounts))
+		// Claude's preset includes native state plus Witwave logs.
+		if mounts := got["claude"].Mounts; len(mounts) != 5 {
+			t.Errorf("claude mounts = %d, want 5", len(mounts))
+		}
+		for _, typ := range []string{"claude", "codex", "gemini"} {
+			if !hasMount(got[typ].Mounts, "logs", "/home/agent/logs") {
+				t.Errorf("%s preset missing logs mount: %+v", typ, got[typ].Mounts)
+			}
 		}
 	})
 
@@ -278,8 +283,8 @@ func TestResolvePersistDefaults(t *testing.T) {
 		got := ResolvePersistDefaults(map[string]PersistDefaults{
 			"claude": {Mounts: nil},
 		})
-		if len(got["claude"].Mounts) != 4 {
-			t.Errorf("mounts = %d, want preset of 4", len(got["claude"].Mounts))
+		if len(got["claude"].Mounts) != 5 {
+			t.Errorf("mounts = %d, want preset of 5", len(got["claude"].Mounts))
 		}
 	})
 
@@ -307,6 +312,15 @@ func TestResolvePersistDefaults(t *testing.T) {
 			t.Errorf("input slice was aliased (got %q, want %q)", input[0].SubPath, "x")
 		}
 	})
+}
+
+func hasMount(mounts []BackendStorageMount, subPath, mountPath string) bool {
+	for _, m := range mounts {
+		if m.SubPath == subPath && m.MountPath == mountPath {
+			return true
+		}
+	}
+	return false
 }
 
 // TestExpandWithPersistence pins the --with-persistence fan-out.

@@ -1516,6 +1516,8 @@ agents:
         #       mountPath: /home/agent/.claude/backups
         #     - subPath: memory
         #       mountPath: /home/agent/.claude/memory   # or .codex/memory / .gemini/memory for those backends
+        #     - subPath: logs
+        #       mountPath: /home/agent/logs             # conversation.jsonl, tool-activity.jsonl, optional tasks.db
 
         # # Inline config files mounted into the backend container.
         # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
