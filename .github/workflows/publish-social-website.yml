@@ -46,7 +46,7 @@ jobs:
 
             for line in "${lines[@]}"; do
               [ -z "$line" ] && continue
-              IFS=$'\t' read -r id name status conclusion <<< "$line"
+              IFS=$'\t' read -r _ name status conclusion <<< "$line"
               case "$status" in
                 completed)
                   case "$conclusion" in
