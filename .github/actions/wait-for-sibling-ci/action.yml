@@ -4,7 +4,9 @@ description: >-
   `success` or `skipped` conclusion. Treats `in_progress` and `queued` as
   "wait, then re-check" and refuses the calling job if any sibling finishes
   with any other conclusion. Filters out the calling run itself via
-  $GITHUB_RUN_ID so a workflow never waits on itself.
+  $GITHUB_RUN_ID, plus any workflow whose name matches `exclude-pattern`
+  so multiple gate-using workflows on the same SHA don't deadlock waiting
+  on each other.
 
 inputs:
   timeout-seconds:
@@ -15,6 +17,17 @@ inputs:
     description: Seconds between `gh run list` polls while siblings are still in flight.
     required: false
     default: "15"
+  exclude-pattern:
+    description: >-
+      Regex matched against workflow `name`. Sibling workflows whose name
+      matches are ignored (not waited on, not failed on). Default skips
+      other gate-using workflows so they don't deadlock on each other
+      when several fire on the same SHA — e.g. on a tag push that
+      simultaneously triggers `Release — Container Images`,
+      `Release — Helm Charts`, and `Release — ww CLI`, each one's gate
+      would otherwise wait on the other two forever.
+    required: false
+    default: '^(Release|Publish) — '
 
 runs:
   using: composite
@@ -27,6 +40,7 @@ runs:
         SELF_RUN_ID: ${{ github.run_id }}
         TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
         POLL_INTERVAL: ${{ inputs.poll-interval }}
+        EXCLUDE_PATTERN: ${{ inputs.exclude-pattern }}
       run: |
         set -euo pipefail
 
@@ -39,8 +53,11 @@ runs:
               --commit "$COMMIT_SHA" \
               --limit 50 \
               --json databaseId,name,status,conclusion \
-              | jq -r --argjson self "$SELF_RUN_ID" \
-                  '.[] | select(.databaseId != $self) | "\(.databaseId)\t\(.name)\t\(.status)\t\(.conclusion)"'
+              | jq -r --argjson self "$SELF_RUN_ID" --arg exclude "$EXCLUDE_PATTERN" \
+                  '.[]
+                   | select(.databaseId != $self)
+                   | select(.name | test($exclude) | not)
+                   | "\(.databaseId)\t\(.name)\t\(.status)\t\(.conclusion)"'
           )
 
           in_flight=0
