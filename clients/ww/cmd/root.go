@@ -139,6 +139,7 @@ func Execute() int {
 	root.AddCommand(newAgentCmd())
 	root.AddCommand(newWorkspaceCmd())
 	root.AddCommand(newConversationCmd())
+	root.AddCommand(newTeamCmd())
 	root.AddCommand(newTuiCmd())
 
 	err := root.Execute()

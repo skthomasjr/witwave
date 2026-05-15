@@ -153,6 +153,7 @@ func TestLoad_XDGOverride(t *testing.T) {
 [profile.default]
 base_url = "http://xdg"
 `)
+	t.Setenv("HOME", t.TempDir())
 	// Put config.toml at <tempdir>/ww/config.toml so XDG resolution finds it.
 	root := t.TempDir()
 	wwDir := filepath.Join(root, "ww")
