@@ -51,17 +51,29 @@ jobs:
           - linux/amd64
           - linux/arm64
         image:
-          - { name: harness,        file: harness/Dockerfile,          context: .                  }
-          - { name: claude,         file: backends/claude/Dockerfile,  context: .                  }
-          - { name: codex,          file: backends/codex/Dockerfile,   context: .                  }
-          - { name: gemini,         file: backends/gemini/Dockerfile,  context: .                  }
-          - { name: echo,           file: backends/echo/Dockerfile,    context: .                  }
-          - { name: operator,       file: operator/Dockerfile,         context: operator           }
-          - { name: git-sync,       file: helpers/git-sync/Dockerfile, context: helpers/git-sync   }
-          - { name: mcp-kubernetes, file: tools/kubernetes/Dockerfile, context: .                  }
-          - { name: mcp-helm,       file: tools/helm/Dockerfile,       context: .                  }
-          - { name: mcp-prometheus, file: tools/prometheus/Dockerfile, context: .                  }
-          - { name: dashboard,      file: clients/dashboard/Dockerfile, context: .                 }
+          - harness
+          - claude
+          - codex
+          - gemini
+          - echo
+          - operator
+          - git-sync
+          - mcp-kubernetes
+          - mcp-helm
+          - mcp-prometheus
+          - dashboard
+        include:
+          - { image: harness,        file: harness/Dockerfile,           context: .                }
+          - { image: claude,         file: backends/claude/Dockerfile,   context: .                }
+          - { image: codex,          file: backends/codex/Dockerfile,    context: .                }
+          - { image: gemini,         file: backends/gemini/Dockerfile,   context: .                }
+          - { image: echo,           file: backends/echo/Dockerfile,     context: .                }
+          - { image: operator,       file: operator/Dockerfile,          context: operator         }
+          - { image: git-sync,       file: helpers/git-sync/Dockerfile,  context: helpers/git-sync }
+          - { image: mcp-kubernetes, file: tools/kubernetes/Dockerfile,  context: .                }
+          - { image: mcp-helm,       file: tools/helm/Dockerfile,        context: .                }
+          - { image: mcp-prometheus, file: tools/prometheus/Dockerfile,  context: .                }
+          - { image: dashboard,      file: clients/dashboard/Dockerfile, context: .                }
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -100,20 +112,20 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }}
+          images: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}
 
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.file }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           # Push by digest only — no user-facing tag at this stage.
           # The `merge` job downstream stitches per-arch digests into
           # a multi-arch manifest list at the real tags.
-          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
           # #1598: SLSA provenance + SBOM attached to the per-arch
           # image. The multi-arch manifest list itself is signed (not
           # attested) in the merge job.
@@ -122,8 +134,8 @@ jobs:
           # BuildKit registry cache, scoped per (image, platform).
           # First build after this change is cold; subsequent releases
           # hit nearly every heavy layer (apt, Go toolchain, pip).
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }}:buildcache-${{ env.PLATFORM_PAIR }}
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image.name }}:buildcache-${{ env.PLATFORM_PAIR }},mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}:buildcache-${{ env.PLATFORM_PAIR }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}:buildcache-${{ env.PLATFORM_PAIR }},mode=max
           build-args: |
             VERSION=${{ steps.tag_version.outputs.version }}
 
@@ -136,7 +148,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}
+          name: digests-${{ matrix.image }}-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -195,11 +207,22 @@ jobs:
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
+        env:
+          IMAGE_REF: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}
         run: |
           set -euo pipefail
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}@sha256:%s ' *)
+
+          tag_args=()
+          while IFS= read -r tag; do
+            tag_args+=("-t" "$tag")
+          done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+          source_refs=()
+          for digest in *; do
+            source_refs+=("${IMAGE_REF}@sha256:${digest}")
+          done
+
+          docker buildx imagetools create "${tag_args[@]}" "${source_refs[@]}"
 
       - name: Inspect manifest
         run: |
