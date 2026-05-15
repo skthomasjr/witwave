@@ -185,12 +185,12 @@ def test_parse_consensus_simple_backend_glob():
 def test_parse_consensus_backend_with_explicit_model():
     entries = parse_consensus(
         [
-            {"backend": "claude", "model": "claude-opus-4-6"},
+            {"backend": "claude", "model": "claude-opus-4-7"},
         ]
     )
     assert len(entries) == 1
     assert entries[0].backend == "claude"
-    assert entries[0].model == "claude-opus-4-6"
+    assert entries[0].model == "claude-opus-4-7"
 
 
 def test_parse_consensus_multiple_entries_preserves_order():

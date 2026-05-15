@@ -8,7 +8,7 @@ Example backend.yaml:
       agents:
         - id: claude
           url: http://claude-code-agent:8000
-          model: claude-opus-4-6
+          model: claude-opus-4-7
 
         - id: codex
           url: http://codex-agent:8000
@@ -17,25 +17,25 @@ Example backend.yaml:
       routing:
         default:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
         a2a:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
         heartbeat:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
         job:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
         task:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
         trigger:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
         continuation:
           agent: claude
-          model: claude-opus-4-6
+          model: claude-opus-4-7
 
 Each routing value may also be a plain string (agent id), which is equivalent to
 specifying only the agent with no model override.

@@ -122,7 +122,7 @@ When no `body:` is provided and no `extract:` is defined, this JSON envelope is 
     "error": null,
     "duration_seconds": 12.3,
     "response_preview": "...",
-    "model": "claude-opus-4-6"
+    "model": "claude-opus-4-7"
   }
 }
 ```

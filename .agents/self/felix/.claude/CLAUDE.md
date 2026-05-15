@@ -109,7 +109,7 @@ The team:
 - **zora** — manager (decides team-level dispatching + release cadence)
 - **piper** — outreach narrator (heartbeat-driven; not in your dispatch path)
 
-For the full team picture (topology, release loop, future roles), see [`../../TEAM.md`](../../TEAM.md).
+For the full team picture (topology, release loop, future roles), see [self-team README](../../README.md).
 
 Same peer-to-peer contract still applies for cross-agent collaboration: when YOU need another peer's help (e.g., asking
 iris to push your batch + watch CI), use `call-peer` directly. Zora isn't a relay.

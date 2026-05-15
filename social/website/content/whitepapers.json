@@ -10,7 +10,7 @@
       "readerPath": "reader/?paper=three-phases-of-ai-adoption",
       "updatedAt": "2026-05-14",
       "deck": "Driven -> Delegated -> Native: the practical path from IDE agents to an agent-native development lifecycle.",
-      "status": "draft",
+      "status": "published",
       "primary": true,
       "themes": ["agentic-ai", "software-development", "sdlc", "adoption"]
     },
@@ -24,7 +24,7 @@
       "readerPath": "reader/?paper=anatomy-of-an-agentic-team",
       "updatedAt": "2026-05-14",
       "deck": "A practical model for how specialized agents coordinate, remember, improve, and keep humans in the loop.",
-      "status": "draft",
+      "status": "published",
       "primary": true,
       "themes": ["agentic-teams", "coordination", "memory", "operating-model"]
     }

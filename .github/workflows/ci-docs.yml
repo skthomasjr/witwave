@@ -3,8 +3,9 @@
 # Two jobs split on event type:
 #
 #   lint-changed (PR gate, hard-fail)
-#     Runs prettier --check + markdownlint against the *.md files
-#     touched in the PR diff only. Historical drift on untouched
+#     Runs prettier --check, markdownlint, and local-link checks
+#     against the *.md files touched in the PR diff only. Historical
+#     drift on untouched
 #     files does NOT block unrelated PRs — the new floor is "no NEW
 #     drift introduced." Convergence is incremental: as files are
 #     edited their formatting is brought up to spec.
@@ -24,12 +25,16 @@
 #
 # Excludes live in .prettierignore + .markdownlintignore (the two
 # files mirror each other so both jobs agree on the file set).
+# Local Markdown link validation lives in scripts/check-markdown-links.py
+# because markdownlint does not understand this repo's fenced examples,
+# generated mirrors, and template placeholders well enough by itself.
 name: CI — Docs
 
 on:
   pull_request:
     paths:
       - "**/*.md"
+      - "scripts/check-markdown-links.py"
       - ".github/workflows/ci-docs.yml"
       - ".markdownlint.yaml"
       - ".prettierrc.yaml"
@@ -39,6 +44,7 @@ on:
     branches: [main]
     paths:
       - "**/*.md"
+      - "scripts/check-markdown-links.py"
       - ".github/workflows/ci-docs.yml"
       - ".markdownlint.yaml"
       - ".prettierrc.yaml"
@@ -120,10 +126,16 @@ jobs:
               --ignore-path .markdownlintignore \
             < .ci-changed-md.txt
 
+      - name: local Markdown links (changed files)
+        if: steps.changed.outputs.has_files == 'true'
+        run: |
+          set -euo pipefail
+          xargs scripts/check-markdown-links.py --root . < .ci-changed-md.txt
+
   # ---------------------------------------------------------------
   # Repo-wide lint on main. The repo now has a clean Markdown baseline,
   # so pushes to main should keep the whole tracked Markdown surface
-  # formatted and lint-clean.
+  # formatted, lint-clean, and free of broken local links.
   # ---------------------------------------------------------------
   lint-full:
     name: Lint all *.md
@@ -162,3 +174,8 @@ jobs:
             --config .markdownlint.yaml \
             --ignore-path .markdownlintignore \
             < .ci-all-md.zlist
+
+      - name: local Markdown links (full repo)
+        run: |
+          set -euo pipefail
+          scripts/check-markdown-links.py --root .

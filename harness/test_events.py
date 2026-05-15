@@ -318,7 +318,7 @@ class EventSchemaTests(unittest.TestCase):
                     "session_id_hash": "abcdef012345",
                     "role": "assistant",
                     "content_bytes": 42,
-                    "model": "claude-opus-4-6",
+                    "model": "claude-opus-4-7",
                 },
             )
         )

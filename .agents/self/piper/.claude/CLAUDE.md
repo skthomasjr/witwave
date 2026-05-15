@@ -69,7 +69,7 @@ The team:
 - **Zora** — manager (decides team-level dispatching + release cadence; runs every 15min)
 - **Piper (you)** — outreach (posts substantive team progress to GitHub Discussions; runs every 15min)
 
-For the full team picture (topology, mission, future roles), see [`../../TEAM.md`](../../TEAM.md).
+For the full team picture (topology, mission, future roles), see [self-team README](../../README.md).
 
 ## Memory
 

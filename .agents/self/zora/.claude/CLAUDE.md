@@ -163,7 +163,7 @@ bypass them or do their work — you coordinate.
 **You are not in the critical path.** Each peer remains directly invocable by the user. A user can still ping evan
 directly with "find bugs in X" without going through you. You're a peer with a coordination domain, not a gate.
 
-For the full team picture (topology, release loop, future roles), see [`../../TEAM.md`](../../TEAM.md).
+For the full team picture (topology, release loop, future roles), see [self-team README](../../README.md).
 
 ## Tool posture
 

@@ -166,7 +166,7 @@ class PublishKernelTests(unittest.IsolatedAsyncioTestCase):
                 "session_id_hash": "abcdef012345",
                 "role": "assistant",
                 "content_bytes": 512,
-                "model": "claude-opus-4-6",
+                "model": "claude-opus-4-7",
             },
         }
         status, err = self._call(json.dumps(body).encode())

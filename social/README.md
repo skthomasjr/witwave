@@ -160,7 +160,7 @@ human-readable form. Useful when scanning the file directly without parsing YAML
 
 - ✅ **X** — https://x.com/skthomasjr/status/1234567890 (2026-05-15T14:00:00Z)
 - ✅ **LinkedIn** — https://linkedin.com/posts/scott-thomas-launch (2026-05-15T14:05:00Z)
-- ⏳ **Blog** — draft (blog surface not yet live)
+- ✅ **Blog** — https://witwave.ai/blog/2026-05-13-introducing-field-notes-from-piper/ (2026-05-13)
 - ❌ **Mastodon** — not posting (decision: too niche for this content)
 ```
 
