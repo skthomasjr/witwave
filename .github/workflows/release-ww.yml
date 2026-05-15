@@ -32,8 +32,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Wait for sibling CI
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/wait-for-sibling-ci
+
   goreleaser:
     name: goreleaser
+    needs: gate
     runs-on: ubuntu-latest
     # #1378: hard-gate the whole job on tag refs so any future
     # workflow_dispatch / pull_request / pull_request_target addition

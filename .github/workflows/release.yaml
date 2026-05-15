@@ -14,7 +14,18 @@ on:
       - "v*.*.*-beta.*"
 
 jobs:
+  gate:
+    name: Wait for sibling CI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/wait-for-sibling-ci
+
   build-and-push:
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
