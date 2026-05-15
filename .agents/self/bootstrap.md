@@ -173,7 +173,9 @@ mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/ir
   --with-persistence \
   --backend claude \
   --harness-env TASK_TIMEOUT_SECONDS=2700 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
   --backend-secret-from-env claude=GITHUB_TOKEN \
   --backend-secret-from-env claude=GITHUB_USER \
@@ -187,6 +189,11 @@ the 5-minute default) applies end-to-end. The harness uses it to size the A2A re
 LLM-call timeout. Mismatch between them causes confusing failures — the harness gives up mid-call and retries, leaving
 the backend running and producing duplicate work. The headroom matters when iris watches release workflows (the
 container-build job alone can take ~25 minutes) or delegates a long-running task to a sibling.
+
+`CONVERSATIONS_AUTH_DISABLED=true` is the local-dev escape hatch on the harness and backend bearer-token gates for
+conversation/status inspection from a local workstation. It lets `ww conversation list / show / --follow` and
+`ww team status` read activity without minting per-agent `CONVERSATIONS_AUTH_TOKEN` secrets. This is not required for
+agent-to-agent communication or normal team work. Production deployments should set a real token instead.
 
 Verify iris is `Ready` and bound to the workspace:
 
@@ -219,7 +226,9 @@ mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/ki
   --with-persistence \
   --backend claude \
   --harness-env TASK_TIMEOUT_SECONDS=2700 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
   --backend-secret-from-env claude=GITHUB_TOKEN \
   --backend-secret-from-env claude=GITHUB_USER \
@@ -258,7 +267,9 @@ mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/no
   --with-persistence \
   --backend claude \
   --harness-env TASK_TIMEOUT_SECONDS=2700 \
+  --harness-env CONVERSATIONS_AUTH_DISABLED=true \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
+  --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
   --backend-secret-from-env claude=GITHUB_TOKEN \
   --backend-secret-from-env claude=GITHUB_USER \
@@ -296,10 +307,6 @@ mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/ev
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/evan \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
-
-`CONVERSATIONS_AUTH_DISABLED=true` is the local-dev escape hatch on the harness's bearer-token gate — it lets
-`ww conversation list / show / --follow` work without minting per-agent CONVERSATIONS_AUTH_TOKEN secrets. Production
-deployments should set a real token instead.
 
 ## Step 7 — Deploy zora
 
