@@ -6,6 +6,37 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.19] — 2026-05-15
+
+Patch release introducing a shared `toolbox` image as phase 1 of the backend Dockerfile consolidation — the hygiene and
+analyzer toolchain that currently duplicates across the claude/codex/gemini backends now publishes from a single source
+of truth, with the `ww` binary build folded in alongside. Plus two new `ww` CLI affordances, an agent-cadence trim to
+halve the dispatch + outreach tick rate, and routine agent-identity upkeep.
+
+### Added
+
+- **ww**: Add a `team status --watch` mode that streams live team-status updates instead of one-shot rendering.
+- **ww**: Persist backend conversation logs so the CLI retains conversation history across invocations.
+- **toolbox**: Publish a new `ghcr.io/witwave-ai/images/toolbox` image (phase 1) consolidating the hygiene + analyzer
+  toolchain (goimports, staticcheck, errcheck, ineffassign, controller-gen, govulncheck, gosec, shfmt, actionlint,
+  hadolint, gitleaks, trivy, helm, shellcheck, plus a tools-venv with ruff/yamllint/pytest/pip-audit/bandit) currently
+  duplicated across the claude/codex/gemini backends. Backends switch to `FROM toolbox` in phase 2.
+- **site**: Add search favicon assets.
+
+### Changed
+
+- **toolbox**: Fold the `ww` CLI build into the toolbox image via a shared `go-toolchain` base stage so it compiles once
+  per release rather than three times across the backend Dockerfiles.
+- **agents**: Halve Zora's dispatch-team and Piper's team-pulse cadence from 15 min to 30 min, cutting the team's two
+  heaviest recurring ticks from 96 ticks/day each to 48 ticks/day each at the cost of worst-case 30 min
+  dispatch/outreach latency.
+- **agents(self)**: Align the self-team bootstrap conversation-inspection plumbing across agents.
+
+### Agent identity
+
+- **piper, zora**: Prettier reflow on `piper/.claude/CLAUDE.md` and `zora/.witwave/HEARTBEAT.md` to unbreak the docs +
+  social-website CI workflows.
+
 ## [0.23.18] — 2026-05-15
 
 Patch release validating the sibling-CI gate fix landed in v0.23.17's wake — the prior cut deadlocked on its own
