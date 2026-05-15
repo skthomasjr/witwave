@@ -11,12 +11,76 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   publish:
     name: Publish to witwave-ai.github.io
     runs-on: ubuntu-latest
     steps:
+      - name: Wait for sibling CI workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ github.sha }}
+          SELF_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          TIMEOUT_SECONDS=900
+          POLL_INTERVAL=15
+          deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+
+          while true; do
+            mapfile -t lines < <(
+              gh run list \
+                --repo "${GITHUB_REPOSITORY}" \
+                --commit "$COMMIT_SHA" \
+                --limit 50 \
+                --json databaseId,name,status,conclusion \
+                | jq -r --argjson self "$SELF_RUN_ID" \
+                    '.[] | select(.databaseId != $self) | "\(.databaseId)\t\(.name)\t\(.status)\t\(.conclusion)"'
+            )
+
+            in_flight=0
+            failed=""
+
+            for line in "${lines[@]}"; do
+              [ -z "$line" ] && continue
+              IFS=$'\t' read -r id name status conclusion <<< "$line"
+              case "$status" in
+                completed)
+                  case "$conclusion" in
+                    success|skipped) ;;
+                    *) failed+="  - ${name} (${conclusion})"$'\n' ;;
+                  esac
+                  ;;
+                *)
+                  in_flight=$(( in_flight + 1 ))
+                  ;;
+              esac
+            done
+
+            if [ -n "$failed" ]; then
+              echo "::error title=Publish blocked::Sibling CI workflows did not succeed on ${COMMIT_SHA:0:12}:"
+              printf '%s' "$failed"
+              exit 1
+            fi
+
+            if [ "$in_flight" -eq 0 ]; then
+              echo "All sibling CI workflows on ${COMMIT_SHA:0:12} succeeded (or none ran). Proceeding."
+              exit 0
+            fi
+
+            now=$(date +%s)
+            if [ "$now" -ge "$deadline" ]; then
+              echo "::error title=Publish blocked::Timed out after ${TIMEOUT_SECONDS}s waiting for ${in_flight} sibling workflow(s) on ${COMMIT_SHA:0:12}."
+              exit 1
+            fi
+
+            echo "Waiting on ${in_flight} sibling workflow(s) on ${COMMIT_SHA:0:12}..."
+            sleep "$POLL_INTERVAL"
+          done
+
       - name: Checkout witwave source
         uses: actions/checkout@v4
 
