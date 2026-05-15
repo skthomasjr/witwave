@@ -1,0 +1,131 @@
+name: CI — Dockerfiles
+
+# Catches Dockerfile regressions before release tags spend the full multi-arch
+# image matrix. Static lint surfaces Dockerfile hygiene issues across every
+# Dockerfile; the build matrix smoke-builds every release image on linux/amd64
+# without pushing. The image Dockerfiles own their final smoke checks, so a
+# missing runtime dependency (for example a copied venv without python3) fails
+# here instead of during Release — Container Images.
+
+on:
+  pull_request:
+    paths:
+      - "**/Dockerfile"
+      - ".github/workflows/ci-dockerfiles.yml"
+      - "backends/**/requirements.txt"
+      - "clients/dashboard/package*.json"
+      - "clients/ww/go.mod"
+      - "clients/ww/go.sum"
+      - "helpers/git-sync/**"
+      - "images/toolbox/**"
+      - "operator/go.mod"
+      - "operator/go.sum"
+      - "tools/**/requirements.txt"
+  push:
+    branches: [main]
+    paths:
+      - "**/Dockerfile"
+      - ".github/workflows/ci-dockerfiles.yml"
+      - "backends/**/requirements.txt"
+      - "clients/dashboard/package*.json"
+      - "clients/ww/go.mod"
+      - "clients/ww/go.sum"
+      - "helpers/git-sync/**"
+      - "images/toolbox/**"
+      - "operator/go.mod"
+      - "operator/go.sum"
+      - "tools/**/requirements.txt"
+
+concurrency:
+  group: ci-dockerfiles-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfiles
+        run: |
+          set -euo pipefail
+          find . -name Dockerfile -print0 | sort -z |
+            while IFS= read -r -d '' file; do
+              echo "::group::hadolint ${file}"
+              docker run --rm -i hadolint/hadolint:v2.12.0 \
+                hadolint --no-color --failure-threshold error - < "${file}"
+              echo "::endgroup::"
+            done
+
+  build:
+    name: build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: toolbox
+            file: images/toolbox/Dockerfile
+            context: .
+          - image: harness
+            file: harness/Dockerfile
+            context: .
+          - image: claude
+            file: backends/claude/Dockerfile
+            context: .
+          - image: codex
+            file: backends/codex/Dockerfile
+            context: .
+          - image: gemini
+            file: backends/gemini/Dockerfile
+            context: .
+          - image: echo
+            file: backends/echo/Dockerfile
+            context: .
+          - image: operator
+            file: operator/Dockerfile
+            context: operator
+          - image: git-sync
+            file: helpers/git-sync/Dockerfile
+            context: helpers/git-sync
+          - image: mcp-kubernetes
+            file: tools/kubernetes/Dockerfile
+            context: .
+          - image: mcp-helm
+            file: tools/helm/Dockerfile
+            context: .
+          - image: mcp-prometheus
+            file: tools/prometheus/Dockerfile
+            context: .
+          - image: dashboard
+            file: clients/dashboard/Dockerfile
+            context: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.image }} image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          sbom: false
+          tags: witwave-ci/${{ matrix.image }}:ci
+          build-args: |
+            VERSION=ci
+          cache-from: type=gha,scope=docker-${{ matrix.image }}
+          cache-to: type=gha,scope=docker-${{ matrix.image }},mode=max

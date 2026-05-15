@@ -105,7 +105,9 @@ RUN cd /tmp/ww-src \
 
 # -----------------------------------------------------------------------------
 # Stage 4 — Python tools-venv with hygiene + test deps.
-# Carried over to the final stage as a self-contained venv at /opt/tools-venv.
+# Carried over to the final stage at /opt/tools-venv. Debian venvs keep
+# lightweight entrypoint links to the system Python runtime, so consumers must
+# provide /usr/bin/python3.
 # -----------------------------------------------------------------------------
 
 FROM debian:bookworm-20260316-slim AS python-build
