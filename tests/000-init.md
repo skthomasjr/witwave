@@ -15,16 +15,18 @@ ww agent delete fred --namespace witwave-test --delete-git-secret --yes 2>/dev/n
 ww workspace delete witwave-test --namespace witwave-test --wait --yes 2>/dev/null || true
 ```
 
-Load credentials from the repo-root `.env`:
+Start a shell with the committed SOPS test-team dotenv loaded:
 
 ```bash
-set -a
-source .env
-set +a
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- bash -l
+```
 
-: "${CLAUDE_CODE_OAUTH_TOKEN:?set CLAUDE_CODE_OAUTH_TOKEN in .env}"
-: "${GITSYNC_USERNAME:?set GITSYNC_USERNAME in .env}"
-: "${GITSYNC_PASSWORD:?set GITSYNC_PASSWORD in .env}"
+Then verify the required credentials inside that shell:
+
+```bash
+: "${CLAUDE_CODE_OAUTH_TOKEN:?set CLAUDE_CODE_OAUTH_TOKEN in .agents/test/team.sops.env}"
+: "${GITSYNC_USERNAME:?set GITSYNC_USERNAME in .agents/test/team.sops.env}"
+: "${GITSYNC_PASSWORD:?set GITSYNC_PASSWORD in .agents/test/team.sops.env}"
 export TRIGGERS_AUTH_TOKEN="${TRIGGERS_AUTH_TOKEN:-$(python3 -c 'import secrets; print(secrets.token_hex(32))')}"
 printf 'Using TRIGGERS_AUTH_TOKEN=%s\n' "$TRIGGERS_AUTH_TOKEN"
 ```

@@ -5,10 +5,8 @@
 #
 # `runbook_url` annotations on every alert point at corresponding
 # sections of docs/runbooks.md. The convention is documented at
-# docs/runbooks.md:6-8: "New alerts MUST add a section here with a
-# matching `runbook_url` annotation — CI does not yet enforce this
-# but the convention is load-bearing for on-call ergonomics." This
-# script closes the CI gap.
+# docs/runbooks.md:6-8, and this script enforces that every alert has
+# a matching runbook anchor.
 #
 # Lowercases the alert name (Prometheus markdown convention) and
 # searches docs/runbooks.md for a matching `## <lowercased>` H2

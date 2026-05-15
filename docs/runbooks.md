@@ -5,8 +5,8 @@ Operator-facing pages for each default alert shipped in `charts/witwave/template
 link in the page / Slack notification itself.
 
 Anchors are the alert name in all-lowercase (Prometheus convention when GitHub renders markdown). New alerts MUST add a
-section here with a matching `runbook_url` annotation — CI does not yet enforce this but the convention is load-bearing
-for on-call ergonomics.
+section here with a matching `runbook_url` annotation. CI enforces that coverage via
+`scripts/check-runbook-coverage.sh`, and the convention is load-bearing for on-call ergonomics.
 
 ---
 

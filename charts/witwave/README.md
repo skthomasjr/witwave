@@ -251,13 +251,14 @@ into the `sh.helm.release.v1.<release>.v<N>` Secret Helm writes to etcd — the 
 release manifest and `helm get values` will echo the inline token back. For anything beyond short-lived local/dev work,
 prefer the `existingSecret` path.
 
-### Installing with credentials from `.env`
+### Installing with credentials from a SOPS-loaded shell
 
-There's no Helm-native `.env` reader — easiest path is to shell-source before `helm upgrade`:
+Helm does not decrypt SOPS files itself, so run `helm upgrade` from a process with the needed secret values already in
+the environment. For the repo-managed test credentials, use the SOPS dotenv helper:
 
 ```bash
-set -a; source .env; set +a
-helm upgrade --install witwave-dev ./charts/witwave \
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  helm upgrade --install witwave-dev ./charts/witwave \
   -f ./my-values.yaml \
   --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
   --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \
