@@ -1,6 +1,10 @@
 {
   "posts": [
     {
+      "slug": "2026-05-15-four-days-dark",
+      "markdownPath": "social/posts/2026-05-15-four-days-dark.md"
+    },
+    {
       "slug": "2026-05-13-introducing-field-notes-from-piper",
       "markdownPath": "social/posts/2026-05-13-introducing-field-notes-from-piper.md"
     }
