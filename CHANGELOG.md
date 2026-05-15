@@ -6,8 +6,62 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.16] — 2026-05-15
+
+Patch release publishing the social website to its custom domain, scaffolding the SOPS-based secrets workflow used by
+the team's CI and per-agent env files, adding Piper's blog generation skill alongside her first field note, and a
+broad sweep of repo-hygiene + lint-CI work to keep the tree quiet for cadence-driven releases.
+
+### Added
+
+- **social**: Add RSS feed generation for blog posts so readers can subscribe via standard feed clients.
+- **social**: Add an `llms.txt` guide for the website surface to make agentic crawlers and assistants legible.
+- **social**: Add static page generation for the public site so search engines and link previews see real titles and
+  per-article metadata instead of the SPA shell.
+- **social**: Add a public GitHub Discussions strip with category cards on the homepage and refine the discussion-link
+  design so community surfaces are discoverable from the public site.
+- **piper**: Add a blog generation skill that lets Piper draft field-note posts from her own observations and publish
+  them into `social/posts/`, and publish Piper's first field note for 2026-05-15 through it.
+- **sops**: Add an age-based SOPS policy, a smoke example, and a `CI — SOPS` decrypt smoke workflow so encrypted
+  secrets are verified on every push; add encrypted SOPS env files for the self and test teams plus a Google Search
+  Console secret entry.
+- **ci**: Add a `CI — Workflows` lint job that validates every workflow file under `.github/workflows/` and normalises
+  workflow display names so the per-workflow CI summary reads consistently.
+- **operator**: Wire an RBAC drift guard so the operator chart's RBAC stays aligned with the controller's actual
+  Kubernetes API needs.
+- **assets**: Add test team avatars and additional agent avatar assets.
+
+### Changed
+
+- **social**: Polish website SEO metadata and article surfaces across pages so titles, descriptions, and OG tags are
+  coherent and complete on a per-article basis.
+- **operator**: Refresh embedded operator-chart copy and bootstrap env docs; include a sample `prompt` in operator
+  example manifests and clarify operator packaging and scaffold comments.
+- **workspace**: Make the workspace sample dev-friendly and align workspace access-mode docs.
+- **codex**: Switch the repo's Codex config to GPT-5.5.
+- **repo**: Clean up repo hygiene drift, rename the root SOPS secrets file, remove the root env bootstrap dependency,
+  retire obsolete local-request skills, and refresh stale TODO tracking.
+- **README**: Refine project framing and smooth the website link in the top-level README.
+
+### Fixed
+
+- **harness**: Add the Piper self-tidy cron trigger to close a `peer-missing-cron` gap-class finding.
+- **harness**: Add a `.witwave/agent-card.md` mirror for felix to close a `sibling-pattern` gap-class finding.
+- **trace**: Fix trace auth and doc drift surfaced during the social-website rollout.
+- **ci**: Fix the charts CI path that previously broke when no `test-values.yaml` was present.
+- **lint**: Finish the markdown lint cleanup pass, reduce changelog markdownlint noise, and strengthen docs/operator
+  CI lint coverage.
+
+### Agent identity
+
+- **piper, felix**: Adopt the hold-label-respect and external-trigger principles so both honour the team's HOLD
+  posture during paused windows.
+- **team**: Align the self and test agent teams so identical roster scaffolding lives across both environments.
+
 ### Documentation
 
+- **sops**: Document the SOPS-based credential workflows end-to-end, track in-flight SOPS secrets, document the SOPS
+  secret-mirror pattern, and format the SOPS credential docs for consistency.
 - **social**: Scaffold `social/website/` as the GitHub Pages-ready source for the public site, featuring the two
   foundational whitepapers, a buildless Markdown reader, plus blog and positioning placeholders, with a publishing
   workflow for `witwave-ai/witwave-ai.github.io`.
