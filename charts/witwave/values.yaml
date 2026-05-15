@@ -872,6 +872,30 @@ storage:
   # clean the PVCs up manually if/when they choose to.
   retainOnUninstall: false
 
+# Runtime storage volume mounted into each agent's harness container. This is
+# for durable harness runtime state, not team/project files (sharedStorage) or
+# backend-native sessions/memory/logs (agents[].backends[].storage).
+runtimeStorage:
+  # Enable one runtime PVC per agent.
+  enabled: false
+  # PVC storage request size.
+  size: 1Gi
+  # # Storage class name. Leave empty to use the cluster default.
+  # storageClassName: ""
+  # # PVC access modes. Defaults to ReadWriteOnce.
+  # accessModes:
+  #   - ReadWriteOnce
+  # # Name of a pre-existing PVC to use instead of creating one. If this chart
+  # # deploys multiple agents, prefer setting existingClaim per agent rather
+  # # than globally so harnesses do not accidentally share runtime state.
+  # existingClaim: ""
+  # Subdirectory mounts from the PVC into the harness container.
+  mounts:
+    - subPath: logs
+      mountPath: /home/agent/logs
+    - subPath: state
+      mountPath: /home/agent/state
+
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
   # Enable shared storage.
@@ -1517,7 +1541,9 @@ agents:
         #     - subPath: memory
         #       mountPath: /home/agent/.claude/memory   # or .codex/memory / .gemini/memory for those backends
         #     - subPath: logs
-        #       mountPath: /home/agent/logs             # conversation.jsonl, tool-activity.jsonl, optional tasks.db
+        #       mountPath: /home/agent/logs             # conversation.jsonl, tool-activity.jsonl
+        #     - subPath: state
+        #       mountPath: /home/agent/state            # durable machine state such as a2a-tasks.db
 
         # # Inline config files mounted into the backend container.
         # # Each entry is added as a key in a ConfigMap and mounted at mountPath.

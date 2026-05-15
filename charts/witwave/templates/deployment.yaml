@@ -215,6 +215,16 @@
 {{- else if $.Values.autoscaling }}
 {{- $agentAutoscaling = $.Values.autoscaling }}
 {{- end }}
+{{- $runtimeStorage := $.Values.runtimeStorage | default dict }}
+{{- if .runtimeStorage }}{{- $runtimeStorage = mergeOverwrite (deepCopy $runtimeStorage) .runtimeStorage }}{{- end }}
+{{- $runtimeHasStateMount := false }}
+{{- if $runtimeStorage.enabled }}
+{{- if $runtimeStorage.mounts }}
+{{- range $runtimeStorage.mounts }}{{- if eq .mountPath "/home/agent/state" }}{{- $runtimeHasStateMount = true }}{{- end }}{{- end }}
+{{- else }}
+{{- $runtimeHasStateMount = true }}
+{{- end }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -510,6 +520,10 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
             {{- end }}
+            {{- if $runtimeHasStateMount }}
+            - name: TASK_STORE_PATH
+              value: /home/agent/state/a2a-tasks.db
+            {{- end }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
@@ -540,6 +554,22 @@ spec:
             {{- if $.Values.sharedStorage.enabled }}
             - name: witwave-shared
               mountPath: {{ $.Values.sharedStorage.mountPath }}
+            {{- end }}
+            {{- if $runtimeStorage.enabled }}
+            {{- if $runtimeStorage.mounts }}
+            {{- range $runtimeStorage.mounts }}
+            - name: runtime-storage
+              mountPath: {{ .mountPath }}
+              subPath: {{ .subPath }}
+            {{- end }}
+            {{- else }}
+            - name: runtime-storage
+              mountPath: /home/agent/logs
+              subPath: logs
+            - name: runtime-storage
+              mountPath: /home/agent/state
+              subPath: state
+            {{- end }}
             {{- end }}
 {{- $agentName := .name }}
 {{- /* Per-agent metrics.enabled override must honour explicit `false` (#1018).
@@ -667,6 +697,14 @@ spec:
               value: {{ .model | quote }}
             {{- end }}
             {{- include "witwave.otelEnv" (dict "root" $ "serviceName" (printf "%s-%s" $agentName .name)) | nindent 12 }}
+            {{- $backendHasStateMount := false }}
+            {{- if $storageEnabled }}
+            {{- range ((.storage).mounts | default list) }}{{- if eq .mountPath "/home/agent/state" }}{{- $backendHasStateMount = true }}{{- end }}{{- end }}
+            {{- end }}
+            {{- if $backendHasStateMount }}
+            - name: TASK_STORE_PATH
+              value: /home/agent/state/a2a-tasks.db
+            {{- end }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
@@ -781,6 +819,11 @@ spec:
           persistentVolumeClaim:
             claimName: {{ $.Values.sharedStorage.existingClaim | default (printf "%s-shared" $.Release.Name) }}
           {{- end }}
+        {{- end }}
+        {{- if $runtimeStorage.enabled }}
+        - name: runtime-storage
+          persistentVolumeClaim:
+            claimName: {{ $runtimeStorage.existingClaim | default (printf "%s-%s-runtime-data" $.Release.Name $agentName) }}
         {{- end }}
         {{- if include "witwave.hasMappings" . }}
         {{- include "witwave.gitMappingVolumes" (dict "agent" . "release" $.Release.Name) | nindent 8 }}

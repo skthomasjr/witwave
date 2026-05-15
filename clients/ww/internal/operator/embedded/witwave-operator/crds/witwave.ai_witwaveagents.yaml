@@ -5738,6 +5738,63 @@ spec:
                 - NodePort
                 - LoadBalancer
                 type: string
+              runtimeStorage:
+                description: |-
+                  RuntimeStorage optionally mounts durable runtime state into the harness
+                  container. It is distinct from SharedStorage (team/project files) and
+                  backend storage (LLM backend-native sessions/memory/logs).
+                properties:
+                  accessModes:
+                    description: |-
+                      AccessModes are the PVC access modes for the operator-created claim.
+                      Defaults to [ReadWriteOnce] for the single-pod harness runtime path.
+                    items:
+                      type: string
+                    type: array
+                  enabled:
+                    description: |-
+                      Enabled creates/mounts the runtime storage PVC. When false or omitted,
+                      harness runtime state remains container-local.
+                    type: boolean
+                  existingClaim:
+                    description: |-
+                      ExistingClaim references a pre-existing PersistentVolumeClaim. When set,
+                      the operator mounts it and does not create a runtime PVC.
+                    type: string
+                  mounts:
+                    description: |-
+                      Mounts maps runtime PVC subdirectories into the harness container. When
+                      empty, the operator mounts `logs:/home/agent/logs` and
+                      `state:/home/agent/state`.
+                    items:
+                      description: |-
+                        RuntimeStorageMount maps a sub-path of the agent runtime PVC to a harness
+                        container mount path.
+                      properties:
+                        mountPath:
+                          minLength: 1
+                          pattern: ^/.*
+                          type: string
+                        subPath:
+                          minLength: 1
+                          type: string
+                      required:
+                      - mountPath
+                      - subPath
+                      type: object
+                    type: array
+                  size:
+                    description: |-
+                      Size is a Kubernetes resource.Quantity string (e.g. "1Gi", "500M").
+                      Only meaningful when ExistingClaim is empty.
+                    pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
+                    type: string
+                  storageClassName:
+                    description: |-
+                      StorageClassName is the storage class for the created PVC. When empty
+                      the cluster default storage class is used.
+                    type: string
+                type: object
               sharedStorage:
                 description: |-
                   SharedStorage optionally mounts a volume into every container of the

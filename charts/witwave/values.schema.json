@@ -288,6 +288,18 @@
         "hostPath": { "type": "string" }
       }
     },
+    "runtimeStorage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "size": { "type": "string" },
+        "storageClassName": { "type": "string" },
+        "accessModes": { "type": "array", "items": { "type": "string" } },
+        "existingClaim": { "type": "string" },
+        "mounts": { "type": "array" }
+      }
+    },
     "defaults": {
       "type": "object",
       "additionalProperties": true,

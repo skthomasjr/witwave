@@ -192,6 +192,34 @@ func TestBuild_NoTeam_OmitsLabel(t *testing.T) {
 	}
 }
 
+func TestBuild_EmitsRuntimeStorage(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:           "hello",
+		Namespace:      "witwave",
+		CLIVersion:     "0.7.8",
+		RuntimeStorage: DefaultRuntimeStorageSpec(),
+	})
+	if err != nil {
+		t.Fatalf("Build returned unexpected error: %v", err)
+	}
+	enabled, found, err := unstructured.NestedBool(obj.Object, "spec", "runtimeStorage", "enabled")
+	if err != nil || !found || !enabled {
+		t.Fatalf("runtimeStorage.enabled = %v found=%v err=%v, want true", enabled, found, err)
+	}
+	mounts, found, err := unstructured.NestedSlice(obj.Object, "spec", "runtimeStorage", "mounts")
+	if err != nil || !found {
+		t.Fatalf("runtimeStorage.mounts missing: found=%v err=%v", found, err)
+	}
+	if len(mounts) != 2 {
+		t.Fatalf("runtimeStorage.mounts = %d, want 2", len(mounts))
+	}
+	state := mounts[1].(map[string]interface{})
+	if state["subPath"] != "state" || state["mountPath"] != "/home/agent/state" {
+		t.Errorf("state mount = %+v", state)
+	}
+}
+
 func TestBuild_InvalidTeamName(t *testing.T) {
 	t.Parallel()
 	_, err := Build(BuildOptions{

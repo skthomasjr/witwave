@@ -64,7 +64,8 @@ var BackendStorageSizeDefaults = map[string]string{
 // fan-out for each known backend type. Mirrors the chart's example
 // values (charts/witwave/values.yaml ~line 1488) and the dirs each
 // backend's image expects to find under `/home/agent/.<type>/`, plus
-// `/home/agent/logs` for Witwave conversation/trace JSONL durability.
+// `/home/agent/logs` for Witwave conversation/trace JSONL durability and
+// `/home/agent/state` for durable backend machine state.
 //
 // Backend types not listed here have no defaults — the CLI rejects
 // `--persist <name>=<size>` for them with an actionable error rather
@@ -76,11 +77,13 @@ var BackendStoragePresets = map[string][]BackendStorageMount{
 		{SubPath: "backups", MountPath: "/home/agent/.claude/backups"},
 		{SubPath: "memory", MountPath: "/home/agent/.claude/memory"},
 		{SubPath: "logs", MountPath: "/home/agent/logs"},
+		{SubPath: "state", MountPath: "/home/agent/state"},
 	},
 	"codex": {
 		{SubPath: "memory", MountPath: "/home/agent/.codex/memory"},
 		{SubPath: "sessions", MountPath: "/home/agent/.codex/sessions"},
 		{SubPath: "logs", MountPath: "/home/agent/logs"},
+		{SubPath: "state", MountPath: "/home/agent/state"},
 	},
 	"gemini": {
 		// gemini stores conversation JSON under memory/sessions/ per
@@ -88,6 +91,7 @@ var BackendStoragePresets = map[string][]BackendStorageMount{
 		// memory/. One PVC, two subPaths.
 		{SubPath: "memory", MountPath: "/home/agent/.gemini/memory"},
 		{SubPath: "logs", MountPath: "/home/agent/logs"},
+		{SubPath: "state", MountPath: "/home/agent/state"},
 	},
 	"echo": {
 		// Echo's intentional non-scope (backends/echo/README.md) means

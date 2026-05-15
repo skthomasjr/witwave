@@ -314,3 +314,108 @@ func TestSharedStorageLabelsUsesComponentSharedStorage(t *testing.T) {
 		t.Errorf("labelComponent must NOT collide with componentAgent (cleanup-sweep safety)")
 	}
 }
+
+// ----- runtimeStorage helpers -----------------------------------
+
+func TestRuntimeStorageDefaults(t *testing.T) {
+	a := mkAgent(witwavev1alpha1.WitwaveAgentSpec{
+		RuntimeStorage: &witwavev1alpha1.RuntimeStorageSpec{Enabled: true},
+	})
+	if !runtimeStorageEnabled(a) {
+		t.Fatalf("Enabled=true must enable runtime storage")
+	}
+	if got := runtimeStoragePVCName(a); got != "iris-runtime-data" {
+		t.Errorf("runtimeStoragePVCName = %q, want iris-runtime-data", got)
+	}
+	mounts := runtimeStorageMounts(a)
+	if len(mounts) != 2 {
+		t.Fatalf("default runtime mounts = %d, want 2", len(mounts))
+	}
+	if mounts[0].SubPath != runtimeLogsSubPath || mounts[0].MountPath != runtimeLogsMountPath {
+		t.Errorf("logs mount = %+v", mounts[0])
+	}
+	if mounts[1].SubPath != runtimeStateSubPath || mounts[1].MountPath != runtimeStateMountPath {
+		t.Errorf("state mount = %+v", mounts[1])
+	}
+	if !runtimeStorageMountsPath(a, runtimeStateMountPath) {
+		t.Errorf("runtime storage should report state mount present")
+	}
+}
+
+func TestBuildRuntimeStoragePVCDefaultAccessModesReadWriteOnce(t *testing.T) {
+	a := mkAgent(witwavev1alpha1.WitwaveAgentSpec{
+		RuntimeStorage: &witwavev1alpha1.RuntimeStorageSpec{Enabled: true},
+	})
+	pvc, err := buildRuntimeStoragePVC(a)
+	if err != nil || pvc == nil {
+		t.Fatalf("expected runtime PVC; err=%v pvc=%v", err, pvc)
+	}
+	if pvc.Labels[labelComponent] != componentRuntimeStorage {
+		t.Errorf("labelComponent: want %q, got %q", componentRuntimeStorage, pvc.Labels[labelComponent])
+	}
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		t.Errorf("default AccessModes: want [ReadWriteOnce], got %v", pvc.Spec.AccessModes)
+	}
+}
+
+func TestBuildRuntimeStoragePVCInvalidSizeReturnsError(t *testing.T) {
+	a := mkAgent(witwavev1alpha1.WitwaveAgentSpec{
+		RuntimeStorage: &witwavev1alpha1.RuntimeStorageSpec{
+			Enabled: true,
+			Size:    "not-a-quantity",
+		},
+	})
+	pvc, err := buildRuntimeStoragePVC(a)
+	if err == nil {
+		t.Fatalf("invalid Size must return an error; got pvc=%+v", pvc)
+	}
+	if !strings.Contains(err.Error(), "runtimeStorage.size") {
+		t.Errorf("error must name the offending field; got %q", err.Error())
+	}
+}
+
+func TestBuildDeploymentRuntimeStorageMountsHarnessAndSetsTaskStore(t *testing.T) {
+	a := mkAgent(witwavev1alpha1.WitwaveAgentSpec{
+		Image: witwavev1alpha1.ImageSpec{Repository: "ghcr.io/witwave-ai/images/harness", Tag: "test"},
+		RuntimeStorage: &witwavev1alpha1.RuntimeStorageSpec{
+			Enabled: true,
+		},
+		Backends: []witwavev1alpha1.BackendSpec{{
+			Name:  "claude",
+			Image: witwavev1alpha1.ImageSpec{Repository: "ghcr.io/witwave-ai/images/claude", Tag: "test"},
+		}},
+	})
+	dep := buildDeployment(a, "test", nil)
+	harness := dep.Spec.Template.Spec.Containers[0]
+	if !volumeMountsHavePath(harness.VolumeMounts, runtimeLogsMountPath) {
+		t.Errorf("harness missing runtime logs mount: %+v", harness.VolumeMounts)
+	}
+	if !volumeMountsHavePath(harness.VolumeMounts, runtimeStateMountPath) {
+		t.Errorf("harness missing runtime state mount: %+v", harness.VolumeMounts)
+	}
+	if !envListHasName(harness.Env, "TASK_STORE_PATH") {
+		t.Errorf("harness missing TASK_STORE_PATH env: %+v", harness.Env)
+	}
+}
+
+func TestBuildDeploymentBackendStateMountSetsTaskStore(t *testing.T) {
+	a := mkAgent(witwavev1alpha1.WitwaveAgentSpec{
+		Image: witwavev1alpha1.ImageSpec{Repository: "ghcr.io/witwave-ai/images/harness", Tag: "test"},
+		Backends: []witwavev1alpha1.BackendSpec{{
+			Name:  "claude",
+			Image: witwavev1alpha1.ImageSpec{Repository: "ghcr.io/witwave-ai/images/claude", Tag: "test"},
+			Storage: &witwavev1alpha1.BackendStorageSpec{
+				Enabled: true,
+				Mounts: []witwavev1alpha1.BackendStorageMount{{
+					SubPath:   runtimeStateSubPath,
+					MountPath: runtimeStateMountPath,
+				}},
+			},
+		}},
+	})
+	dep := buildDeployment(a, "test", nil)
+	backend := dep.Spec.Template.Spec.Containers[1]
+	if !envListHasName(backend.Env, "TASK_STORE_PATH") {
+		t.Errorf("backend missing TASK_STORE_PATH env: %+v", backend.Env)
+	}
+}

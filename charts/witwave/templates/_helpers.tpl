@@ -170,6 +170,21 @@ app.kubernetes.io/part-of: witwave
 {{- end }}
 
 {{/*
+Runtime-storage PVC labels.
+*/}}
+{{- define "witwave.runtimeStorageLabels" -}}
+helm.sh/chart: {{ include "witwave.chart" .root }}
+app.kubernetes.io/name: {{ .agentName }}
+app.kubernetes.io/instance: {{ .root.Release.Name }}
+app.kubernetes.io/component: runtime-storage
+app.kubernetes.io/part-of: witwave
+app.kubernetes.io/managed-by: {{ .root.Release.Service }}
+{{- if .root.Chart.AppVersion }}
+app.kubernetes.io/version: {{ .root.Chart.AppVersion | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 Backend component labels.
 Emits the full Kubernetes Recommended Labels set. NOT suitable for
 selector.matchLabels. For selectors, use `witwave.backendSelectorLabels`.

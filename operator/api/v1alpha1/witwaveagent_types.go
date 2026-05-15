@@ -536,6 +536,53 @@ type SharedStorageSpec struct {
 // Deprecated: use SharedStorageSpec.
 type SharedStorageRef = SharedStorageSpec
 
+// RuntimeStorageMount maps a sub-path of the agent runtime PVC to a harness
+// container mount path.
+type RuntimeStorageMount struct {
+	// +kubebuilder:validation:MinLength=1
+	SubPath string `json:"subPath"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^/.*`
+	MountPath string `json:"mountPath"`
+}
+
+// RuntimeStorageSpec configures optional persistent storage for the harness
+// container's runtime state. It is separate from backend storage so harness
+// task bookkeeping does not depend on a specific backend being present.
+type RuntimeStorageSpec struct {
+	// Enabled creates/mounts the runtime storage PVC. When false or omitted,
+	// harness runtime state remains container-local.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Size is a Kubernetes resource.Quantity string (e.g. "1Gi", "500M").
+	// Only meaningful when ExistingClaim is empty.
+	// +kubebuilder:validation:Pattern=^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
+	// +optional
+	Size string `json:"size,omitempty"`
+
+	// StorageClassName is the storage class for the created PVC. When empty
+	// the cluster default storage class is used.
+	// +optional
+	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// ExistingClaim references a pre-existing PersistentVolumeClaim. When set,
+	// the operator mounts it and does not create a runtime PVC.
+	// +optional
+	ExistingClaim string `json:"existingClaim,omitempty"`
+
+	// AccessModes are the PVC access modes for the operator-created claim.
+	// Defaults to [ReadWriteOnce] for the single-pod harness runtime path.
+	// +optional
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+
+	// Mounts maps runtime PVC subdirectories into the harness container. When
+	// empty, the operator mounts `logs:/home/agent/logs` and
+	// `state:/home/agent/state`.
+	// +optional
+	Mounts []RuntimeStorageMount `json:"mounts,omitempty"`
+}
+
 // WitwaveAgentSpec defines the desired state of WitwaveAgent.
 type WitwaveAgentSpec struct {
 	// Enabled toggles whether the entire agent (Deployment, Service, PVCs,
@@ -661,6 +708,12 @@ type WitwaveAgentSpec struct {
 	// `sharedStorage.*` block (#481, #611).
 	// +optional
 	SharedStorage *SharedStorageSpec `json:"sharedStorage,omitempty"`
+
+	// RuntimeStorage optionally mounts durable runtime state into the harness
+	// container. It is distinct from SharedStorage (team/project files) and
+	// backend storage (LLM backend-native sessions/memory/logs).
+	// +optional
+	RuntimeStorage *RuntimeStorageSpec `json:"runtimeStorage,omitempty"`
 
 	// GitSyncs declares git-sync sidecar(s) for this agent. Each entry
 	// produces one init container (one-time clone) and one long-running

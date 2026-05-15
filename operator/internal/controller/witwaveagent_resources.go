@@ -62,11 +62,19 @@ const (
 	// mounts a shared volume (PVC or hostPath). All containers mount it.
 	sharedStorageVolume = "shared-storage"
 
+	// runtimeStorageVolume is the pod-level volume name used when the agent
+	// mounts durable harness runtime state.
+	runtimeStorageVolume = "runtime-storage"
+
 	// componentSharedStorage labels the operator-managed shared-storage PVC
 	// (#481) so its cleanup path stays cleanly separated from the backend
 	// PVC cleanup path — both sweep by labelName+labelManagedBy and would
 	// otherwise reciprocally delete each other.
 	componentSharedStorage = "shared-storage"
+
+	// componentRuntimeStorage labels the operator-managed runtime-storage PVC
+	// so backend/shared PVC cleanup paths do not sweep it.
+	componentRuntimeStorage = "runtime-storage"
 
 	// defaultSharedStorageMountPath mirrors charts/witwave/values.yaml's
 	// `sharedStorage.mountPath` default so operator-rendered pods mount
@@ -77,6 +85,16 @@ const (
 	// request for `sharedStorage.size` when the operator creates the PVC
 	// itself (#481).
 	defaultSharedStorageSize = "1Gi"
+
+	// Runtime storage defaults mirror charts/witwave/values.yaml. The state
+	// mount holds durable machine state such as the A2A SqliteTaskStore; logs
+	// remain separate append-only history.
+	defaultRuntimeStorageSize = "1Gi"
+	runtimeLogsSubPath        = "logs"
+	runtimeLogsMountPath      = "/home/agent/logs"
+	runtimeStateSubPath       = "state"
+	runtimeStateMountPath     = "/home/agent/state"
+	defaultTaskStorePath      = "/home/agent/state/a2a-tasks.db"
 
 	// agentConfigVolumePrefix is the prefix for per-agent/backend inline
 	// config ConfigMap volume names.
@@ -545,6 +563,128 @@ func buildSharedStoragePVC(agent *witwavev1alpha1.WitwaveAgent) (*corev1.Persist
 	return pvc, nil
 }
 
+// ── Runtime storage ─────────────────────────────────────────────────────────
+//
+// runtimeStorage is agent-level durable state for the harness container. It is
+// separate from sharedStorage (mounted into every container for team/project
+// files) and backend storage (per-backend native sessions/memory/logs).
+
+func runtimeStorageEnabled(agent *witwavev1alpha1.WitwaveAgent) bool {
+	s := agent.Spec.RuntimeStorage
+	return s != nil && s.Enabled
+}
+
+func runtimeStorageExistingClaim(agent *witwavev1alpha1.WitwaveAgent) string {
+	s := agent.Spec.RuntimeStorage
+	if s == nil {
+		return ""
+	}
+	if s.ExistingClaim != "" {
+		return s.ExistingClaim
+	}
+	return runtimeStoragePVCName(agent)
+}
+
+func runtimeStorageOperatorManaged(agent *witwavev1alpha1.WitwaveAgent) bool {
+	s := agent.Spec.RuntimeStorage
+	return runtimeStorageEnabled(agent) && s != nil && s.ExistingClaim == ""
+}
+
+func runtimeStoragePVCName(agent *witwavev1alpha1.WitwaveAgent) string {
+	return fmt.Sprintf("%s-runtime-data", agent.Name)
+}
+
+func runtimeStorageLabels(agent *witwavev1alpha1.WitwaveAgent) map[string]string {
+	l := agentLabels(agent)
+	l[labelComponent] = componentRuntimeStorage
+	return l
+}
+
+func runtimeStorageMounts(agent *witwavev1alpha1.WitwaveAgent) []corev1.VolumeMount {
+	if !runtimeStorageEnabled(agent) {
+		return nil
+	}
+	s := agent.Spec.RuntimeStorage
+	if s == nil || len(s.Mounts) == 0 {
+		return []corev1.VolumeMount{
+			{Name: runtimeStorageVolume, MountPath: runtimeLogsMountPath, SubPath: runtimeLogsSubPath},
+			{Name: runtimeStorageVolume, MountPath: runtimeStateMountPath, SubPath: runtimeStateSubPath},
+		}
+	}
+	mounts := make([]corev1.VolumeMount, 0, len(s.Mounts))
+	for _, m := range s.Mounts {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      runtimeStorageVolume,
+			MountPath: m.MountPath,
+			SubPath:   m.SubPath,
+		})
+	}
+	return mounts
+}
+
+func runtimeStorageMountsPath(agent *witwavev1alpha1.WitwaveAgent, mountPath string) bool {
+	for _, m := range runtimeStorageMounts(agent) {
+		if m.MountPath == mountPath {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeStorageVolumeForPod(agent *witwavev1alpha1.WitwaveAgent) *corev1.Volume {
+	if !runtimeStorageEnabled(agent) {
+		return nil
+	}
+	claim := runtimeStorageExistingClaim(agent)
+	if claim == "" {
+		return nil
+	}
+	return &corev1.Volume{
+		Name: runtimeStorageVolume,
+		VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: claim,
+			},
+		},
+	}
+}
+
+func buildRuntimeStoragePVC(agent *witwavev1alpha1.WitwaveAgent) (*corev1.PersistentVolumeClaim, error) {
+	if !runtimeStorageOperatorManaged(agent) {
+		return nil, nil
+	}
+	s := agent.Spec.RuntimeStorage
+	size := s.Size
+	if size == "" {
+		size = defaultRuntimeStorageSize
+	}
+	qty, err := resource.ParseQuantity(size)
+	if err != nil {
+		return nil, fmt.Errorf("runtimeStorage.size %q: %w", size, err)
+	}
+	accessModes := s.AccessModes
+	if len(accessModes) == 0 {
+		accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+	}
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      runtimeStoragePVCName(agent),
+			Namespace: agent.Namespace,
+			Labels:    runtimeStorageLabels(agent),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: accessModes,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: qty},
+			},
+		},
+	}
+	if s.StorageClassName != "" {
+		pvc.Spec.StorageClassName = &s.StorageClassName
+	}
+	return pvc, nil
+}
+
 // backendStorageVolumeAndMounts returns the pod Volume and container
 // VolumeMounts for a backend's persistent storage, or (nil, nil) when storage
 // is disabled.
@@ -621,6 +761,11 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 		})
 	}
 
+	if vol := runtimeStorageVolumeForPod(agent); vol != nil {
+		volumes = append(volumes, *vol)
+		harnessMounts = append(harnessMounts, runtimeStorageMounts(agent)...)
+	}
+
 	// Team manifest — mounted at the same path the chart uses
 	// (/home/agent/manifest.json) so the harness's /team and /proxy/{name}
 	// endpoints work identically across rendering paths (#474). The CM
@@ -685,6 +830,18 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 		})
 	}
 
+	harnessEnv := append(append([]corev1.EnvVar{
+		{Name: "AGENT_NAME", Value: agent.Name},
+		{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
+		{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
+		{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", harnessMetricsPort)},
+	}, otelEnv(agent, fmt.Sprintf("harness-%s", agent.Name))...),
+		corsEnv(agent)...)
+	if runtimeStorageMountsPath(agent, runtimeStateMountPath) && !envListHasName(agent.Spec.Env, "TASK_STORE_PATH") {
+		harnessEnv = append(harnessEnv, corev1.EnvVar{Name: "TASK_STORE_PATH", Value: defaultTaskStorePath})
+	}
+	harnessEnv = append(harnessEnv, agent.Spec.Env...)
+
 	harness := corev1.Container{
 		Name:            "harness",
 		Image:           imageRef(agent.Spec.Image, appVersion),
@@ -698,14 +855,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 		// #1748: CORS env mirrors the chart's cors.* block — stamped
 		// before agent.Spec.Env so explicit per-container overrides
 		// still win on key collision (chart parity, late-merge wins).
-		Env: append(append(append([]corev1.EnvVar{
-			{Name: "AGENT_NAME", Value: agent.Name},
-			{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
-			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
-			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", harnessMetricsPort)},
-		}, otelEnv(agent, fmt.Sprintf("harness-%s", agent.Name))...),
-			corsEnv(agent)...),
-			agent.Spec.Env...),
+		Env:       harnessEnv,
 		EnvFrom:   harnessEnvFromWithInternal(agent),
 		Resources: agent.Spec.Resources,
 		SecurityContext: &corev1.SecurityContext{
@@ -786,6 +936,36 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 			})
 		}
 
+		backendEnv := append([]corev1.EnvVar{
+			{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-%s", agent.Name, b.Name)},
+			{Name: "AGENT_OWNER", Value: agent.Name},
+			{Name: "AGENT_ID", Value: b.Name},
+			{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},
+			{Name: "BACKEND_PORT", Value: fmt.Sprintf("%d", bPort)},
+			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
+			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", bMetricsPort)},
+			// Backend→harness transport for hook.decision events (#641).
+			// Points at the harness running in the same pod; an empty
+			// value disables the POST cleanly. HARNESS_EVENTS_AUTH_TOKEN
+			// falls back to TRIGGERS_AUTH_TOKEN on the backend side, so
+			// operators only need to thread one secret through both
+			// harness and backend env.
+			//
+			// Port selection: when metrics are enabled the harness binds
+			// /internal/events/{hook-decision,publish} to the dedicated
+			// metrics listener (#924) so a NetworkPolicy can lock the
+			// internal channel down to "scraper + same-pod only". When
+			// metrics are disabled the routes fall back to the app
+			// listener for availability. URL stamping has to track that
+			// split or backends 404 silently against a port where no
+			// route exists. (#1781)
+			{Name: "HARNESS_EVENTS_URL", Value: harnessEventsURL(harnessPort, harnessMetricsPort, metricsOn)},
+		}, otelEnv(agent, fmt.Sprintf("%s-%s", agent.Name, b.Name))...)
+		if volumeMountsHavePath(bMounts, runtimeStateMountPath) && !envListHasName(b.Env, "TASK_STORE_PATH") {
+			backendEnv = append(backendEnv, corev1.EnvVar{Name: "TASK_STORE_PATH", Value: defaultTaskStorePath})
+		}
+		backendEnv = append(backendEnv, b.Env...)
+
 		bc := corev1.Container{
 			Name:            b.Name,
 			Image:           imageRef(b.Image, appVersion),
@@ -793,32 +973,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 			Ports:           bPorts,
 			// #829: OTEL_* env parity with chart helper — serviceName
 			// "<agent>-<backend>" matches witwave.otelEnv.
-			Env: append(append([]corev1.EnvVar{
-				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-%s", agent.Name, b.Name)},
-				{Name: "AGENT_OWNER", Value: agent.Name},
-				{Name: "AGENT_ID", Value: b.Name},
-				{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},
-				{Name: "BACKEND_PORT", Value: fmt.Sprintf("%d", bPort)},
-				{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
-				{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", bMetricsPort)},
-				// Backend→harness transport for hook.decision events (#641).
-				// Points at the harness running in the same pod; an empty
-				// value disables the POST cleanly. HARNESS_EVENTS_AUTH_TOKEN
-				// falls back to TRIGGERS_AUTH_TOKEN on the backend side, so
-				// operators only need to thread one secret through both
-				// harness and backend env.
-				//
-				// Port selection: when metrics are enabled the harness binds
-				// /internal/events/{hook-decision,publish} to the dedicated
-				// metrics listener (#924) so a NetworkPolicy can lock the
-				// internal channel down to "scraper + same-pod only". When
-				// metrics are disabled the routes fall back to the app
-				// listener for availability. URL stamping has to track that
-				// split or backends 404 silently against a port where no
-				// route exists. (#1781)
-				{Name: "HARNESS_EVENTS_URL", Value: harnessEventsURL(harnessPort, harnessMetricsPort, metricsOn)},
-			}, otelEnv(agent, fmt.Sprintf("%s-%s", agent.Name, b.Name))...),
-				b.Env...),
+			Env:       backendEnv,
 			EnvFrom:   backendEnvFromWithInternal(agent, b),
 			Resources: b.Resources,
 			SecurityContext: &corev1.SecurityContext{
@@ -2257,4 +2412,22 @@ func manifestVolumeAndMount(cmName string) (corev1.Volume, corev1.VolumeMount) {
 			SubPath:   manifestSubPath,
 			ReadOnly:  true,
 		}
+}
+
+func envListHasName(env []corev1.EnvVar, name string) bool {
+	for _, e := range env {
+		if e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func volumeMountsHavePath(mounts []corev1.VolumeMount, mountPath string) bool {
+	for _, m := range mounts {
+		if m.MountPath == mountPath {
+			return true
+		}
+	}
+	return false
 }

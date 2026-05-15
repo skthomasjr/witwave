@@ -85,6 +85,10 @@ type BuildOptions struct {
 	// Backend-targeted env vars go on BackendSpec.Env instead; this
 	// field is harness-only.
 	HarnessEnv map[string]string
+
+	// RuntimeStorage, when non-nil, stamps spec.runtimeStorage for durable
+	// harness runtime state such as /home/agent/state/a2a-tasks.db.
+	RuntimeStorage *RuntimeStorageSpec
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -307,6 +311,26 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	}
 	if workspaceRefs != nil {
 		spec["workspaceRefs"] = workspaceRefs
+	}
+	if opts.RuntimeStorage != nil {
+		runtimeStorage := map[string]interface{}{
+			"enabled": true,
+			"size":    opts.RuntimeStorage.Size,
+		}
+		if opts.RuntimeStorage.StorageClassName != "" {
+			runtimeStorage["storageClassName"] = opts.RuntimeStorage.StorageClassName
+		}
+		if len(opts.RuntimeStorage.Mounts) > 0 {
+			mounts := make([]interface{}, 0, len(opts.RuntimeStorage.Mounts))
+			for _, m := range opts.RuntimeStorage.Mounts {
+				mounts = append(mounts, map[string]interface{}{
+					"subPath":   m.SubPath,
+					"mountPath": m.MountPath,
+				})
+			}
+			runtimeStorage["mounts"] = mounts
+		}
+		spec["runtimeStorage"] = runtimeStorage
 	}
 	if len(opts.HarnessEnv) > 0 {
 		// Sort keys for deterministic CR output — same rationale as

@@ -236,13 +236,16 @@ func TestResolvePersistDefaults(t *testing.T) {
 				t.Errorf("%q size = %q, want %q", typeName, spec.Size, wantSize)
 			}
 		}
-		// Claude's preset includes native state plus Witwave logs.
-		if mounts := got["claude"].Mounts; len(mounts) != 5 {
-			t.Errorf("claude mounts = %d, want 5", len(mounts))
+		// Claude's preset includes native state plus Witwave logs and state.
+		if mounts := got["claude"].Mounts; len(mounts) != 6 {
+			t.Errorf("claude mounts = %d, want 6", len(mounts))
 		}
 		for _, typ := range []string{"claude", "codex", "gemini"} {
 			if !hasMount(got[typ].Mounts, "logs", "/home/agent/logs") {
 				t.Errorf("%s preset missing logs mount: %+v", typ, got[typ].Mounts)
+			}
+			if !hasMount(got[typ].Mounts, "state", "/home/agent/state") {
+				t.Errorf("%s preset missing state mount: %+v", typ, got[typ].Mounts)
 			}
 		}
 	})
@@ -283,8 +286,8 @@ func TestResolvePersistDefaults(t *testing.T) {
 		got := ResolvePersistDefaults(map[string]PersistDefaults{
 			"claude": {Mounts: nil},
 		})
-		if len(got["claude"].Mounts) != 5 {
-			t.Errorf("mounts = %d, want preset of 5", len(got["claude"].Mounts))
+		if len(got["claude"].Mounts) != 6 {
+			t.Errorf("mounts = %d, want preset of 6", len(got["claude"].Mounts))
 		}
 	})
 

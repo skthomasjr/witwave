@@ -392,6 +392,9 @@ func (r *WitwaveAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err := r.reconcileSharedStoragePVC(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
+	if err := r.reconcileRuntimeStoragePVC(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
 	if err := r.reconcileHPA(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
@@ -1274,6 +1277,9 @@ func (r *WitwaveAgentReconciler) applyBackendPVCs(ctx context.Context, agent *wi
 			if pvc.Labels[labelComponent] == componentSharedStorage {
 				continue
 			}
+			if pvc.Labels[labelComponent] == componentRuntimeStorage {
+				continue
+			}
 			if !metav1.IsControlledBy(pvc, agent) {
 				// Defensive: another controller owns this PVC despite the
 				// labels matching. Leave it alone.
@@ -1377,6 +1383,73 @@ func (r *WitwaveAgentReconciler) reconcileSharedStoragePVC(ctx context.Context, 
 	existing.Labels = desired.Labels
 	if err := r.Update(ctx, existing); err != nil {
 		return fmt.Errorf("update shared-storage PVC: %w", err)
+	}
+	return nil
+}
+
+// reconcileRuntimeStoragePVC creates, updates, or deletes the agent-level
+// runtime-storage PVC. This claim is mounted only into harness for durable
+// runtime bookkeeping (for example the A2A SqliteTaskStore) and intentionally
+// stays separate from backend-native PVCs.
+func (r *WitwaveAgentReconciler) reconcileRuntimeStoragePVC(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) error {
+	desired, buildErr := buildRuntimeStoragePVC(agent)
+	if buildErr != nil {
+		logf.FromContext(ctx).Error(buildErr, "skipping runtime-storage PVC")
+		if r.Recorder != nil {
+			r.Recorder.Eventf(agent, corev1.EventTypeWarning, "InvalidRuntimeStorageSize",
+				"runtimeStorage: %v", buildErr)
+		}
+		return nil
+	}
+
+	if desired == nil {
+		owned := &corev1.PersistentVolumeClaimList{}
+		if err := r.List(ctx, owned,
+			client.InNamespace(agent.Namespace),
+			client.MatchingLabels{
+				labelName:      agent.Name,
+				labelManagedBy: managedBy,
+				labelComponent: componentRuntimeStorage,
+			},
+		); err != nil {
+			return fmt.Errorf("list runtime-storage PVC for cleanup: %w", err)
+		}
+		for i := range owned.Items {
+			pvc := &owned.Items[i]
+			if !metav1.IsControlledBy(pvc, agent) {
+				continue
+			}
+			if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("delete stale runtime-storage PVC %s: %w", pvc.Name, err)
+			}
+		}
+		return nil
+	}
+
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on runtime-storage PVC: %w", err)
+	}
+	existing := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		if err := r.Create(ctx, desired); err != nil {
+			return fmt.Errorf("create runtime-storage PVC: %w", err)
+		}
+		return nil
+	case err != nil:
+		return err
+	}
+	if !metav1.IsControlledBy(existing, agent) {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(agent, corev1.EventTypeWarning, "RuntimeStorageCollision",
+				"runtime-storage PVC %q exists but is not controlled by this agent — skipping update", desired.Name)
+		}
+		return nil
+	}
+	existing.Labels = desired.Labels
+	if err := r.Update(ctx, existing); err != nil {
+		return fmt.Errorf("update runtime-storage PVC: %w", err)
 	}
 	return nil
 }

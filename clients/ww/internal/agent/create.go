@@ -109,6 +109,11 @@ type CreateOptions struct {
 	// env vars go on BackendSpec.Env via --backend-env instead.
 	HarnessEnv map[string]string
 
+	// RuntimeStorage stamps spec.runtimeStorage for durable harness runtime
+	// state. Populated by higher-level persistence sugar such as
+	// --with-persistence.
+	RuntimeStorage *RuntimeStorageSpec
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -292,17 +297,18 @@ func Create(
 	}
 
 	obj, err := Build(BuildOptions{
-		Name:          opts.Name,
-		Namespace:     opts.Namespace,
-		Backends:      backends,
-		CLIVersion:    opts.CLIVersion,
-		CreatedBy:     opts.CreatedBy,
-		Team:          opts.Team,
-		WorkspaceRefs: opts.WorkspaceRefs,
-		GitSyncs:      opts.GitSyncs,
-		GitMappings:   opts.GitMappings,
-		NoMetrics:     opts.NoMetrics,
-		HarnessEnv:    opts.HarnessEnv,
+		Name:           opts.Name,
+		Namespace:      opts.Namespace,
+		Backends:       backends,
+		CLIVersion:     opts.CLIVersion,
+		CreatedBy:      opts.CreatedBy,
+		Team:           opts.Team,
+		WorkspaceRefs:  opts.WorkspaceRefs,
+		GitSyncs:       opts.GitSyncs,
+		GitMappings:    opts.GitMappings,
+		NoMetrics:      opts.NoMetrics,
+		HarnessEnv:     opts.HarnessEnv,
+		RuntimeStorage: opts.RuntimeStorage,
 	})
 	if err != nil {
 		return fmt.Errorf("build agent CR: %w", err)

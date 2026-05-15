@@ -1081,7 +1081,13 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics, harnessEnv)
+			var runtimeStorage *agent.RuntimeStorageSpec
+			if withPersistence {
+				runtimeStorage = agent.DefaultRuntimeStorageSpec()
+				harnessEnv = agent.ApplyHarnessTaskStoreDefault(harnessEnv)
+			}
+			specs = agent.ApplyBackendTaskStoreDefaults(specs)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics, harnessEnv, runtimeStorage)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -1150,11 +1156,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Per-entry --gitsync-secret values win on collision (precedence: explicit "+
 			"per-entry > agent-wide --gitsync-secret-from-env).")
 	cmd.Flags().StringArrayVar(&persist, "persist", nil,
-		"Provision a per-backend PVC for session/memory/log persistence (repeatable). "+
+		"Provision a per-backend PVC for session/memory/log/state persistence (repeatable). "+
 			"Form: <backend-name>=<size>[@<storage-class>]. Operator creates a PVC named "+
 			"<agent>-<backend>-data and projects it into the container at default mount "+
-			"paths derived from the backend's TYPE: claude → projects/sessions/backups/memory/logs, "+
-			"codex → memory/sessions/logs, gemini → memory/logs, echo → memory (symbolic). Pair with "+
+			"paths derived from the backend's TYPE: claude → projects/sessions/backups/memory/logs/state, "+
+			"codex → memory/sessions/logs/state, gemini → memory/logs/state, echo → memory (symbolic). Pair with "+
 			"--persist-mount to override the default mount list with an explicit one.")
 	cmd.Flags().StringArrayVar(&persistMounts, "persist-mount", nil,
 		"Override the default mount list on a backend's PVC (repeatable). Form: "+
@@ -1165,8 +1171,9 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&withPersistence, "with-persistence", false,
 		"Provision a per-backend PVC for every declared --backend using type-derived "+
 			"defaults (size + mount layout). Echo → 1Gi/memory; claude → 10Gi with "+
-			"projects/sessions/backups/memory/logs; codex → 5Gi with memory/sessions/logs; gemini → "+
-			"5Gi/memory/logs. Override per-type defaults in ~/.config/ww/config.toml under "+
+			"projects/sessions/backups/memory/logs/state; codex → 5Gi with memory/sessions/logs/state; gemini → "+
+			"5Gi/memory/logs/state. Also provisions a 1Gi agent runtime PVC for harness logs/state. "+
+			"Override per-type defaults in ~/.config/ww/config.toml under "+
 			"[persist.defaults.<type>] (size, storageClassName, and mounts). Explicit "+
 			"--persist <name>=<size> takes precedence — --with-persistence only fills in "+
 			"backends that weren't named explicitly.")
@@ -1211,7 +1218,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool, harnessEnv map[string]string) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool, harnessEnv map[string]string, runtimeStorage *agent.RuntimeStorageSpec) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1242,6 +1249,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		NoMetrics:       noMetrics,
 		BackendAuth:     backendAuth,
 		HarnessEnv:      harnessEnv,
+		RuntimeStorage:  runtimeStorage,
 		Out:             os.Stdout,
 		In:              os.Stdin,
 	})

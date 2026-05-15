@@ -42,6 +42,39 @@ spec:
 {{- range .Values.agents }}
 {{- if eq (include "witwave.enabled" .) "true" }}
 {{- $agentName := .name }}
+{{- $runtimeStorage := $.Values.runtimeStorage | default dict }}
+{{- if .runtimeStorage }}{{- $runtimeStorage = mergeOverwrite (deepCopy $runtimeStorage) .runtimeStorage }}{{- end }}
+{{- if and $runtimeStorage.enabled (not $runtimeStorage.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $.Release.Name }}-{{ $agentName }}-runtime-data
+  {{- if $retainStorage }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+  labels:
+    {{- include "witwave.runtimeStorageLabels" (dict "agentName" $agentName "root" $) | nindent 4 }}
+spec:
+  accessModes:
+    {{- if $runtimeStorage.accessModes }}
+    {{- toYaml $runtimeStorage.accessModes | nindent 4 }}
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ $runtimeStorage.size | default "1Gi" }}
+  {{- if $runtimeStorage.storageClassName }}
+  storageClassName: {{ $runtimeStorage.storageClassName }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $agentName := .name }}
 {{- range .backends }}
 {{- if eq (include "witwave.enabled" .) "true" }}
 {{- if and (.storage).enabled (not (.storage).existingClaim) }}
