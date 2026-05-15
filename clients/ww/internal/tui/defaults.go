@@ -13,7 +13,8 @@ import (
 // sources (highest priority first):
 //
 //  1. WW_TUI_DEFAULT_* environment variables — explicit operator
-//     pinning. Sourced from .env or set ad-hoc; always wins.
+//     pinning. Exported directly or loaded from a secret manager;
+//     always wins.
 //  2. The `[tui.create_defaults]` block in ww's config.toml (typically
 //     ~/.witwave/config.toml). Auto-saved by saveTUIDefaults after
 //     each successful create. Lives in the SAME file as profiles +
@@ -104,8 +105,8 @@ func loadTUIDefaults() tuiDefaults {
 		}
 	}
 
-	// Layer 1 — env vars (highest priority). Explicit pin from .env
-	// or ad-hoc shell export overrides anything the tool guessed.
+	// Layer 1 — env vars (highest priority). Explicit shell pin
+	// overrides anything the tool guessed.
 	if v := strings.TrimSpace(os.Getenv("WW_TUI_DEFAULT_NAMESPACE")); v != "" {
 		d.Namespace = v
 	}

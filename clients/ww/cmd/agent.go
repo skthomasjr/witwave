@@ -615,7 +615,7 @@ func newAgentGitCmd(f *agentFlags) *cobra.Command {
 			"Auth posture — three ways to provide a credential Secret:\n\n" +
 			"  --auth-secret <name>     reference an existing K8s Secret (production)\n" +
 			"  --auth-from-gh           mint one from `gh auth token` (dev laptops)\n" +
-			"  --secret-from-env <VAR>  mint one from the named env var (CI/CD / .env)\n\n" +
+			"  --secret-from-env <VAR>  mint one from the named env var (CI/CD / secret manager)\n\n" +
 			"Public repos need no auth flag. Secrets minted by ww carry an\n" +
 			"`app.kubernetes.io/managed-by: ww` label so detach + delete can\n" +
 			"distinguish ww-created Secrets from hand-authored ones.",

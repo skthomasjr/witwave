@@ -246,42 +246,30 @@ docker build -f backends/gemini/Dockerfile -t gemini:latest .
 docker build -f backends/echo/Dockerfile -t echo:latest .
 ```
 
-### 2. Configure credentials
+### 2. Configure Credentials
 
-The current CLI/bootstrap path still reads credentials from the shell, so keep a local repo-root `.env` for now. `.env`
-is gitignored and must never be committed.
-
-```bash
-cat > .env <<'EOF'
-CLAUDE_CODE_OAUTH_TOKEN=your-claude-token-here
-GITSYNC_USERNAME=your-github-username
-GITSYNC_PASSWORD=your-github-pat
-
-# Optional: only needed when the parked Codex/Gemini test fixtures are enabled.
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-
-# Optional: set this if you want to run manual trigger curl checks after deploy.
-TRIGGERS_AUTH_TOKEN=
-EOF
-```
-
-SOPS is being introduced as the committed encrypted source for repo-managed team secrets. The policy in `.sops.yaml`
-applies to `*.sops.env`, `*.sops.yaml`, `*.sops.yml`, and `*.sops.json` anywhere in the repo. Current encrypted mirrors:
+SOPS is the committed encrypted source for repo-managed team secrets. The policy in `.sops.yaml` applies to
+`*.sops.env`, `*.sops.yaml`, `*.sops.yml`, and `*.sops.json` anywhere in the repo. Current encrypted mirrors:
 
 - `.agents/self/team.sops.env` — shared self-team credentials.
 - `.agents/self/<agent>/agent.sops.env` — per-agent GitHub identity, with in-container names like `GITHUB_TOKEN` and
   `GITHUB_USER`.
 - `.agents/test/team.sops.env` — shared test-team credentials.
+- `.secrets/secrets.sops.yaml` — root-level encrypted holding area for non-bootstrap / in-progress secrets.
 
-Decrypt locally through mise/SOPS when you need to inspect or load one of those files:
+Decrypt locally through mise/SOPS when you need to inspect one of those files:
 
 ```bash
 mise exec -- sops -d .agents/self/team.sops.env
 mise exec -- sops -d .agents/self/piper/agent.sops.env
 ```
 
-Until `ww` can consume SOPS files directly, leave `.env` in place and keep it aligned with the encrypted mirrors.
+Run commands with SOPS dotenv files loaded into the process environment:
+
+```bash
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  sh -lc 'test -n "$CLAUDE_CODE_OAUTH_TOKEN" && test -n "$GITSYNC_USERNAME"'
+```
 
 ### 3. Start the test agents
 

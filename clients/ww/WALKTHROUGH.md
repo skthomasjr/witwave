@@ -245,9 +245,6 @@ the conventional env vars for that profile + mints one `<agent>-<backend>` Secre
 so `delete --purge` reaps it):
 
 ```bash
-# source .env first so the tokens land in your shell
-source .env
-
 # Claude via the Claude Code OAuth token (reads $CLAUDE_CODE_OAUTH_TOKEN)
 ww agent create research \
     --namespace witwave \
@@ -383,7 +380,7 @@ ww agent git add consensus \
     --repo <you>/my-witwave-config \
     --auth-from-gh
 
-# Option B: named env var holds a token (CI / .env workflows).
+# Option B: named env var holds a token (CI / secret-manager workflows).
 GITHUB_TOKEN=ghp_... ww agent git add consensus \
     --namespace witwave \
     --repo <you>/my-witwave-config \
@@ -479,10 +476,8 @@ Append a backend to a running agent without tearing it down. Port is auto-assign
 8001–8050 range; credentials resolve the same way as `ww agent create --auth`.
 
 ```bash
-# Source your token so --auth oauth can read it
-source .env
-
-# Append claude to the consensus agent
+# Append claude to the consensus agent. The command reads
+# $CLAUDE_CODE_OAUTH_TOKEN from the environment.
 ww agent backend add consensus claude \
     --namespace witwave \
     --auth oauth

@@ -33,7 +33,7 @@ const (
 	GitAuthFromGH
 
 	// GitAuthFromEnv — mint a Secret from a named environment
-	// variable. Covers CI/CD, direnv / .env loaders, and any other
+	// variable. Covers CI/CD, secret managers, and any other
 	// "I've already loaded a token into my shell" workflow.
 	GitAuthFromEnv
 )

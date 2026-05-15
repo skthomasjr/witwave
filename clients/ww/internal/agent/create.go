@@ -93,8 +93,8 @@ type CreateOptions struct {
 	// credential Secret from the named shell vars and stamps it onto
 	// every GitSyncs[] entry that doesn't already carry an explicit
 	// --gitsync-secret reference. Mirrors --backend-secret-from-env's
-	// "lift from .env, mint a Secret" posture but targets the gitSync
-	// sidecar instead of a backend container.
+	// "lift from shell env, mint a Secret" posture but targets the
+	// gitSync sidecar instead of a backend container.
 	GitSyncFromEnv *GitSyncFromEnvSpec
 
 	// NoMetrics opts the agent out of the operator's default-on metrics

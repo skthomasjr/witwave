@@ -61,7 +61,7 @@ const (
 	// Caveats: command-line values land in shell history + ps output
 	// + journal scrapers. For production tokens use --auth-secret
 	// (pre-create with `kubectl create secret --from-env-file`) or
-	// --backend-secret-from-env (lift from a sourced env file). --auth-set is
+	// --backend-secret-from-env (lift from the shell environment). --auth-set is
 	// for dev-loop ergonomics + custom KEY=VALUE shapes the named
 	// profile catalog doesn't cover.
 	BackendAuthInline

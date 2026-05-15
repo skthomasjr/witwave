@@ -42,12 +42,10 @@ Deploy the test team through the CLI/operator bootstrap:
 cat .agents/test/bootstrap.md
 ```
 
-The bootstrap reads `.env` from the repo root. Required variables are `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, and
-`GITSYNC_PASSWORD`. Set `TRIGGERS_AUTH_TOKEN` when you plan to run the manual trigger curl checks below; otherwise the
-bootstrap command generates one for the current shell.
-
-The same shared credentials are mirrored in `.agents/test/team.sops.env` for the SOPS-backed secret migration. Until
-`ww` can read SOPS files directly, keep the local `.env` and encrypted mirror aligned.
+The bootstrap loads shared credentials from `.agents/test/team.sops.env` through `scripts/sops-exec-env.py`. Required
+SOPS-backed variables are `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, and `GITSYNC_PASSWORD`. Set
+`TRIGGERS_AUTH_TOKEN` when you plan to run the manual trigger curl checks below; otherwise the bootstrap command
+generates one for the current shell.
 
 The bootstrap also creates a small `witwave-test` workspace and binds every deployed test agent to it, including Bob,
 Fred, and any promoted Jack/Luke parity agents.

@@ -2,8 +2,8 @@
 
 This repo is maintained by witwave agents running on a witwave cluster. This document is the meta-loop: it walks through
 using the `ww` CLI plus local credentials to stand up the WitwaveWorkspace and WitwaveAgents that manage and maintain
-_this_ repo. SOPS-encrypted mirrors now live beside the agent config, but the current CLI commands still source `.env`
-until `ww` can consume SOPS files directly.
+_this_ repo. SOPS-encrypted dotenv files now live beside the agent config, and the bootstrap commands load them through
+`scripts/sops-exec-env.py`.
 
 ## Goal
 
@@ -69,99 +69,29 @@ Conventions used by every command in this doc:
 
 ### Environment
 
-A local `.env` at the repo root still holds the shell variables consumed by the bootstrap commands. `.env` is gitignored
-— never commit it. Source it into your shell before running any of the commands below. Every subsequent step assumes
-these variables are present in the environment:
+SOPS dotenv files are the bootstrap source for credentials. The local `mise.local.toml` points SOPS at the Witwave age
+key, and `scripts/sops-exec-env.py` decrypts one or more SOPS dotenv files in memory before executing the `ww` command.
+
+Required encrypted files:
+
+- `.agents/self/team.sops.env` carries shared team credentials: `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`,
+  `GITSYNC_PASSWORD`, and `OPENAI_API_KEY`.
+- `.agents/self/<agent>/agent.sops.env` carries that agent's GitHub identity as `GITHUB_TOKEN` and `GITHUB_USER`.
+  Piper's file also carries the X/Twitter publishing credentials as `X_*` keys.
+
+Verify the local decrypt path without printing values:
 
 ```bash
-set --allexport
-source .env
-set +o allexport
+mise exec -- scripts/sops-exec-env.py \
+  .agents/self/team.sops.env \
+  .agents/self/iris/agent.sops.env \
+  -- sh -lc 'test -n "$CLAUDE_CODE_OAUTH_TOKEN" && test -n "$GITHUB_TOKEN" && test -n "$GITSYNC_USERNAME"'
 ```
 
-Variables this walkthrough expects in `.env`:
-
-```bash
-# Claude OAuth token (the iris backend's LLM credential)
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-replace_me
-
-# Per-agent GitHub credentials — used for in-container git operations
-# (commit/push/PRs) by each agent's claude backend. Agent-suffixed so
-# every agent on the team carries its own credentials without collision.
-# Pattern: each agent has a dedicated GitHub account named
-# <name>-agent-witwave with a verified email <name>-agent@witwave.ai;
-# the account is a collaborator on the primary repo with the access
-# level appropriate to the agent's responsibilities.
-GITHUB_TOKEN_IRIS=github_pat_replace_me
-GITHUB_USER_IRIS=iris-agent-witwave
-
-GITHUB_TOKEN_KIRA=github_pat_replace_me
-GITHUB_USER_KIRA=kira-agent-witwave
-
-GITHUB_TOKEN_NOVA=github_pat_replace_me
-GITHUB_USER_NOVA=nova-agent-witwave
-
-GITHUB_TOKEN_EVAN=github_pat_replace_me
-GITHUB_USER_EVAN=evan-agent-witwave
-
-# Zora doesn't commit code (she dispatches peers; iris pushes). PAT is
-# read-only — used by zora's `gh run list` calls for CI status reads.
-# Required for the never-leave-main-red policy to detect red CI directly
-# rather than infer from indirect signals.
-GITHUB_TOKEN_ZORA=github_pat_replace_me
-GITHUB_USER_ZORA=zora-agent-witwave
-
-# Finn (gap-fixer) — same shape as evan. Finn commits per-gap fills
-# locally; iris pushes them. PAT needs the same write scope as the
-# other commit-authoring agents (iris/kira/nova/evan).
-GITHUB_TOKEN_FINN=github_pat_replace_me
-GITHUB_USER_FINN=finn-agent-witwave
-
-# Felix (feature work) — starts with a conservative autonomous tier ceiling.
-# PAT needs write scope for tier-approved feature commits; higher tiers still
-# require explicit human approval before landing.
-GITHUB_TOKEN_FELIX=github_pat_replace_me
-GITHUB_USER_FELIX=felix-agent-witwave
-
-# Piper (outreach) — GitHub Discussions publishing/moderation.
-GITHUB_TOKEN_PIPER=github_pat_replace_me
-GITHUB_USER_PIPER=piper-agent-witwave
-
-# Shared gitSync credentials — used by every agent's gitSync sidecar
-# to clone the config repo. Not agent-suffixed because the sidecar
-# typically pulls from one shared config repo; one PAT serves the
-# whole team. Override per-agent only when an agent points at a
-# different private repo.
-GITSYNC_USERNAME=iris-agent-witwave
-GITSYNC_PASSWORD=github_pat_replace_me
-
-# Optional shared Codex credential. Present in the SOPS mirror so Codex
-# backends can be enabled later without reworking the secret shape.
-OPENAI_API_KEY=sk-replace_me
-```
-
-The agent-create commands lift these into each agent's containers at the in-container env-var names each consumer
-expects: `CLAUDE_CODE_OAUTH_TOKEN` lands on the claude container as-is; `GITHUB_TOKEN_<NAME>` and `GITHUB_USER_<NAME>`
-are renamed to `GITHUB_TOKEN` / `GITHUB_USER` inside that agent's claude container; and `GITSYNC_USERNAME` /
-`GITSYNC_PASSWORD` are minted into a per-agent `<name>-gitsync` Secret (keys `GITSYNC_USERNAME` / `GITSYNC_PASSWORD`)
-and `envFrom`-wired to the gitSync sidecar.
-
-SOPS is the committed encrypted mirror for those same credentials:
-
-- `.agents/self/team.sops.env` carries `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, `GITSYNC_PASSWORD`, and
-  `OPENAI_API_KEY`.
-- `.agents/self/<agent>/agent.sops.env` carries that agent's GitHub identity as `GITHUB_TOKEN` and `GITHUB_USER` with
-  the `_IRIS`, `_PIPER`, etc. suffix removed.
-
-Inspect locally with mise/SOPS when needed:
-
-```bash
-mise exec -- sops -d .agents/self/team.sops.env
-mise exec -- sops -d .agents/self/piper/agent.sops.env
-```
-
-Until `ww` grows native SOPS support, keep `.env` as the compatibility source and keep these encrypted mirrors aligned
-when credentials change.
+The agent-create commands lift those decrypted shell variables into each agent's containers at the in-container env-var
+names each consumer expects: `CLAUDE_CODE_OAUTH_TOKEN` lands on the claude container as-is; `GITHUB_TOKEN` and
+`GITHUB_USER` land inside that agent's claude container; and `GITSYNC_USERNAME` / `GITSYNC_PASSWORD` are minted into a
+per-agent `<name>-gitsync` Secret and `envFrom`-wired to the gitSync sidecar.
 
 For this bootstrap the repo (`witwave-ai/witwave`) is public and the sidecar would clone anonymously without any creds —
 the `--gitsync-secret-from-env` wiring is shown so the pattern carries over verbatim when iris later points at a private
@@ -236,7 +166,8 @@ hooks, Claude Code config) sourced from `.agents/self/iris/` in this repo, and p
 session + memory state. One command:
 
 ```bash
-ww agent create iris \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/iris/agent.sops.env -- \
+  ww agent create iris \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -244,8 +175,8 @@ ww agent create iris \
   --harness-env TASK_TIMEOUT_SECONDS=2700 \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -281,7 +212,8 @@ sourced from `.agents/self/kira/`); she pushes her own commits via her `git-push
 One command:
 
 ```bash
-ww agent create kira \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/kira/agent.sops.env -- \
+  ww agent create kira \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -289,8 +221,8 @@ ww agent create kira \
   --harness-env TASK_TIMEOUT_SECONDS=2700 \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_KIRA:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_KIRA:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/kira \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -319,7 +251,8 @@ backend, bound to `witwave-self`, identity sourced from `.agents/self/nova/`); l
 delegates pushes to iris via `call-peer`. One command:
 
 ```bash
-ww agent create nova \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/nova/agent.sops.env -- \
+  ww agent create nova \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -327,8 +260,8 @@ ww agent create nova \
   --harness-env TASK_TIMEOUT_SECONDS=2700 \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_NOVA:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_NOVA:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/nova \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -347,7 +280,8 @@ pushes to iris via `call-peer`. Note the higher `TASK_TIMEOUT_SECONDS` — evan'
 minutes, well past the team-default 2700s budget.
 
 ```bash
-ww agent create evan \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/evan/agent.sops.env -- \
+  ww agent create evan \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -357,8 +291,8 @@ ww agent create evan \
   --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
   --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_EVAN:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_EVAN:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/evan \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -375,7 +309,8 @@ The `gh` token she carries is read-only — used by her every-tick CI-status che
 never-leave-main-red policy can detect red CI directly rather than infer from indirect signals.
 
 ```bash
-ww agent create zora \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/zora/agent.sops.env -- \
+  ww agent create zora \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -385,8 +320,8 @@ ww agent create zora \
   --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
   --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_ZORA:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_ZORA:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/zora \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -402,7 +337,8 @@ at tier 1 cosmetic; advances per zora's polish-tier control as low-risk territor
 as evan — one `claude` backend, identity from `.agents/self/finn/`, commits-locally / iris-pushes contract.
 
 ```bash
-ww agent create finn \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/finn/agent.sops.env -- \
+  ww agent create finn \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -412,8 +348,8 @@ ww agent create finn \
   --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
   --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_FINN:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_FINN:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/finn \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -425,7 +361,8 @@ Felix is the team's feature agent — implements new product capabilities inside
 commits locally, and delegates pushes to iris.
 
 ```bash
-ww agent create felix \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/felix/agent.sops.env -- \
+  ww agent create felix \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -435,8 +372,8 @@ ww agent create felix \
   --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
   --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_FELIX:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_FELIX:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/felix \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
@@ -449,7 +386,8 @@ and only writes to her memory namespace and GitHub Discussions. Same deployment 
 backend, identity from `.agents/self/piper/`, no commits-then-iris-pushes flow because she has no commits to push.
 
 ```bash
-ww agent create piper \
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/piper/agent.sops.env -- \
+  ww agent create piper \
   --namespace witwave-self \
   --workspace witwave-self \
   --with-persistence \
@@ -459,16 +397,17 @@ ww agent create piper \
   --backend-env claude:TASK_TIMEOUT_SECONDS=7200 \
   --backend-env claude:CONVERSATIONS_AUTH_DISABLED=true \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --backend-secret-from-env claude=GITHUB_TOKEN_PIPER:GITHUB_TOKEN \
-  --backend-secret-from-env claude=GITHUB_USER_PIPER:GITHUB_USER \
+  --backend-secret-from-env claude=GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER \
   --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/piper \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
-`GITHUB_TOKEN_PIPER` must carry `discussion: write` scope on `witwave-ai/witwave` so her `post-discussion` skill can
-publish to Announcements + Progress categories. Until the `piper-agent-witwave` GitHub account exists and the PAT is
-wired, Piper's `team-pulse` skill runs in draft-only mode (logs intended posts to her `pulse_log.md` + `drafts/`
-directory; no `gh api graphql` writes). This lets you calibrate her voice + scoring before publishing live.
+Piper's `GITHUB_TOKEN` in `.agents/self/piper/agent.sops.env` must carry `discussion: write` scope on
+`witwave-ai/witwave` so her `post-discussion` skill can publish to Announcements + Progress categories. Until the
+`piper-agent-witwave` GitHub account exists and the PAT is wired, Piper's `team-pulse` skill runs in draft-only mode
+(logs intended posts to her `pulse_log.md` + `drafts/` directory; no `gh api graphql` writes). This lets you calibrate
+her voice + scoring before publishing live.
 
 ## Verify the team
 

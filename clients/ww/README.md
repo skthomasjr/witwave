@@ -472,7 +472,7 @@ Secret):
 
 ```bash
 # OAuth path — reads $CLAUDE_CODE_OAUTH_TOKEN from the shell
-source .env && ww agent create iris --backend claude --auth claude=oauth
+ww agent create iris --backend claude --auth claude=oauth
 
 # API-key path — reads $ANTHROPIC_API_KEY
 ww agent create iris --backend claude --auth claude=api-key
@@ -659,8 +659,8 @@ The create modal's auth picker mirrors the CLI's four modes (`none` / `profile` 
 the CLI's `--auth-set <backend>:KEY=VALUE`.
 
 Defaults pre-fill the create modal from a layered resolution (env vars > saved last-used > fallback). `WW_TUI_DEFAULT_*`
-env vars in your `.env` pin values; otherwise the form remembers your last successful create. Saved values live in the
-`[tui.create_defaults]` block of `~/.witwave/config.toml`.
+env vars exported in your shell pin values; otherwise the form remembers your last successful create. Saved values live
+in the `[tui.create_defaults]` block of `~/.witwave/config.toml`.
 
 ## Config
 

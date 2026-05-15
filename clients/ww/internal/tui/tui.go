@@ -1212,7 +1212,8 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 //     `--auth-set` instead. Keeping the parser simple beats handling
 //     `\$` escapes for an edge case.
 //   - Env-var lift fails fast when the variable is unset; users see
-//     the missing name in the error so they can fix .env + retry.
+//     the missing name in the error so they can export it or load it
+//     through their secret manager and retry.
 func resolveTUISecrets(backendName, existingSecret string, pairs []secretPair) (agent.BackendAuthResolver, error) {
 	existingSecret = strings.TrimSpace(existingSecret)
 	if existingSecret != "" {
@@ -1247,7 +1248,7 @@ func resolveTUISecrets(backendName, existingSecret string, pairs []secretPair) (
 			envValue := strings.TrimSpace(os.Getenv(envName))
 			if envValue == "" {
 				return agent.BackendAuthResolver{}, fmt.Errorf(
-					"secrets: $%s is unset or empty in the shell environment (set it in your .env, source it, retry)", envName,
+					"secrets: $%s is unset or empty in the shell environment (export it or load it through your secret manager, then retry)", envName,
 				)
 			}
 			value = envValue

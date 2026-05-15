@@ -25,48 +25,33 @@ same workspace projection path across the team.
 - A Kubernetes cluster reachable via your current kubeconfig context.
 - `ww`, `kubectl`, and `python3` on your PATH.
 - The witwave operator installed or installable through `ww operator install`.
-- A repo-root `.env` file with the credentials the CLI will lift into Kubernetes Secrets. `.env` remains the
-  compatibility source until `ww` can consume SOPS files directly.
+- SOPS/mise configured for this repo. `mise.local.toml` should set `SOPS_AGE_KEY_FILE`, and `scripts/sops-exec-env.py`
+  loads the encrypted dotenv file for each `ww` command.
 
-Required `.env` values:
+Required encrypted file:
 
-```bash
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-replace_me
-GITSYNC_USERNAME=your-github-username
-GITSYNC_PASSWORD=github_pat_replace_me
+```text
+.agents/test/team.sops.env
 ```
 
-Optional `.env` values:
+It carries `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, `GITSYNC_PASSWORD`, and `OPENAI_API_KEY`.
+
+Generate a trigger bearer for the current shell before creating Bob:
 
 ```bash
-# Set this when you want a stable bearer for manual trigger curl checks.
-# If omitted, the bootstrap commands below generate one for the current shell.
-TRIGGERS_AUTH_TOKEN=replace_me_generated_token
-
-# Only needed when Jack/Luke or Bob's parked Codex/Gemini fixtures are promoted.
-OPENAI_API_KEY=sk-replace_me
-GEMINI_API_KEY=replace_me
-```
-
-Load the environment before creating agents:
-
-```bash
-set -a
-source .env
-set +a
-
 export TRIGGERS_AUTH_TOKEN="${TRIGGERS_AUTH_TOKEN:-$(python3 -c 'import secrets; print(secrets.token_hex(32))')}"
 printf 'Using TRIGGERS_AUTH_TOKEN=%s\n' "$TRIGGERS_AUTH_TOKEN"
 ```
 
-The shared test credentials are also committed as an encrypted SOPS mirror:
+Verify the SOPS decrypt path without printing values:
 
 ```bash
-mise exec -- sops -d .agents/test/team.sops.env
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  sh -lc 'test -n "$CLAUDE_CODE_OAUTH_TOKEN" && test -n "$GITSYNC_USERNAME" && test -n "$OPENAI_API_KEY"'
 ```
 
-That file carries `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, `GITSYNC_PASSWORD`, and `OPENAI_API_KEY`. Keep it
-aligned with `.env` while the bootstrap still reads from shell variables.
+If you promote Luke, export `GEMINI_API_KEY` in the shell or add it to an encrypted SOPS file before running the Luke
+command.
 
 ## Step 1 - Install or Check the Operator
 
@@ -101,7 +86,8 @@ and disabled backend fixtures. The service name is `bob`; the service port is `8
 `ww` default backend port `8001`.
 
 ```bash
-ww agent create bob \
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  ww agent create bob \
   --namespace witwave-test \
   --create-namespace \
   --team test \
@@ -132,7 +118,8 @@ Fred is intentionally small. He validates the second-agent path with independent
 backend storage, heartbeat behavior, and continuation execution.
 
 ```bash
-ww agent create fred \
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  ww agent create fred \
   --namespace witwave-test \
   --create-namespace \
   --team test \
@@ -193,7 +180,7 @@ files. The backend logs live inside the agent PVCs when deployed through the ope
 ## Step 7 - Run Manual Trigger Checks
 
 Manual trigger checks need the same bearer token that was deployed into Bob. If the token was generated in the current
-shell, keep using that shell or write the value into `.env` before redeploying.
+shell, keep using that shell or export the same value again before redeploying.
 
 ```bash
 curl -X POST http://localhost:8099/triggers/ping \
@@ -236,7 +223,8 @@ Redeploy by rerunning Steps 2 through 4.
 Jack and Luke are the cleaner promotion path for single-backend parity checks:
 
 ```bash
-ww agent create jack \
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  ww agent create jack \
   --namespace witwave-test \
   --create-namespace \
   --team test \
@@ -250,7 +238,8 @@ ww agent create jack \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD \
   --yes
 
-ww agent create luke \
+mise exec -- scripts/sops-exec-env.py .agents/test/team.sops.env -- \
+  ww agent create luke \
   --namespace witwave-test \
   --create-namespace \
   --team test \

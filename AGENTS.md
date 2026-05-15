@@ -479,8 +479,9 @@ Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `wi
 - SOPS-encrypted secret mirrors are committed as `*.sops.env`, `*.sops.yaml`, `*.sops.yml`, or `*.sops.json` under the
   repo-wide policy in `.sops.yaml`. Current team shape: `.agents/self/team.sops.env` for shared self-team credentials,
   `.agents/self/<name>/agent.sops.env` for per-agent GitHub identity, and `.agents/test/team.sops.env` for shared test
-  credentials. The root `.env` remains the local compatibility source until `ww` can consume SOPS files directly; keep
-  it gitignored and do not commit plaintext secrets. Use `mise exec -- sops -d <file>` for local inspection.
+  credentials. Root-level non-bootstrap secrets live in `.secrets/secrets.sops.yaml`. Use `mise exec -- sops -d <file>`
+  for local inspection and `mise exec -- scripts/sops-exec-env.py <file.sops.env> -- <command>` to run commands with
+  decrypted dotenv values in memory. Do not commit plaintext secret files.
 - Every protected endpoint uses `Authorization: Bearer <token>` headers. Two harness-scope tokens split by purpose:
   `CONVERSATIONS_AUTH_TOKEN` (read / observe) and `ADHOC_RUN_AUTH_TOKEN` (trigger actions). Backends reuse
   `CONVERSATIONS_AUTH_TOKEN` for their `/conversations` / `/api/traces` / `/api/sessions/<id>/stream` paths.

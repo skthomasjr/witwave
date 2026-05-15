@@ -16,8 +16,7 @@ Claude OAuth, gitSync, and OpenAI keys used by the test bootstrap and future Cod
 mise exec -- sops -d .agents/test/team.sops.env
 ```
 
-The bootstrap still reads credentials from the local repo-root `.env` file until `ww` can consume SOPS files directly,
-so keep `.env` gitignored and aligned with this encrypted mirror.
+The bootstrap loads this file through `scripts/sops-exec-env.py`, so no repo-root plaintext env file is required.
 
 ## The team
 

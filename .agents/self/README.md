@@ -25,12 +25,14 @@ Self-team secrets are mirrored into SOPS-encrypted dotenv files:
 - `<agent>/agent.sops.env` carries each agent's GitHub identity as the in-container names `GITHUB_TOKEN` and
   `GITHUB_USER`.
 
-The root `.env` file remains the local compatibility source for the current bootstrap commands. Keep `.env` gitignored,
-and update the SOPS mirrors when credentials change until `ww` can read SOPS files directly.
+Bootstrap commands load those SOPS files through `scripts/sops-exec-env.py`, so no repo-root plaintext env file is
+required.
 
 ```bash
 mise exec -- sops -d .agents/self/team.sops.env
 mise exec -- sops -d .agents/self/piper/agent.sops.env
+mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/piper/agent.sops.env -- \
+  sh -lc 'test -n "$CLAUDE_CODE_OAUTH_TOKEN" && test -n "$GITHUB_TOKEN"'
 ```
 
 ## The team
