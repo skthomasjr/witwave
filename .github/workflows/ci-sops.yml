@@ -1,0 +1,71 @@
+name: CI — SOPS
+
+# Verifies that the committed SOPS policy and encrypted smoke file can
+# be decrypted by the GitHub Actions age identity. This intentionally
+# runs only on trusted pushes/manual dispatches, not pull_request, so
+# the decryption key is never exposed to untrusted workflow code.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ci-sops.yml"
+      - ".sops.yaml"
+      - "**/*.sops.env"
+      - "**/*.sops.json"
+      - "**/*.sops.yaml"
+      - "**/*.sops.yml"
+
+concurrency:
+  group: ci-sops-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  decrypt-smoke:
+    name: Decrypt smoke file
+    runs-on: ubuntu-latest
+    environment: secret-decryption
+    env:
+      SOPS_VERSION: "3.13.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SOPS
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$RUNNER_TEMP/sops" \
+            "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64"
+          chmod 0755 "$RUNNER_TEMP/sops"
+
+      - name: Configure age identity
+        env:
+          WITWAVE_SOPS_AGE_KEY: ${{ secrets.WITWAVE_SOPS_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WITWAVE_SOPS_AGE_KEY:-}" ]; then
+            echo "::error::WITWAVE_SOPS_AGE_KEY is not configured in the secret-decryption environment."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/sops-age"
+          printf '%s\n' "$WITWAVE_SOPS_AGE_KEY" > "$RUNNER_TEMP/sops-age/keys.txt"
+          chmod 0600 "$RUNNER_TEMP/sops-age/keys.txt"
+
+      - name: Decrypt smoke file
+        env:
+          SOPS_AGE_KEY_FILE: ${{ runner.temp }}/sops-age/keys.txt
+        run: |
+          set -euo pipefail
+          decrypted="$("$RUNNER_TEMP/sops" \
+            --input-type dotenv \
+            --output-type dotenv \
+            --decrypt docs/examples/sops-smoke.sops.env)"
+          if [ "$decrypted" != "WITWAVE_SOPS_SMOKE=ok" ]; then
+            echo "::error::SOPS smoke file decrypted, but its content did not match the expected fake value."
+            exit 1
+          fi
+          echo "SOPS smoke decrypt succeeded."
