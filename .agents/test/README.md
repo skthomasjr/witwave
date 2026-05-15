@@ -7,6 +7,18 @@ repo.
 The mission: **prove the platform still boots, routes, schedules, triggers, and records conversation evidence after
 config or runtime changes.**
 
+## Secrets
+
+Shared test-team credentials are mirrored into `team.sops.env` as a SOPS-encrypted dotenv file. It currently carries the
+Claude OAuth, gitSync, and OpenAI keys used by the test bootstrap and future Codex parity runs.
+
+```bash
+mise exec -- sops -d .agents/test/team.sops.env
+```
+
+The bootstrap still reads credentials from the local repo-root `.env` file until `ww` can consume SOPS files directly,
+so keep `.env` gitignored and aligned with this encrypted mirror.
+
 ## The team
 
 ### Bob - smoke surface

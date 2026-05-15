@@ -1,8 +1,9 @@
 # Self Team Bootstrap
 
 This repo is maintained by witwave agents running on a witwave cluster. This document is the meta-loop: it walks through
-using the `ww` CLI plus a local `.env` file to stand up the WitwaveWorkspace and WitwaveAgents that manage and maintain
-_this_ repo.
+using the `ww` CLI plus local credentials to stand up the WitwaveWorkspace and WitwaveAgents that manage and maintain
+_this_ repo. SOPS-encrypted mirrors now live beside the agent config, but the current CLI commands still source `.env`
+until `ww` can consume SOPS files directly.
 
 ## Goal
 
@@ -68,9 +69,9 @@ Conventions used by every command in this doc:
 
 ### Environment
 
-A local `.env` at the repo root holding the secrets the bootstrap consumes. `.env` is gitignored — never commit it.
-Source it into your shell before running any of the commands below. Every subsequent step assumes these variables are
-present in the environment:
+A local `.env` at the repo root still holds the shell variables consumed by the bootstrap commands. `.env` is gitignored
+— never commit it. Source it into your shell before running any of the commands below. Every subsequent step assumes
+these variables are present in the environment:
 
 ```bash
 set --allexport
@@ -122,6 +123,10 @@ GITHUB_USER_FINN=finn-agent-witwave
 GITHUB_TOKEN_FELIX=github_pat_replace_me
 GITHUB_USER_FELIX=felix-agent-witwave
 
+# Piper (outreach) — GitHub Discussions publishing/moderation.
+GITHUB_TOKEN_PIPER=github_pat_replace_me
+GITHUB_USER_PIPER=piper-agent-witwave
+
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar
 # typically pulls from one shared config repo; one PAT serves the
@@ -129,13 +134,34 @@ GITHUB_USER_FELIX=felix-agent-witwave
 # different private repo.
 GITSYNC_USERNAME=iris-agent-witwave
 GITSYNC_PASSWORD=github_pat_replace_me
+
+# Optional shared Codex credential. Present in the SOPS mirror so Codex
+# backends can be enabled later without reworking the secret shape.
+OPENAI_API_KEY=sk-replace_me
 ```
 
-The Step 3 / Step 4 commands lift these into each agent's containers at the in-container env-var names each consumer
+The agent-create commands lift these into each agent's containers at the in-container env-var names each consumer
 expects: `CLAUDE_CODE_OAUTH_TOKEN` lands on the claude container as-is; `GITHUB_TOKEN_<NAME>` and `GITHUB_USER_<NAME>`
 are renamed to `GITHUB_TOKEN` / `GITHUB_USER` inside that agent's claude container; and `GITSYNC_USERNAME` /
 `GITSYNC_PASSWORD` are minted into a per-agent `<name>-gitsync` Secret (keys `GITSYNC_USERNAME` / `GITSYNC_PASSWORD`)
 and `envFrom`-wired to the gitSync sidecar.
+
+SOPS is the committed encrypted mirror for those same credentials:
+
+- `.agents/self/team.sops.env` carries `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, `GITSYNC_PASSWORD`, and
+  `OPENAI_API_KEY`.
+- `.agents/self/<agent>/agent.sops.env` carries that agent's GitHub identity as `GITHUB_TOKEN` and `GITHUB_USER` with
+  the `_IRIS`, `_PIPER`, etc. suffix removed.
+
+Inspect locally with mise/SOPS when needed:
+
+```bash
+mise exec -- sops -d .agents/self/team.sops.env
+mise exec -- sops -d .agents/self/piper/agent.sops.env
+```
+
+Until `ww` grows native SOPS support, keep `.env` as the compatibility source and keep these encrypted mirrors aligned
+when credentials change.
 
 For this bootstrap the repo (`witwave-ai/witwave`) is public and the sidecar would clone anonymously without any creds —
 the `--gitsync-secret-from-env` wiring is shown so the pattern carries over verbatim when iris later points at a private

@@ -17,6 +17,22 @@ routing confirmed bugs back to Zora and recurring misconceptions to Kira's docs 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
 
+## Secrets
+
+Self-team secrets are mirrored into SOPS-encrypted dotenv files:
+
+- `team.sops.env` carries shared team credentials such as Claude OAuth, gitSync, and OpenAI keys.
+- `<agent>/agent.sops.env` carries each agent's GitHub identity as the in-container names `GITHUB_TOKEN` and
+  `GITHUB_USER`.
+
+The root `.env` file remains the local compatibility source for the current bootstrap commands. Keep `.env` gitignored,
+and update the SOPS mirrors when credentials change until `ww` can read SOPS files directly.
+
+```bash
+mise exec -- sops -d .agents/self/team.sops.env
+mise exec -- sops -d .agents/self/piper/agent.sops.env
+```
+
 ## The team
 
 ### Zora — manager

@@ -247,6 +247,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 
 ```text
 .agents/self/<name>/
+├── agent.sops.env          # Encrypted per-agent secret mirror (SOPS; not mounted directly yet)
 ├── .witwave/                    # Runtime config (mounted into harness)
 │   ├── agent-card.md        # A2A identity description exposed by the harness Service
 │   ├── backend.yaml         # Backend selection and routing
@@ -287,9 +288,9 @@ The agent Service points at harness, so the public agent card for repo-managed s
 
 ```text
 .agents/
-├── self/                    # Self-managing agents (see .agents/self/README.md)
+├── self/                    # Self agents; team.sops.env holds shared encrypted secrets
 │   └── <name>/              # Per-agent directory (see layout above)
-└── test/                    # Test agents: bob, fred (deployed); jack, luke (scaffolds only, see port table below)
+└── test/                    # Test agents; team.sops.env mirrors shared encrypted secrets
     └── <name>/
 
 harness/                     # harness source (router/scheduler)
@@ -475,6 +476,11 @@ Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `wi
 
 ### Auth + secret posture
 
+- SOPS-encrypted secret mirrors are committed as `*.sops.env`, `*.sops.yaml`, `*.sops.yml`, or `*.sops.json` under the
+  repo-wide policy in `.sops.yaml`. Current team shape: `.agents/self/team.sops.env` for shared self-team credentials,
+  `.agents/self/<name>/agent.sops.env` for per-agent GitHub identity, and `.agents/test/team.sops.env` for shared test
+  credentials. The root `.env` remains the local compatibility source until `ww` can consume SOPS files directly; keep
+  it gitignored and do not commit plaintext secrets. Use `mise exec -- sops -d <file>` for local inspection.
 - Every protected endpoint uses `Authorization: Bearer <token>` headers. Two harness-scope tokens split by purpose:
   `CONVERSATIONS_AUTH_TOKEN` (read / observe) and `ADHOC_RUN_AUTH_TOKEN` (trigger actions). Backends reuse
   `CONVERSATIONS_AUTH_TOKEN` for their `/conversations` / `/api/traces` / `/api/sessions/<id>/stream` paths.

@@ -248,6 +248,9 @@ docker build -f backends/echo/Dockerfile -t echo:latest .
 
 ### 2. Configure credentials
 
+The current CLI/bootstrap path still reads credentials from the shell, so keep a local repo-root `.env` for now. `.env`
+is gitignored and must never be committed.
+
 ```bash
 cat > .env <<'EOF'
 CLAUDE_CODE_OAUTH_TOKEN=your-claude-token-here
@@ -262,6 +265,23 @@ GEMINI_API_KEY=
 TRIGGERS_AUTH_TOKEN=
 EOF
 ```
+
+SOPS is being introduced as the committed encrypted source for repo-managed team secrets. The policy in `.sops.yaml`
+applies to `*.sops.env`, `*.sops.yaml`, `*.sops.yml`, and `*.sops.json` anywhere in the repo. Current encrypted mirrors:
+
+- `.agents/self/team.sops.env` — shared self-team credentials.
+- `.agents/self/<agent>/agent.sops.env` — per-agent GitHub identity, with in-container names like `GITHUB_TOKEN` and
+  `GITHUB_USER`.
+- `.agents/test/team.sops.env` — shared test-team credentials.
+
+Decrypt locally through mise/SOPS when you need to inspect or load one of those files:
+
+```bash
+mise exec -- sops -d .agents/self/team.sops.env
+mise exec -- sops -d .agents/self/piper/agent.sops.env
+```
+
+Until `ww` can consume SOPS files directly, leave `.env` in place and keep it aligned with the encrypted mirrors.
 
 ### 3. Start the test agents
 
@@ -315,6 +335,7 @@ Each agent directory contains:
 
 ```text
 <agent>/
+├── agent.sops.env      # Encrypted per-agent secret mirror (when the agent has agent-specific credentials)
 ├── .witwave/              # Runtime config (agent-card.md, backend.yaml, HEARTBEAT.md, jobs/)
 ├── .claude/           # Claude backend config (CLAUDE.md, mcp.json, settings.json, skills/)
 ├── .codex/            # Codex backend config (AGENTS.md, config.toml)

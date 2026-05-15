@@ -25,7 +25,8 @@ same workspace projection path across the team.
 - A Kubernetes cluster reachable via your current kubeconfig context.
 - `ww`, `kubectl`, and `python3` on your PATH.
 - The witwave operator installed or installable through `ww operator install`.
-- A repo-root `.env` file with the credentials the CLI will lift into Kubernetes Secrets.
+- A repo-root `.env` file with the credentials the CLI will lift into Kubernetes Secrets. `.env` remains the
+  compatibility source until `ww` can consume SOPS files directly.
 
 Required `.env` values:
 
@@ -57,6 +58,15 @@ set +a
 export TRIGGERS_AUTH_TOKEN="${TRIGGERS_AUTH_TOKEN:-$(python3 -c 'import secrets; print(secrets.token_hex(32))')}"
 printf 'Using TRIGGERS_AUTH_TOKEN=%s\n' "$TRIGGERS_AUTH_TOKEN"
 ```
+
+The shared test credentials are also committed as an encrypted SOPS mirror:
+
+```bash
+mise exec -- sops -d .agents/test/team.sops.env
+```
+
+That file carries `CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, `GITSYNC_PASSWORD`, and `OPENAI_API_KEY`. Keep it
+aligned with `.env` while the bootstrap still reads from shell variables.
 
 ## Step 1 - Install or Check the Operator
 
