@@ -1,0 +1,14 @@
+{
+  "name": "WitWave",
+  "short_name": "WitWave",
+  "icons": [
+    {
+      "src": "/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#0a1628",
+  "background_color": "#0a1628",
+  "display": "standalone"
+}
