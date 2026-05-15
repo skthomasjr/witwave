@@ -1,12 +1,31 @@
 # Competitive Landscape
 
-Last updated: 2026-05-11 by kira-agent-witwave (fifteenth pass — light verification-and-refinement pass per zora ADVANCE
-dispatch (P2 cadence-floor breach, +4h15m / 3h floor): bumped OpenClaw latest beta to **v2026.5.10-beta.3** (released
-2026-05-11, after the fourteenth pass landed earlier today) and sharpened the "Agent Sandbox" reference to name the
-underlying **Kubernetes SIG Apps subproject** with its three new primitives (`Sandbox`, `SandboxTemplate`,
-`SandboxClaim`) — Google additionally announced a hosted **GKE Agent Sandbox** variant at Cloud Next '26 with gVisor
-kernel-level isolation, ~300 sandboxes/sec throughput, and the explicit posture that any Kubernetes cluster can run it
-(not GKE-only) (sources: <https://github.com/openclaw/openclaw/releases> and
+Last updated: 2026-05-15 by kira-agent-witwave (sixteenth pass — research-tier refresh per zora docs-research dispatch
+(P2 cadence-floor breach, kira_docs_research_days=1 floor, last fire 2026-05-09 — 6× breach factor). Multiple version
+bumps captured in the four-day window since the fifteenth pass: **Claude Agent SDK jumped onto the v0.2 line** with
+`v0.2.82` (2026-05-15), introducing two breaking changes — MCP servers now connect in the background by default
+(sessions start immediately with slow servers reporting `status: "pending"`) and headless / SDK sessions migrate from
+`TodoWrite` to a new **Task tools** family (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`); also exports a public
+`EffortLevel` type alias and bumps the `mcp` dependency to `>=1.23.0` for CVE-2025-66416 (DNS rebinding) (source:
+<https://github.com/anthropics/claude-agent-sdk-python/releases>, accessed 2026-05-15). **LangGraph v1.2.0 shipped GA on
+2026-05-12** — the v1.2 alpha series the fifteenth pass mentioned is now stable, headlining `durable error-handler
+resume across host crashes`, `set_node_defaults()` on `StateGraph`, and delta-channel snapshot handling improvements
+(source: <https://github.com/langchain-ai/langgraph/releases>, accessed 2026-05-15). **Microsoft Agent Framework** moved
+to `python-1.4.0` (2026-05-15) and `dotnet-1.6.1` (2026-05-14), continuing the near-weekly minor cadence on the v1 line
+(source: <https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-15). **OpenAI Agents SDK** bumped to
+`v0.17.2` (2026-05-12) — bug-fix release covering OpenAI Conversations reasoning persistence, realtime tools, and
+session management (source: <https://github.com/openai/openai-agents-python/releases>, accessed 2026-05-15). **OpenClaw**
+rolled forward: stable now `v2026.5.12` (2026-05-14), latest pre-release `v2026.5.14-beta.2` (2026-05-15); star count
+re-pinned to **372,000+ / 77,100+ forks** (sources: <https://github.com/openclaw/openclaw>,
+<https://github.com/openclaw/openclaw/releases>, accessed 2026-05-15). **A2A** re-pinned to **23,800+ stars**
+(<https://github.com/a2aproject/A2A>, accessed 2026-05-15); v1.0.0 (2026-03-12) unchanged. Fifteenth pass (2026-05-11)
+was a light verification-and-refinement pass per zora ADVANCE dispatch (P2 cadence-floor breach, +4h15m / 3h floor):
+bumped OpenClaw latest beta to **v2026.5.10-beta.3** (released 2026-05-11, after the fourteenth pass landed earlier
+today) and sharpened the "Agent Sandbox" reference to name the underlying **Kubernetes SIG Apps subproject** with its
+three new primitives (`Sandbox`, `SandboxTemplate`, `SandboxClaim`) — Google additionally announced a hosted **GKE Agent
+Sandbox** variant at Cloud Next '26 with gVisor kernel-level isolation, ~300 sandboxes/sec throughput, and the explicit
+posture that any Kubernetes cluster can run it (not GKE-only) (sources:
+<https://github.com/openclaw/openclaw/releases> and
 <https://www.infoq.com/news/2026/05/gke-agent-sandbox-hypercluster/>, accessed 2026-05-11). Fourteenth pass (earlier on
 2026-05-11) was a focused SDK/protocol-axis refresh per zora dispatch: added new Reference Products entry for **OpenAI
 Agents SDK** (MIT, **26,200+** GitHub stars, latest `v0.17.1` per the releases page, provider-agnostic via LiteLLM /
@@ -198,9 +217,16 @@ sets thinking depth (`"low"`, `"medium"`, `"high"`, `"max"`, plus `"xhigh"` for 
 `"high"` on other models). `plugins` accepts a list of `SdkPluginConfig` objects for custom plugins loaded from local
 paths. All unused by this project.
 
-**Q2 2026 SDK additions (0.1.73–0.1.80, latest `v0.1.80` on 2026-05-09):** Capabilities shipped since the previous pass
+**Q2 2026 SDK additions (0.1.73–0.2.82, latest `v0.2.82` on 2026-05-15):** Capabilities shipped since the previous pass
 of this doc, all unused by this project today (source: <https://github.com/anthropics/claude-agent-sdk-python/releases>,
-accessed 2026-05-11):
+accessed 2026-05-15). The SDK crossed onto the **v0.2 line on 2026-05-15** with two breaking changes worth flagging
+up-front: (a) **MCP servers connect in the background by default** — sessions start immediately and slow servers report
+`status: "pending"` until ready, eliminating the cold-start tax this project's harness currently absorbs; (b) headless
+and SDK sessions **migrate from `TodoWrite` to a new Task tools family** (`TaskCreate`, `TaskUpdate`, `TaskGet`,
+`TaskList`), a structural rework of in-session task tracking. v0.2.82 also exports a public `EffortLevel` type alias
+(`"low"`, `"medium"`, `"high"`, `"max"`, `"xhigh"`) and bumps the `mcp` dep to `>=1.23.0` to pick up CVE-2025-66416 (DNS
+rebinding protection) (source: <https://github.com/anthropics/claude-agent-sdk-python/releases>, accessed 2026-05-15).
+Earlier `v0.1.x` capabilities still relevant to this project:
 
 - **`session_store_flush="eager"` (0.1.73)** — opt-in eager session-store flushing in `ClaudeAgentOptions` enables
   live-tailing UIs, cross-process resume, and crash-durability past where batched flushing leaves off. Direct primitive
@@ -220,6 +246,8 @@ accessed 2026-05-11):
 - **`include_hook_events` + `xhigh` effort + Opus 4.7 wiring (0.1.77–0.1.80, May 6–9 2026)** — late-May polish: `xhigh`
   falls back to `high` on models that don't support it; `atexit` handler ensures live CLI subprocesses are terminated on
   harness exit (prevents orphaned `claude` processes during pod restart).
+- **`v0.1.81` (2026-05-11)** — interim release on the v0.1 line bridging to v0.2; superseded by v0.2.82 four days later
+  (source: <https://github.com/anthropics/claude-agent-sdk-python/releases>, accessed 2026-05-15).
 
 **Permission modes:** Five modes — `default`, `dontAsk`, `acceptEdits`, `bypassPermissions`, `plan` — set via
 `permission_mode` in `ClaudeAgentOptions`. The `plan` mode (read-only execution + single writable plan file) is
@@ -241,9 +269,9 @@ April 2026 sandbox-agent + harness primitives push the SDK toward semi-autonomou
 harness rather than rolling their own)
 
 The OpenAI Agents SDK is OpenAI's first-party agent-building framework — structurally the closest peer to the Claude
-Agent SDK in the vendor-SDK tier. **MIT-licensed, 26,200+ GitHub stars, latest `v0.17.1`** per the releases page
+Agent SDK in the vendor-SDK tier. **MIT-licensed, 26,200+ GitHub stars, latest `v0.17.2`** per the releases page
 (sources: <https://github.com/openai/openai-agents-python> and
-<https://github.com/openai/openai-agents-python/releases>, accessed 2026-05-11). Self-described as "a lightweight yet
+<https://github.com/openai/openai-agents-python/releases>, accessed 2026-05-15). Self-described as "a lightweight yet
 powerful framework for building multi-agent workflows" and notably **provider-agnostic** — supports the OpenAI Responses
 and Chat Completions APIs plus 100+ other LLMs via the LiteLLM and any-llm adapter ecosystems (source:
 <https://github.com/openai/openai-agents-python>, accessed 2026-05-11). Python (`openai-agents-python`) is the primary
@@ -265,10 +293,12 @@ accessed 2026-05-11):
 - **Guardrails** — parallel input validation and safety checks that fail fast when checks don't pass.
 - **Built-in tracing** — visualization, debugging, and monitoring with native hooks into the OpenAI tracing suite.
 
-Recent point releases (`v0.16.1` / `v0.17.0` / `v0.17.1`, early May 2026) have hardened the sandbox model — constraining
-local sandbox artifact sources to base dir for better isolation, stabilizing the realtime-session tool-approval flow,
-defaulting realtime sessions to `gpt-realtime-2`, and tightening MCP approval-policy validation (source:
-<https://github.com/openai/openai-agents-python/releases>, accessed 2026-05-11).
+Recent point releases (`v0.16.1` / `v0.17.0` / `v0.17.1` / `v0.17.2`, early-to-mid May 2026) have hardened the sandbox
+model — constraining local sandbox artifact sources to base dir for better isolation, stabilizing the realtime-session
+tool-approval flow, defaulting realtime sessions to `gpt-realtime-2`, and tightening MCP approval-policy validation;
+`v0.17.2` (2026-05-12) is a bug-fix release covering OpenAI Conversations reasoning persistence (#3268), realtime tool
+behaviour, and session management (source: <https://github.com/openai/openai-agents-python/releases>, accessed
+2026-05-15).
 
 **Relative standing:** OpenAI Agents SDK is now the third major vendor SDK in this project's reference set — alongside
 the Claude Agent SDK and Microsoft Agent Framework — and the most directly comparable to Claude Agent SDK in shape
@@ -383,11 +413,14 @@ Checkpoint/resume primitives at v1.14.0 advance the durability story. This proje
 **Autonomy model:** Human-driven to semi-autonomous (graphs are triggered by external events or human calls; **LangGraph
 Platform** adds persistent deployment + event-driven triggers, pushing toward semi-autonomous)
 
-**Current: LangGraph v1.1.10 (2026-04-27) + LangGraph Platform GA (late 2025).** v1.1.10 is a maintenance release
-(prebuilt 1.0.12, checkpoint 4.0.3, dep bumps, a reverted node-level-timeouts experiment, and a `ToolNode` change to
-allow tools returning `list[Command | ToolMessage]`); a v1.2.0 alpha series (1.2.0a1–a7, late April / early May 2026) is
-in development on the same v1 line (source: <https://github.com/langchain-ai/langgraph/releases/tag/1.1.10>, accessed
-2026-05-06). An earlier pass of this doc mislabeled deferred nodes and node-level caching as "v2.0" features — they are
+**Current: LangGraph v1.2.0 GA (2026-05-12) + LangGraph Platform GA (late 2025).** v1.2.0 promotes the v1.2 alpha series
+(1.2.0a1–a7, late April / early May 2026) to stable. Headline additions: **`durable error-handler resume across host
+crashes`** (lifts the existing checkpoint primitive into a fully crash-recovering error-handler), `set_node_defaults()`
+on `StateGraph` for shared node configuration, and improved delta-channel snapshot handling (force-snapshot after max
+supersteps since the last snapshot). v1.1.10 (2026-04-27) — the previous stable — was a maintenance release (prebuilt
+1.0.12, checkpoint 4.0.3, dep bumps, a reverted node-level-timeouts experiment, and a `ToolNode` change to allow tools
+returning `list[Command | ToolMessage]`) (source: <https://github.com/langchain-ai/langgraph/releases>, accessed
+2026-05-15). An earlier pass of this doc mislabeled deferred nodes and node-level caching as "v2.0" features — they are
 **v1.x** features shipped during the 2025 LangGraph Release Week. There is no v2.0 on PyPI as of May 2026; the stable
 line is v1.x.
 
@@ -427,9 +460,9 @@ it as the coordination layer between autonomous agents)
 
 **A2A v1.0 is now the stable version (tagged 2026-03-12).** Governance has been donated to the **Linux Foundation** as
 an official project; one-year anniversary milestone (2026-04-09) reports 150+ participating organizations. Star count at
-the `a2aproject/A2A` repo continues to grow — **23,700+ as of 2026-05-11**, up from the 22k+ figure quoted in the April
-pass (sources: <https://github.com/a2aproject/A2A/releases/tag/v1.0.0> and <https://github.com/a2aproject/A2A>, accessed
-2026-05-11). Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as
+the `a2aproject/A2A` repo continues to grow — **23,800+ as of 2026-05-15**, up from the 23,700+ figure quoted in the
+fifteenth pass (sources: <https://github.com/a2aproject/A2A/releases/tag/v1.0.0> and <https://github.com/a2aproject/A2A>,
+accessed 2026-05-15). Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as
 their native cross-agent protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to
 prevent forgery and card-redirect attacks, closing a real multi-tenant security gap.
 
@@ -455,12 +488,12 @@ platform rather than a personal local daemon. OpenClaw targets the individual ru
 this project targets the team running coordinated agents as cluster workloads.
 
 OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
-pressure, and three days later settled on **OpenClaw**. Category-leading install base — **371,000+ GitHub stars and
-76,600+ forks as of 2026-05-11**, with a very active commit cadence (latest stable release `v2026.5.7` on 2026-05-07,
-with `v2026.5.9-beta.1` and `v2026.5.10-beta.{1,2,3}` shipped after as pre-releases — latest beta `v2026.5.10-beta.3` on
-2026-05-11) — the exact number drifts fast, so re-pin before quoting in marketing or external docs (sources:
-<https://github.com/openclaw/openclaw>, <https://github.com/openclaw/openclaw/releases>, and
-<https://github.com/openclaw/openclaw/releases/tag/v2026.5.7>, accessed 2026-05-11). Runs on user-controlled
+pressure, and three days later settled on **OpenClaw**. Category-leading install base — **372,000+ GitHub stars and
+77,100+ forks as of 2026-05-15**, with a very active commit cadence (latest stable release `v2026.5.12` on 2026-05-14;
+pre-release line continues through `v2026.5.14-beta.2` on 2026-05-15 — the four days since the fifteenth pass advanced
+stable from `v2026.5.7` to `v2026.5.12` and the beta head from `v2026.5.10-beta.3` to `v2026.5.14-beta.2`) — the exact
+number drifts fast, so re-pin before quoting in marketing or external docs (sources:
+<https://github.com/openclaw/openclaw> and <https://github.com/openclaw/openclaw/releases>, accessed 2026-05-15). Runs on user-controlled
 infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Connects to Claude, OpenAI,
 DeepSeek, and local models. **MIT licensed; calendar-versioned releases (`vYYYY.M.D`) with beta and dev channels; very
 active development cadence.**
@@ -558,10 +591,11 @@ hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
 
 **Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows. **GA
 1.0 shipped 2026-04-02** (Python + .NET both tagged `1.0.0` the same day); on the v1 line the cadence has been brisk —
-Python `1.3.0` (2026-05-08), .NET `dotnet-1.5.0` (2026-05-08), with both lines now shipping minor releases on
-near-weekly cadence — exiting the "public preview" framing the doc previously used (source:
-<https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-09). First-class A2A, MCP, and OpenTelemetry —
-exactly the same tripod we ship.
+**Python `1.4.0` (2026-05-15)** with updates to MCP tool-call metadata and file-based skill scripts, **.NET
+`dotnet-1.6.1` (2026-05-14)** adding hyperlight integration and improving the `FoundryAgent` for hosted agents. Both
+lines now ship minor releases on near-weekly cadence — exiting the "public preview" framing the doc previously used
+(source: <https://github.com/microsoft/agent-framework/releases>, accessed 2026-05-15). First-class A2A, MCP, and
+OpenTelemetry — exactly the same tripod we ship.
 
 **Foundry Agent Service:** GA announced March 2026. OpenAI Responses-compatible API; hosts DeepSeek, xAI, Meta,
 LangChain, LangGraph models (in addition to Azure OpenAI). Directly overlaps this project's cross-backend orchestration.
@@ -665,9 +699,11 @@ hybrid heartbeat-orchestrator + A2A-delegation model aligns with the winning top
 ### Durability / Crash Recovery
 
 Checkpointing is mandatory in production systems post-LangGraph-1.x (which made it a hard requirement). Temporal.io's
-durable workflow model is the broader 2026 reference architecture. CrewAI's v1.14.0 checkpoint/resume primitives are now
-the OSS peer reference. This project has stale-checkpoint detection on startup (F-005); full session resume past
-`resume=session_id` remains a longer-term follow-on.
+durable workflow model is the broader 2026 reference architecture. CrewAI's v1.14.0 checkpoint/resume primitives are the
+OSS peer reference; **LangGraph v1.2.0 (2026-05-12) extended this to `durable error-handler resume across host
+crashes`** — the error-handler itself now survives a host crash, not just successful graph state (source:
+<https://github.com/langchain-ai/langgraph/releases>, accessed 2026-05-15). This project has stale-checkpoint detection
+on startup (F-005); full session resume past `resume=session_id` remains a longer-term follow-on.
 
 ### Tooling / MCP
 
