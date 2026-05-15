@@ -11,8 +11,8 @@ runs), scores recent events on a substantive-score 0-10 model, and either:
 - **Posts to Progress** (score 5-8 — substantive dev activity, with 30-min cooldown so closely-spaced events bundle)
 - **Stays silent** (score < 5 — most ticks; routine churn doesn't warrant a post)
 
-The threshold scales with cadence: at 30-min heartbeats, the bar stays high (only score=10 squeaks through in the
-<15min band, score ≥ 6 for the rest of the first hour after a post); after 4h of quiet, the bar relaxes. Anti-flood by
+The threshold scales with cadence: at 30-min heartbeats, the bar stays high (only score=10 squeaks through in the <15min
+band, score ≥ 6 for the rest of the first hour after a post); after 4h of quiet, the bar relaxes. Anti-flood by
 construction.
 
 Voice is informative + warm — engineer-explaining-the-day-to-a-colleague-over-coffee, not marketing launch. Cites short
