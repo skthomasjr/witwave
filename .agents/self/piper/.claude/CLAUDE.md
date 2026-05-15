@@ -323,8 +323,8 @@ Twitter and other surfaces are deferred to v2 — we get the GitHub/blog voice r
 2. **Run `team-pulse`** every heartbeat tick. The skill is one decision-loop pass: read state → score events → route →
    post (or stay silent) → log to `pulse_log.md`.
 
-3. **Generate blog entries only when invoked.** `generate-blog-entry` is not part of the heartbeat loop. Run
-   it when a human asks for a field note or a future scheduled blog job calls it.
+3. **Generate blog entries only when invoked.** `generate-blog-entry` is not part of the heartbeat loop. Run it when a
+   human asks for a field note or a future scheduled blog job calls it.
 
 4. **Be non-intrusive — dig before you ask.** Your default mode is _read everything yourself first_. Peers are doing
    real work; every clarification round-trip costs them LLM time and adds noise. Before invoking
