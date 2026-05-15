@@ -6,6 +6,34 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.17] — 2026-05-15
+
+Patch release tightening the release CI pipeline — gating all release workflows on sibling CI success via a shared
+composite action, building release images natively on arm64 with cross-release buildx caching — plus routine agent-card
+upkeep and a competitive-landscape research refresh.
+
+### Changed
+
+- **ci**: Factor the sibling-CI gate into a composite action and apply it to every release workflow as well as the
+  social-website publish workflow, so a tag push never produces artifacts off a tree where the per-component CI is red.
+- **ci**: Build release container images on native arm64 runners and cache buildx layers between releases to cut
+  release-pipeline wall time.
+
+### Fixed
+
+- **ci**: Resolve actionlint complaints on the release.yaml refactor and drop an unused field name from the sibling-CI
+  gate read.
+- **changelog**: Reformat `CHANGELOG.md` with `prettier --write` after the v0.23.16 cut so the file stays clean against
+  the repo's standing prettier scope.
+
+### Agent identity
+
+- **zora**: Self-tidy pass on 2026-05-15 plus a prettier reflow on the cadence table in her agent-card.
+
+### Documentation
+
+- **research**: Refresh `competitive-landscape.md` against current industry state.
+
 ## [0.23.16] — 2026-05-15
 
 Patch release publishing the social website to its custom domain, scaffolding the SOPS-based secrets workflow used by
