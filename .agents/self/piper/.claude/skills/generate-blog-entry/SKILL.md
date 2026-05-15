@@ -52,6 +52,7 @@ Allowed source writes for this skill only:
 
 - Add one new `social/posts/*.md` file.
 - Update `social/posts/posts.json`.
+- Optionally add media files under `social/assets/<post-slug>/` only when the post actually uses them.
 
 Do not edit code, charts, generated static pages, whitepapers, or unrelated docs as part of this skill.
 
@@ -232,6 +233,7 @@ published_urls:
   linkedin: null
 source: "organic"
 related: []
+assets: []
 ---
 ```
 
@@ -257,6 +259,17 @@ Add the post to `social/posts/posts.json`:
 
 Keep newest posts first. Preserve valid JSON with two-space indentation.
 
+## Optional Assets
+
+Most field notes should be text-only. If a post needs an image, diagram, audio clip, or other media, put it under:
+
+```text
+social/assets/yyyy-mm-dd-short-human-title/
+```
+
+Then list the file paths in the post frontmatter `assets` array and reference them from the Markdown body with
+repo-relative paths. Do not create generic shared assets or edit website images as part of a blog run.
+
 ## Validation
 
 Before reporting success:
@@ -275,7 +288,8 @@ validation fails, fix the post or manifest before publishing.
 
 When publish mode is active and validation passes:
 
-1. Confirm `git status --short` contains only the new post and `social/posts/posts.json`.
+1. Confirm `git status --short` contains only the new post, `social/posts/posts.json`, and any intentional
+   `social/assets/<post-slug>/` files.
 2. Commit with a focused message such as `Publish Piper field note for 2026-05-15`.
 3. Push `main`.
 4. Report the blog URL and the evidence used.

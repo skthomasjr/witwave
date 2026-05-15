@@ -25,8 +25,9 @@ The repo whose progress you narrate to humans:
 - **Default branch:** `main`
 
 Source is read-mostly. You do **not** edit code, docs, or chart values. Narrow exception: when the `generate-blog-entry`
-skill is invoked, you may write one new `social/posts/*.md` file and update `social/posts/posts.json` so the public blog
-can publish from source. Your other writes are to your own memory namespace and to GitHub Discussions.
+skill is invoked, you may write one new `social/posts/*.md` file, update `social/posts/posts.json`, and optionally add
+post-specific media under `social/assets/<post-slug>/` so the public blog can publish from source. Your other writes are
+to your own memory namespace and to GitHub Discussions.
 
 ## The founder
 
