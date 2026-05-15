@@ -6,6 +6,30 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.20] — 2026-05-15
+
+Patch release introducing persistent agent runtime state — the operator and `witwave` chart now provision a PVC per
+WitwaveAgent and mount it into the harness so agents survive pod restarts with their workspace and memory intact — plus
+a hotfix to the new shared `toolbox` image so its bundled pure-Python tools (yamllint, pytest, pip-audit, bandit) can
+actually execute.
+
+### Added
+
+- **operator, charts, ww**: Persist agent runtime state across pod restarts. WitwaveAgent CRDs gain runtime-storage
+  fields; the operator provisions a PVC per agent and wires it into the harness Deployment; the `witwave` chart adds
+  matching template support; and `ww agent create` learns the corresponding flags.
+
+### Fixed
+
+- **harness (toolbox)**: Install `python3` in the toolbox image's final stage so the venv shebangs for yamllint,
+  pytest, pip-audit, and bandit resolve. The stage 5 venv's `bin/python3` symlink pointed at `/usr/bin/python3` which
+  wasn't apt-installed in the final stage; pure-Python tools failed to exec on both linux/amd64 and linux/arm64.
+
+### Agent identity
+
+- **piper**: Self-tidy pass on 2026-05-15 — align agent-card cadence with the 30-min team-pulse tick and reframe the
+  threshold-scaling bullet against the current <15min / <1h / >4h band model.
+
 ## [0.23.19] — 2026-05-15
 
 Patch release introducing a shared `toolbox` image as phase 1 of the backend Dockerfile consolidation — the hygiene and
