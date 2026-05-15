@@ -147,13 +147,18 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# shellcheck is the only apt-installed hygiene tool; everything else is
-# either a downloaded binary or a venv'd Python tool. ca-certificates +
-# curl present to support runtime fetches if any consumer needs them
-# (mostly defensive; the binaries don't reach out at runtime).
+# shellcheck is the only apt-installed hygiene tool from the analyzer set;
+# python3 is required as the interpreter for the venv at /opt/tools-venv
+# copied in from the python-build stage — yamllint/pytest/pip-audit/bandit
+# are pure-Python and their shebang `/opt/tools-venv/bin/python3` resolves
+# (via the venv's internal symlink) to `/usr/bin/python3`, which must exist
+# in this stage. ca-certificates + curl present to support runtime fetches
+# if any consumer needs them (mostly defensive; the binaries don't reach
+# out at runtime).
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
+    python3 \
     shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
