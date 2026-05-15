@@ -59,6 +59,8 @@ func newTeamStatusCmd(f *teamFlags) *cobra.Command {
 		teamFilter string
 		token      string
 		quiet      bool
+		watch      bool
+		interval   time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -70,6 +72,9 @@ func newTeamStatusCmd(f *teamFlags) *cobra.Command {
 			"will come from backend metrics in a later phase.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if watch {
+				return runTeamStatusWatch(cmd.Context(), f, sinceExpr, teamFilter, token, quiet, interval)
+			}
 			return runTeamStatus(cmd.Context(), f, sinceExpr, teamFilter, token, quiet)
 		},
 	}
@@ -81,7 +86,56 @@ func newTeamStatusCmd(f *teamFlags) *cobra.Command {
 		"Bearer token override for conversation endpoints")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false,
 		"Suppress scope/window banners and unreachable-agent footer")
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false,
+		"Refresh the human status table until Ctrl-C")
+	cmd.Flags().DurationVar(&interval, "interval", 10*time.Second,
+		"Refresh interval for --watch")
 	return cmd
+}
+
+func runTeamStatusWatch(
+	ctx context.Context,
+	f *teamFlags,
+	sinceExpr string,
+	teamFilter string,
+	token string,
+	quiet bool,
+	interval time.Duration,
+) error {
+	out := OutFromCtx(ctx)
+	if out.IsJSON() || out.IsYAML() {
+		return fmt.Errorf("--watch only supports human output; rerun without --json/--yaml")
+	}
+	if interval <= 0 {
+		return fmt.Errorf("--interval must be positive")
+	}
+	if _, err := parseTeamStatusSince(sinceExpr); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		clearTeamStatusWatchFrame(out.Out)
+		if !quiet {
+			fmt.Fprintf(out.Out, "Updated: %s  Refresh: %s  Stop: Ctrl-C\n\n",
+				time.Now().UTC().Format(time.RFC3339), interval)
+		}
+		if err := runTeamStatus(ctx, f, sinceExpr, teamFilter, token, quiet); err != nil {
+			fmt.Fprintf(out.Err, "ww team status --watch: %v\n", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+func clearTeamStatusWatchFrame(w io.Writer) {
+	fmt.Fprint(w, "\033[2J\033[H")
 }
 
 func runTeamStatus(

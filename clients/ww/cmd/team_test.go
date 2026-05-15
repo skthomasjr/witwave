@@ -35,6 +35,24 @@ func TestParseTeamStatusSince(t *testing.T) {
 	}
 }
 
+func TestTeamStatusWatchFlagsRegistered(t *testing.T) {
+	cmd := newTeamStatusCmd(&teamFlags{})
+	watch := cmd.Flags().Lookup("watch")
+	if watch == nil {
+		t.Fatal("--watch flag is not registered")
+	}
+	if watch.Shorthand != "w" {
+		t.Fatalf("--watch shorthand = %q, want w", watch.Shorthand)
+	}
+	interval := cmd.Flags().Lookup("interval")
+	if interval == nil {
+		t.Fatal("--interval flag is not registered")
+	}
+	if interval.DefValue != "10s" {
+		t.Fatalf("--interval default = %q, want 10s", interval.DefValue)
+	}
+}
+
 func TestBuildTeamStatusRowsAggregatesPerAgent(t *testing.T) {
 	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
 	tok1000 := 1000

@@ -173,6 +173,7 @@ Every command supports `--help`. Summary:
 | Command                    | Purpose                                                                                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ww status`                | Fetch `/agents`, probe each member's `/health`, print a table.                                                                                                      |
+| `ww team status`           | Aggregate recent conversation-backed activity across WitwaveAgents; add `--watch` / `--interval 10s` for a live-refreshing table.                                   |
 | `ww tail`                  | Stream SSE events from `/events/stream`. `--agent`, `--session`, `--types`, `--pretty`.                                                                             |
 | `ww send <agent> [text]`   | POST an A2A `message/send` to the harness. `--prompt-file -` reads stdin.                                                                                           |
 | `ww jobs [list\|view]`     | Read the `/jobs` snapshot.                                                                                                                                          |
