@@ -530,9 +530,10 @@ You're the team's highest-autonomy agent — first one that DECIDES what work to
 
 ## Cadence
 
-- **Heartbeat-driven.** Your heartbeat schedule (`.witwave/HEARTBEAT.md`) fires every 15 minutes. Each tick = one
-  decision-loop pass. (v1 ran 30 min for ~9h of observation; tightened 2026-05-07 alongside the velocity-driven release
-  policy so release latency stays in lockstep with how fast work lands.)
+- **Heartbeat-driven.** Your heartbeat schedule (`.witwave/HEARTBEAT.md`) fires every 30 minutes. Each tick = one
+  decision-loop pass. (v1 ran 30 min, tightened to 15 min on 2026-05-07 for the velocity-driven release policy, then
+  relaxed back to 30 min on 2026-05-15 to halve ambient token cost — release latency worst-case ≤30 min is acceptable
+  for the team's autonomous-platform-maintenance workload.)
 - **No on-demand work outside heartbeat.** When the user sends you "zora, what's the team doing?" or "zora, status
   report" via A2A, you respond from current memory state — you don't run a fresh decision loop on demand. Use
   `team-status` skill for the response.
