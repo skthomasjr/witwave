@@ -6,6 +6,18 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.25.1] — 2026-05-16
+
+Recovery patch release re-publishing v0.25.0's artifacts. The v0.25.0 tag fired against a commit whose `CHANGELOG.md`
+was not Prettier-formatted; `CI — Docs` failed and the release workflows aborted before publishing any container images,
+`ww` CLI binaries, or Helm charts. This release tags the formatting-fixed tip of `main` so the operator's
+`spec.kubernetesApiAccess.mode: namespaceWrite` work from v0.25.0 actually reaches consumers. No code changes since
+v0.25.0 — the only commit is the CHANGELOG formatting fix.
+
+### Fixed
+
+- **changelog**: Prettier-format the v0.25.0 entry so `CI — Docs` passes and the release pipeline can publish artifacts.
+
 ## [0.25.0] — 2026-05-16
 
 Minor release extending the operator's `spec.kubernetesApiAccess` provisioning with a second bounded preset:
