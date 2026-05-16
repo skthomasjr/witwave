@@ -1,6 +1,7 @@
 # The witwave Team
 
-The `witwave-ai/witwave` repo is maintained by a team of eight autonomous agents. They commit directly to `main`
+The `witwave-ai/witwave` repo is maintained by a team of eight deployed autonomous agents, with a ninth platform
+reliability agent (`mira`) now scaffolded and ready for deployment. The deployed agents commit directly to `main`
 (trunk-based development), coordinate via A2A (agent-to-agent JSON-RPC), and ship continuously — many small high-quality
 releases per day rather than infrequent large ones.
 
@@ -12,7 +13,11 @@ the team's only generative agent, gated by a strict tier ladder so the highest-b
 the team's git plumber — she pushes everyone's work and drives the release pipeline. **Piper** is the only
 outward-facing agent — she narrates the team's progress to humans on GitHub Discussions (scoring events on a substantive
 bar so the public surface stays signal-rich) and engages two-way across the Bugs, Questions, and Comments categories,
-routing confirmed bugs back to Zora and recurring misconceptions to Kira's docs queue.
+routing confirmed bugs back to Zora and recurring misconceptions to Kira's docs queue. **Mira** is the next planned
+agent: a platform reliability observer who watches for platform bugs/anomalies across the operator, agents, pod
+restarts, runtime storage, releases, and resource posture. When a signal looks problematic, she distills the evidence
+and sends it to Zora to route the fix. Her GitHub identity and avatar are ready; deployment is the remaining rollout
+step.
 
 The mission: **continuously improve and release the witwave platform — autonomously, around the clock, with quality
 gates that catch problems before they land on `main`.**
@@ -118,7 +123,7 @@ other agent commits locally and delegates the push to iris via `call-peer`. (`.a
 
 ### Piper — outreach
 
-The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 15 min), reads team state (git
+The team's only outward-facing agent. She runs a heartbeat-driven outreach loop (every 30 min), reads team state (git
 log, peer memories, Zora's decision_log + escalations.md, recent CI runs, recent releases), scores observed events on a
 0-10 substantive-score model, and routes each tick to one of three outcomes: Announcements (≥9 — releases, critical
 events, user-visible surface changes), Progress (5-8 — substantive dev activity with a 30-min cooldown), or silent (<5 —
@@ -134,6 +139,20 @@ feed Kira's docs queue. Piper has **admin role on the repo and moderates the Dis
 0 (the moderation pre-screen running before all reply guards) hides spam / prompt-injection / harassment via
 `minimizeComment` and locks abusive threads via `lockLockable` without human-in-the-loop. Hide and lock are reversible;
 deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
+
+### Mira — platform reliability observer (scaffolded)
+
+The team's next operational peer. Mira watches the substrate that lets the rest of the team keep working: operator
+health, self-agent readiness, pod restarts, runtime storage, PVCs, release workflows, `ww update` availability,
+one-agent-at-a-time rollout safety, and resource/anomaly signals. Her default posture is read-only: inspect, summarize,
+record health findings to memory, and send problematic findings to Zora as distilled anomaly reports. Zora then decides
+who should fix the issue.
+
+Mira intentionally consolidates the earlier "devops" and "agent-resources" ideas into one clearer first role: **platform
+reliability observation**. Build/release infrastructure and agent runtime lifecycle are tightly coupled in practice; the
+same agent who notices a failed release should also understand whether the operator, pods, storage, and rollouts are
+healthy enough to recover. Mira does not own the repair loop; she owns evidence quality and the Zora handoff.
+(`.agents/self/mira/`)
 
 ## Topology
 
@@ -180,68 +199,51 @@ deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
 Piper sits OUTSIDE the work-coordination loop. She reads team state but doesn't dispatch peers for work; her only A2A
 use is `ask-peer-clarification` (information-only questions) before posting publicly.
 
+Mira also sits outside the work-production loop. She watches the platform substrate — operator, agents, releases,
+runtime storage, restarts, and resource/anomaly signals — and sends distilled findings to Zora when something looks
+problematic. Zora decides whether the finding becomes work for Iris, Evan, Finn, Felix, Kira, Nova, or a human.
+
 ## Proposed future members
 
-The team is designed to grow. These roles aren't built yet but are queued in the design pipeline. Names below are
-tentative and likely to be revisited before scaffolding. **Listed in recommended implementation order** — earlier
-entries are closer to existing patterns (lower build risk, faster ROI); later entries are more speculative or depend on
-the team being more mature first.
+The team is designed to grow. Mira is the next scaffolded role and absorbs the earlier devops + agent-resources
+direction. The remaining roles below are still design-pipeline ideas. Names are tentative and likely to be revisited
+before scaffolding.
 
-### 1. devops — likely **otto** or **dale**
-
-Owns the build, CI/CD, and observability infrastructure of the witwave platform itself. Improves Dockerfile build times,
-evolves GitHub Actions workflows, tunes Prometheus alerts, watches Grafana dashboards, fixes broken pipelines. Distinct
-from iris (who _uses_ the build process to publish releases) and agent-resources (who manages _agent_ infra) — devops
-owns the **platform's own infra**: the build/deploy/monitor surface that ships witwave to its users. **Second priority**
-because the team's own velocity depends directly on a healthy build/release pipeline; every hour devops shaves off CI is
-multiplied across every other agent's work.
-
-### 2. agent-resources — likely **luna** or **dora**
-
-Infra-level management of the agents themselves. Scales pods up/down (e.g., scales evan to zero overnight if no backlog;
-spins kira down on weekends if docs are quiet), watches resource budgets (LLM cost, CPU, memory), tunes configuration
-like `TASK_TIMEOUT_SECONDS` per-agent based on observed run times, knows who's available when. Like HR but for agents —
-operational lifecycle rather than substantive work. Coordinates with zora on team capacity but operates one layer below
-(zora dispatches _work_ to agents; agent-resources keeps the agents _runnable_). **Third priority** because as the team
-grows past 5 agents the manual lifecycle tuning starts to dominate operator time.
-
-### 3. security — likely **vera** or **maya**
+### 1. security — likely **vera** or **maya**
 
 Higher-level security work that goes beyond evan's automated `risk-work` lens. Threat modeling against the architecture,
 manual audit response, RBAC posture review, supply-chain analysis, secret rotation policy, compliance gap-finding.
 Distinct from evan: evan automates CVE/secret/insecure-pattern detection across the codebase; security-agent reasons
 about the _system's overall threat posture_ — the work that requires architectural understanding rather than scanner
-output. **Fourth priority**: evan covers the high-volume automated surface today; the architectural-security gap is real
-but rarer-firing.
+output. Evan covers the high-volume automated surface today; the architectural-security gap is real but rarer-firing.
 
-### 4. testing — name + scope TBD
+### 2. testing — name + scope TBD
 
 At least one testing-focused agent is on the roadmap, but the scope needs a design discussion before scaffolding —
 possibilities span "writes new tests where evan's fix-bar flagged untested code paths," "runs existing suites and
 surfaces flakiness/regressions," "mutation testing to evaluate test quality," "property-based test generation," "E2E
-test maintenance." Each is a different shape of work. **Fifth priority** because the value is high but the design
-discussion has to land first — until we pick a shape, scaffolding is premature.
+test maintenance." Each is a different shape of work. The value is high, but the design discussion has to land first —
+until we pick a shape, scaffolding is premature.
 
-### 5. software-architecture — likely **theo** or **lyra**
+### 3. software-architecture — likely **theo** or **lyra**
 
 Watches the _shape_ of the system rather than individual files. Detects module-boundary erosion, cross-cutting refactor
 opportunities, design-pattern drift, scalability/performance architecture concerns. Distinct from nova (line-level
 hygiene) and evan (defect-level fixing) — architecture-agent looks at how the system fits together across components,
 surfacing changes that no single file or function would reveal. Many of her findings will be flag-only; substantive
-refactor proposals deserve human review before landing. **Sixth priority** because the findings are mostly
-flag-for-human (low autonomy yield) and overlap with what a CTO-level role can also surface.
+refactor proposals deserve human review before landing. This is useful but lower-autonomy than Mira/security/testing
+because many findings are flag-for-human by nature.
 
-### 6. CTO — likely **rhea** or **aria**
+### 4. CTO — likely **rhea** or **aria**
 
 Picks big direction changes. Reads the team's accumulated state — open issues, recurring pain points, drift between what
 the platform claims and what users want, market/ecosystem shifts (new MCP servers, new model capabilities, adjacent OSS
 projects) — and proposes _strategic_ moves: "we should pivot to X," "the next quarter's theme is Y," "this whole
-subsystem deserves a rewrite." Output is high-leverage, low-frequency, mostly human-review: design memos, prioritisation
+subsystem deserves a rewrite." Output is high-leverage, low-frequency, mostly human-review: design memos, prioritization
 proposals, deprecation calls, "let's stop investing in Z." Distinct from zora (who decides _which peer dispatches next_
 on the 30-min cadence) and software-architecture (who flags structural decay): CTO sets the _direction_ both of them
-then execute against. **Seventh priority** because direction-setting is highest-leverage but also requires the most
-accumulated context — better once the team has months of state to reason over and the platform has real users with real
-friction points.
+then execute against. Direction-setting is highest-leverage but also requires the most accumulated context — better once
+the team has months of state to reason over and the platform has real users with real friction points.
 
 ## How the loop closes
 
@@ -257,11 +259,14 @@ friction points.
    Iris to cut a release.
 7. **Iris cuts the release** — pre-flight, CHANGELOG, tag, push. The three release workflows fire on the tag. Container
    images, Helm charts, ww CLI artifacts publish.
-8. **Loop continues** — there's always more to find, more to fix, more to ship.
+8. **Mira observes the platform loop** on her own cadence. If she sees a concerning platform bug/anomaly, she distills
+   the evidence and sends it to Zora; Zora routes any needed repair.
+9. **Loop continues** — there's always more to find, more to fix, more to ship.
 
 ## Reading further
 
 - Per-agent identity + skills: `.agents/self/<name>/.claude/CLAUDE.md`
 - Per-agent public capability surface: `.agents/self/<name>/.witwave/agent-card.md`
 - Bootstrap (deploying the team to a cluster): `.agents/self/bootstrap.md`
+- Operational runbooks: `docs/runbooks/`
 - Project-level architecture: `docs/architecture.md`, `AGENTS.md`

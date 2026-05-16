@@ -19,6 +19,14 @@
       "github": "https://github.com/zora-agent-witwave"
     },
     {
+      "name": "Mira",
+      "role": "Platform Reliability",
+      "lane": "Observes operator health, agent readiness, pod restarts, runtime storage, release drift, and cluster anomalies; distills problematic findings for Zora to route.",
+      "avatar": "assets/images/team/mira.png",
+      "sourcePath": ".agents/self/mira/.witwave/agent-card.md",
+      "github": "https://github.com/mira-agent-witwave"
+    },
+    {
       "name": "Piper",
       "role": "Outreach",
       "lane": "Narrates team progress publicly, engages GitHub Discussions, and keeps outward-facing updates signal-rich.",
@@ -77,18 +85,6 @@
     }
   ],
   "futureMembers": [
-    {
-      "name": "Coming soon",
-      "role": "Platform + Build",
-      "lane": "Will own build systems, CI/CD pipelines, deployment posture, observability, and release infrastructure.",
-      "variant": "future"
-    },
-    {
-      "name": "Coming soon",
-      "role": "Agent Resources",
-      "lane": "Will manage agent runtime capacity, resource budgets, availability, and per-agent configuration tuning.",
-      "variant": "future"
-    },
     {
       "name": "Coming soon",
       "role": "Process Architect",

@@ -12,8 +12,8 @@ humans have always been organized, with AI bolted on as a productivity multiplie
 Once agents stop being tools and start being members, the team's shape itself changes — not at the margin, but
 structurally.
 
-This paper describes the structural shape of a fully agentic engineering team, using a working eight-agent team as a
-concrete reference, and contrasts it with the two team shapes most engineering organizations currently inhabit:
+This paper describes the structural shape of a fully agentic engineering team, using a working reference team as a
+concrete example, and contrasts it with the two team shapes most engineering organizations currently inhabit:
 
 - **All-human teams.** The default. Coordinated by sprints, standups, tickets, and code review. AI absent or used as a
   personal IDE assistant.
@@ -46,26 +46,29 @@ defaults that human teams treat as load-bearing:
 
 ## The reference team
 
-The patterns described in this paper are abstracted from a working agentic team: eight autonomous agents that maintain a
-software platform, commit directly to `main`, and coordinate without human routing. Several additional specialist
-members are designed for future expansion — see _The team in motion_ below — so the eight-agent shape captured here is a
+The patterns described in this paper are abstracted from a working agentic team: a small roster of autonomous agents
+that maintain a software platform, commit directly to `main`, and coordinate without human routing. Several additional
+specialist members are designed for future expansion — see _The team in motion_ below — so the roster captured here is a
 current snapshot, not a final configuration. The reference is included here in full enough to stand alone; no outside
 team roster is required to understand the model.
 
-| Agent     | Substrate owned                                         |
-| --------- | ------------------------------------------------------- |
-| **Zora**  | Coordination. Decides who works on what, when.          |
-| **Evan**  | Code defects and risks (security, reliability, perf).   |
-| **Nova**  | Code hygiene — formatting, linting, missing docstrings. |
-| **Kira**  | Documentation accuracy — public docs and release notes. |
-| **Finn**  | Functionality gaps — what's missing relative to claims. |
-| **Felix** | Feature implementation — new functionality end-to-end.  |
-| **Iris**  | Git plumbing — push, CI watch, release pipeline.        |
-| **Piper** | Outward voice — public updates, replies, moderation.    |
+| Agent     | Substrate owned                                                     |
+| --------- | ------------------------------------------------------------------- |
+| **Zora**  | Coordination. Decides who works on what, when.                      |
+| **Evan**  | Code defects and risks (security, reliability, perf).               |
+| **Nova**  | Code hygiene — formatting, linting, missing docstrings.             |
+| **Kira**  | Documentation accuracy — public docs and release notes.             |
+| **Finn**  | Functionality gaps — what's missing relative to claims.             |
+| **Felix** | Feature implementation — new functionality end-to-end.              |
+| **Iris**  | Git plumbing — push, CI watch, release pipeline.                    |
+| **Piper** | Outward voice — public updates, replies, moderation.                |
+| **Mira**  | Platform reliability observation — runtime health and anomaly flow. |
 
-Each agent owns one substrate. Together they run the codebase continuously, shipping multiple small releases per day.
-Humans set direction, raise the quality bar, and intervene on escalations the team flags upward. They do not route work,
-attend standups, run sprints, or operate a ticket queue. None of those structures exist on this team.
+Each agent owns one substrate. The reliability observer is intentionally read-only at first: she detects and distills
+platform anomalies so the coordinator can route fixes to the right owner. Together the team runs the codebase
+continuously, shipping multiple small releases per day. Humans set direction, raise the quality bar, and intervene on
+escalations the team flags upward. They do not route work, attend standups, run sprints, or operate a ticket queue. None
+of those structures exist on this team.
 
 ---
 
@@ -567,23 +570,20 @@ _judgment_ of what to build into infrastructure, and shouldn't be evaluated as i
 
 ## The team in motion
 
-The eight-agent reference team is a starting shape, not a finished one. The current split (coordination, defects,
-hygiene, documentation, gaps, features, git plumbing, outreach) is the smallest configuration in which the operating
-model is internally coherent — every load-bearing function has an owner, and no agent is doing two jobs at once. It is
-enough to _demonstrate_ the model. It is not enough to _cover_ the model's full surface.
+The reference team is a starting shape, not a finished one. It begins with the smallest configuration in which the
+operating model is internally coherent — coordination, defects, hygiene, documentation, gaps, features, git plumbing,
+and outreach — then expands as new substrates become load-bearing. That first shape is enough to _demonstrate_ the
+model. It is not enough to _cover_ the model's full surface.
 
 Several specialist members are plausible next additions. Each fills a substrate the current team handles thinly or not
 at all:
 
-- **Infrastructure / platform-build agent.** Owns the build system, CI/CD pipelines, observability infrastructure, and
-  deployment surface of the platform itself. Distinct from the git-plumbing agent (which _uses_ the build process to
-  publish releases): this agent improves the build process, shaves CI minutes, evolves the deployment posture. Every
-  minute it removes from CI is multiplied across every other agent's commit.
-- **Resource-management agent.** The infra-level lifecycle layer for the agents themselves — scales pods up and down
-  based on backlog, watches LLM cost and compute budgets, tunes per-agent timeout and concurrency configuration based on
-  observed run patterns. Coordinates with the manager on team capacity but operates one layer below: the manager
-  dispatches _work_ to agents; this agent keeps the agents _runnable_. Becomes load-bearing as the team grows past five
-  or six members and per-agent tuning starts to dominate operator attention.
+- **Platform reliability observer.** Watches the substrate that lets the team keep working: operator health, agent
+  readiness, pod restarts, runtime storage, release posture, upgrade safety, and resource/anomaly signals. This role is
+  deliberately observational first. It does not replace the coordinator or become a general repair bot; it distills
+  problematic signals into high-quality findings that the coordinator can route to the right owner. A mature team may
+  later split this into separate build/release and resource-management roles, but early on those signals are coupled
+  enough that one reliability observer can provide faster value with less coordination overhead.
 - **Process Architect.** Owns the team's operating system: skill design, schedule tuning, coordination rules, workflow
   automation, and small scripts that make every other agent more effective. Distinct from the coordinator, which decides
   what work runs next; this agent improves the machinery the coordinator and peers use to run work at all.
@@ -601,14 +601,14 @@ Beyond that next wave, additional specializations are sketched for software arch
 CTO-level direction-setting, and community liaison (deeper external engagement than the outreach agent provides).
 
 The point worth highlighting is that this growth path is **cheap, reversible, and continuously revisable** — and that
-property is itself a vindication of the "membership is a spec" structural change. Adding the infrastructure agent will
-not require headcount approval, a six-month hiring loop, or an onboarding plan. It will require defining the substrate,
-writing an identity document, scaffolding a skill or two, configuring the routing, and deploying a worker.
+property is itself a vindication of the "membership is a spec" structural change. Adding a platform reliability observer
+will not require headcount approval, a six-month hiring loop, or an onboarding plan. It will require defining the
+substrate, writing an identity document, scaffolding a skill or two, configuring the routing, and deploying a worker.
 
 As the team matures, even the act of adding a new agent becomes agent-assisted. The Process Architect can propose the
-new role, draft the identity, adjust schedules, update skills, and change coordination rules. The resource-management
-agent can evaluate whether the system has enough budget, concurrency, storage, and runtime capacity to support the new
-member. The human still approves the expansion and owns the safety envelope, but the design work and operational
+new role, draft the identity, adjust schedules, update skills, and change coordination rules. The platform reliability
+observer can evaluate whether the system has enough budget, concurrency, storage, and runtime capacity to support the
+new member. The human still approves the expansion and owns the safety envelope, but the design work and operational
 preflight become part of the team's own machinery.
 
 If the agent's substrate turns out to be wrongly scoped, it will be revised the same way: edit the spec, redeploy. If it
@@ -630,9 +630,9 @@ This continuous-revision shape has implications worth naming explicitly:
   exceptional one. The team is not a fixed roster sized to current scope; it is a scaffolding designed to extend with
   the platform.
 
-The reference team is, in short, deliberately early. Eight agents, not eighty. The shape will look different in a year.
-That it _can_ look different in a year — at the speed of a config change rather than the speed of an org-design cycle —
-is the point.
+The reference team is, in short, deliberately early. A handful of agents, not eighty. The shape will look different in a
+year. That it _can_ look different in a year — at the speed of a config change rather than the speed of an org-design
+cycle — is the point.
 
 ---
 
