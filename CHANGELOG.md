@@ -6,6 +6,22 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.24.1] — 2026-05-16
+
+Patch release fixing the `ww` CLI's `/heartbeat` parser to accept the harness's flat-object response shape (the sibling
+test now pins the contract), plus sibling-pattern parity for the `finn` and `piper` agents' `.claude/mcp.json`
+scaffolding.
+
+### Fixed
+
+- **ww**: Parse the harness `/heartbeat` flat-object shape correctly; a sibling test now pins the contract so future
+  drift fails loudly.
+
+### Agent identity
+
+- **finn, piper**: Add `.claude/mcp.json` to bring both agents to sibling-pattern parity with the rest of the team's
+  scaffolding.
+
 ## [0.24.0] — 2026-05-16
 
 Minor release adding `kubectl` to the backend toolchains so agents can manage Kubernetes resources directly from their
