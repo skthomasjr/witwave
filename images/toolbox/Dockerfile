@@ -226,6 +226,25 @@ ARG HELM_VERSION=v3.16.3
 RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
       | DESIRED_VERSION="${HELM_VERSION}" USE_SUDO=false HELM_INSTALL_DIR=/usr/local/bin bash
 
+# kubectl — read-only cluster diagnostics for platform-health / restart
+# triage when a toolbox consumer is deliberately given Kubernetes credentials
+# via service account token or kubeconfig. Installing the binary here
+# does not grant cluster access by itself.
+ARG KUBECTL_VERSION=v1.31.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) KUBECTL_ARCH=amd64 ;; \
+        arm64) KUBECTL_ARCH=arm64 ;; \
+        *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl -fsSL -o /usr/local/bin/kubectl \
+         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl" \
+    && curl -fsSL -o /tmp/kubectl.sha256 \
+         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl.sha256" \
+    && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
+    && chmod 0755 /usr/local/bin/kubectl \
+    && rm -f /tmp/kubectl.sha256
+
 # Python tools-venv from Stage 2.
 COPY --from=python-build /opt/tools-venv /opt/tools-venv
 
@@ -248,6 +267,7 @@ RUN set -euo pipefail \
     && gitleaks version >/dev/null \
     && trivy --version >/dev/null \
     && helm version --short >/dev/null \
+    && kubectl version --client=true --output=yaml >/dev/null \
     && ww version >/dev/null \
     && /opt/tools-venv/bin/ruff --version >/dev/null \
     && /opt/tools-venv/bin/yamllint --version >/dev/null \

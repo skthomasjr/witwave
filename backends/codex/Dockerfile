@@ -39,6 +39,25 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# kubectl — read-only cluster diagnostics for platform-health / restart
+# triage when a backend is deliberately given Kubernetes credentials
+# via service account token or kubeconfig. Installing the binary here
+# does not grant cluster access by itself.
+ARG KUBECTL_VERSION=v1.31.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) KUBECTL_ARCH=amd64 ;; \
+        arm64) KUBECTL_ARCH=arm64 ;; \
+        *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl -fsSL -o /usr/local/bin/kubectl \
+         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl" \
+    && curl -fsSL -o /tmp/kubectl.sha256 \
+         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl.sha256" \
+    && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
+    && chmod 0755 /usr/local/bin/kubectl \
+    && rm -f /tmp/kubectl.sha256
+
 # Code-hygiene tooling for nova (used by her code-format / code-verify /
 # code-document skills). Shared across backend images so any agent has
 # the binaries available; iris and kira don't invoke them but the cost
