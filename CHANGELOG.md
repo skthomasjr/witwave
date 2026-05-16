@@ -21,9 +21,9 @@ actually execute.
 
 ### Fixed
 
-- **harness (toolbox)**: Install `python3` in the toolbox image's final stage so the venv shebangs for yamllint,
-  pytest, pip-audit, and bandit resolve. The stage 5 venv's `bin/python3` symlink pointed at `/usr/bin/python3` which
-  wasn't apt-installed in the final stage; pure-Python tools failed to exec on both linux/amd64 and linux/arm64.
+- **harness (toolbox)**: Install `python3` in the toolbox image's final stage so the venv shebangs for yamllint, pytest,
+  pip-audit, and bandit resolve. The stage 5 venv's `bin/python3` symlink pointed at `/usr/bin/python3` which wasn't
+  apt-installed in the final stage; pure-Python tools failed to exec on both linux/amd64 and linux/arm64.
 
 ### Agent identity
 
