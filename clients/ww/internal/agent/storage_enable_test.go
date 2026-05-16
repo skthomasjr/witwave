@@ -163,3 +163,70 @@ func TestApplyStorageEnableInPlace_PreservesExistingRuntimeStorage(t *testing.T)
 		}
 	}
 }
+
+func TestRuntimeStoragePlanValue(t *testing.T) {
+	cases := []struct {
+		name       string
+		agentName  string
+		mutateSpec func(spec map[string]interface{})
+		want       string
+	}{
+		{
+			name:       "no runtimeStorage uses default size",
+			agentName:  "hello",
+			mutateSpec: func(spec map[string]interface{}) {},
+			want:       "hello-runtime-data (1Gi)",
+		},
+		{
+			name:      "explicit size is preserved",
+			agentName: "research",
+			mutateSpec: func(spec map[string]interface{}) {
+				spec["runtimeStorage"] = map[string]interface{}{
+					"size": "10Gi",
+				}
+			},
+			want: "research-runtime-data (10Gi)",
+		},
+		{
+			name:      "empty size string falls back to default",
+			agentName: "ops",
+			mutateSpec: func(spec map[string]interface{}) {
+				spec["runtimeStorage"] = map[string]interface{}{
+					"size": "",
+				}
+			},
+			want: "ops-runtime-data (1Gi)",
+		},
+		{
+			name:      "existingClaim wins over size",
+			agentName: "hello",
+			mutateSpec: func(spec map[string]interface{}) {
+				spec["runtimeStorage"] = map[string]interface{}{
+					"existingClaim": "shared-runtime-pvc",
+					"size":          "10Gi",
+				}
+			},
+			want: "use existing claim shared-runtime-pvc",
+		},
+		{
+			name:      "existingClaim alone (no size)",
+			agentName: "hello",
+			mutateSpec: func(spec map[string]interface{}) {
+				spec["runtimeStorage"] = map[string]interface{}{
+					"existingClaim": "preprovisioned",
+				}
+			},
+			want: "use existing claim preprovisioned",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cr := seedAgent(tc.agentName, "default", tc.mutateSpec)
+			got := runtimeStoragePlanValue(cr, tc.agentName)
+			if got != tc.want {
+				t.Errorf("runtimeStoragePlanValue() = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
