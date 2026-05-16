@@ -268,19 +268,21 @@ Apply in order:
 2. **Cadence floor (peer dispatches).** Each peer has a "must run at least every X hours" floor. If breached, dispatch
    even if backlog is small. Floors:
 
-   - evan `bug-work` — every **1.5 hours** (tightened from 3h on 2026-05-10 alongside the autotune rollout; bug-class
-     drainage is the load-bearing driver of release velocity)
-   - evan `risk-work` — every **4 hours** (tightened from 8h on 2026-05-10; covers all five risk categories — security,
+   - evan `bug-work` — every **3 hours** (1.5h on 2026-05-10 → 3h on 2026-05-15 to halve peer-skill compute; bug-class
+     drainage is still the load-bearing driver of release velocity but the 1.5h cadence was over-polling a steady-state
+     codebase — most fires returned 0/0/0)
+   - evan `risk-work` — every **8 hours** (4h → 8h on 2026-05-15; covers all five risk categories — security,
      reliability, performance, observability, maintainability — though maintainability stays flag-only)
-   - nova `code-cleanup` — every **4 hours** (tightened from 8h on 2026-05-10)
-   - kira `docs-cleanup` — every **3 hours** (tightened from 6h on 2026-05-10; documentation drifts every time the team
-     commits)
-   - kira `docs-research` — every **1 day** (tightened from 3d on 2026-05-10; AI/ML competitive landscape moves fast
-     enough that even daily checks find new ground. External API surface still keeps this floor slower than in-repo
-     cadences.)
-   - finn `gap-work` — every **3 hours** (tightened from 6h on 2026-05-10; gap detection is heavier LLM work but
-     risk-tier ladder makes early sweeps cheap regardless)
-   - **piper `team-pulse` — n/a (self-driven).** Piper has her own 15-min heartbeat firing her own outreach loop. You do
+   - nova `code-cleanup` — every **8 hours** (4h → 8h on 2026-05-15; cycle-burn pattern observed earlier the same day —
+     nova ran a hygiene pass, introduced an I001 lint error, then fix-forwarded her own error 7 min later. 4h was
+     polling cleaner-than-cleanable code.)
+   - kira `docs-cleanup` — every **6 hours** (3h → 6h on 2026-05-15; documentation does drift every time the team
+     commits, but at 30-min Zora ticks + slower peer-dispatch cadence the team's commit velocity is also lower)
+   - kira `docs-research` — every **2 days** (1d → 2d on 2026-05-15; AI/ML competitive landscape moves fast but daily
+     was over-polling; external API surface keeps this floor slowest of all in any case)
+   - finn `gap-work` — every **6 hours** (3h → 6h on 2026-05-15; gap detection is heavier LLM work, risk-tier ladder
+     makes early sweeps cheap but full sweep volume still matters at the cost-per-tick level)
+   - **piper `team-pulse` — n/a (self-driven).** Piper has her own 30-min heartbeat firing her own outreach loop. You do
      NOT dispatch her for cadence-floor reasons; she runs whether you ask or not. Skip her in the cadence-floor walk.
      The only A2A from you toward Piper is replying to her `ask-peer-clarification` calls when she has a question about
      your state.
@@ -463,10 +465,11 @@ churn.
 
 **Levers under your authority (you decide the mix and write the chosen values to `team_state.md`):**
 
-1. **Cadence floors.** evan bug-work 1.5h, evan risk-work 4h, nova `code-cleanup` 4h, kira `docs-cleanup` 3h, finn
-   `gap-work` 3h, kira `docs-research` 1d (tightened defaults as of 2026-05-10). Tighten further when the team has
-   exhausted the cheap finds at the current cadence; relax when peers report two consecutive 0/0/0 zero-streaks AND the
-   resulting stand-down ratio stays below 30%.
+1. **Cadence floors.** evan bug-work 3h, evan risk-work 8h, nova `code-cleanup` 8h, kira `docs-cleanup` 6h, finn
+   `gap-work` 6h, kira `docs-research` 2d (relaxed defaults as of 2026-05-15 to halve peer-skill compute cost; team
+   was over-polling a steady-state codebase). Tighten further when the team has exhausted the cheap finds at the
+   current cadence AND the resulting stand-down ratio stays below 30%; relax when peers report two consecutive 0/0/0
+   zero-streaks.
 2. **Polish-tier advancement.** Default rule is "advance after 1 consecutive zero-streak" (tightened from 2 on
    2026-05-10). Drop to "advance on every zero-yield run including the first" if even tighter surfacing is needed;
    that's the floor.
@@ -486,12 +489,12 @@ churn.
 
 | Lever                           | Floor                  |
 | ------------------------------- | ---------------------- |
-| evan_bug_work_hours             | 1                      |
-| evan_risk_work_hours            | 2                      |
-| nova_code_cleanup_hours         | 2                      |
-| kira_docs_cleanup_hours         | 2                      |
-| finn_gap_work_hours             | 2                      |
-| kira_docs_research_days         | 0.5                    |
+| evan_bug_work_hours             | 2                      |
+| evan_risk_work_hours            | 4                      |
+| nova_code_cleanup_hours         | 4                      |
+| kira_docs_cleanup_hours         | 3                      |
+| finn_gap_work_hours             | 3                      |
+| kira_docs_research_days         | 1                      |
 | polish_tier_advance_zero_streak | 1                      |
 | concurrency_max_per_tick        | 2 (ceiling, not floor) |
 
