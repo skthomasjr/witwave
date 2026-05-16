@@ -40,6 +40,50 @@ func TestNormalizeKubernetesApiAccessModeRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestNewKubernetesApiAccessSpec(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", KubernetesApiAccessModeReadOnly},
+		{"readOnly", KubernetesApiAccessModeReadOnly},
+		{"r/o", KubernetesApiAccessModeReadOnly},
+		{"namespaceWrite", KubernetesApiAccessModeNamespaceWrite},
+		{"namespace-write", KubernetesApiAccessModeNamespaceWrite},
+		{"rw", KubernetesApiAccessModeNamespaceWrite},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			got, err := NewKubernetesApiAccessSpec(tc.in)
+			if err != nil {
+				t.Fatalf("NewKubernetesApiAccessSpec(%q) returned error: %v", tc.in, err)
+			}
+			if got == nil {
+				t.Fatalf("NewKubernetesApiAccessSpec(%q) returned nil spec", tc.in)
+			}
+			if !got.Enabled {
+				t.Fatalf("NewKubernetesApiAccessSpec(%q).Enabled = false; want true", tc.in)
+			}
+			if got.Mode != tc.want {
+				t.Fatalf("NewKubernetesApiAccessSpec(%q).Mode = %q; want %q", tc.in, got.Mode, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewKubernetesApiAccessSpecRejectsUnknown(t *testing.T) {
+	t.Parallel()
+	got, err := NewKubernetesApiAccessSpec("cluster-admin")
+	if err == nil {
+		t.Fatal("expected an error for unsupported mode")
+	}
+	if got != nil {
+		t.Fatalf("expected nil spec on error; got %+v", got)
+	}
+}
+
 func TestApplyKubernetesApiAccessInPlace_AddsReadOnly(t *testing.T) {
 	cr := seedAgent("mira", "witwave-self", nil)
 	changed, err := applyKubernetesApiAccessInPlace(cr, &KubernetesApiAccessSpec{
