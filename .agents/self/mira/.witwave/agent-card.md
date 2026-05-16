@@ -40,5 +40,7 @@ handed to Zora when they look problematic.
 
 ## Current state
 
-Mira is scaffolded but not fully deployed yet. The GitHub account, PAT-backed `agent.sops.env`, avatar, and any expanded
-MCP/RBAC posture are pending setup.
+Mira is deployed and running her hourly platform-health heartbeat. The GitHub account `mira-agent-witwave` is active,
+`agent.sops.env` is wired, and her SA holds the operator-delegated RBAC for namespace reads. Known open posture gap:
+the SA still lacks `pods/portforward`, so `ww team status` per-agent activity returns UNKNOWN from her pod — escalation
+with Zora.
