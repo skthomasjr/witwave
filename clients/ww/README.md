@@ -392,6 +392,10 @@ ww agent backend add    hello claude --auth-set ANTHROPIC_API_KEY=sk-...    # di
 ww agent backend rename hello echo-2 echo-primary            # rename across CR + gitMappings + repo folder
 ww agent backend remove hello echo-2 --remove-repo-folder    # drop a backend + wipe its repo folder
 
+# Existing-agent persistence
+ww agent storage enable hello                  # add runtime logs/state PVC + backend state mounts
+ww agent storage enable hello --no-backend-state    # harness runtime PVC only
+
 # Team membership (runtime peer discovery via witwave-manifest-<team>)
 ww agent team join hello research               # set witwave.ai/team=research
 ww agent team leave hello                       # drop the label; agent falls into namespace-wide manifest
@@ -527,6 +531,13 @@ Create waits up to `--timeout` (default `5m`) for the operator to report the age
 events are dumped so cold image pulls can be distinguished from real failures (crashlooping containers,
 ImagePullBackOff). Pass `--no-wait` to return as soon as the CR is accepted (scripts + CI). All mutating commands
 (`create`, `delete`) honour `--yes` / `WW_ASSUME_YES=true` and `--dry-run` the same way `ww operator install` does.
+
+`ww agent storage enable <name>` is the existing-agent counterpart to `ww agent create --with-persistence` for durable
+runtime state. It patches `spec.runtimeStorage` so harness gets `/home/agent/logs` and `/home/agent/state`, then adds
+`/home/agent/state` to any backend that already has persistent backend storage. The operator renders
+`TASK_STORE_PATH=/home/agent/state/a2a-tasks.db` when the state mount is present. Backends without storage are skipped
+instead of silently allocating new backend PVCs; add backend persistence at creation time with `--persist` or
+`--with-persistence`.
 
 `ww agent send` uses the Kubernetes apiserver's built-in Service proxy so any `ClusterIP` Service is reachable without
 local port-forwarding or an external LoadBalancer. This makes round-trip A2A calls from a laptop against a cluster-only

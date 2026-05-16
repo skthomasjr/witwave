@@ -113,6 +113,7 @@ func newAgentCmd() *cobra.Command {
 	cmd.AddCommand(newAgentLogsCmd(f))
 	cmd.AddCommand(newAgentEventsCmd(f))
 	cmd.AddCommand(newAgentScaffoldCmd())
+	cmd.AddCommand(newAgentStorageCmd(f))
 	cmd.AddCommand(newAgentGitCmd(f))
 	cmd.AddCommand(newAgentBackendCmd(f))
 	cmd.AddCommand(newAgentTeamCmd(f))
@@ -1508,6 +1509,90 @@ func runAgentUpgrade(ctx context.Context, f *agentFlags, name, tag, harnessTag s
 		DryRun:      f.dryRun,
 		Out:         os.Stdout,
 		In:          os.Stdin,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// storage
+// ---------------------------------------------------------------------------
+
+func newAgentStorageCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "storage",
+		Short: "Manage persistent storage on an existing WitwaveAgent",
+		Long: "Manage storage-related fields on an existing WitwaveAgent CR.\n\n" +
+			"These commands patch the CR in place and let the operator roll the\n" +
+			"Deployment. Use them when an agent already exists and you need to\n" +
+			"turn on persistence features that `ww agent create --with-persistence`\n" +
+			"would have stamped at creation time.",
+	}
+	cmd.AddCommand(newAgentStorageEnableCmd(f))
+	return cmd
+}
+
+func newAgentStorageEnableCmd(f *agentFlags) *cobra.Command {
+	var (
+		size           string
+		storageClass   string
+		noBackendState bool
+		noWait         bool
+		timeout        time.Duration
+	)
+	cmd := &cobra.Command{
+		Use:   "enable <name>",
+		Short: "Enable durable runtime storage on an existing agent",
+		Long: "Enables the default runtime storage layout on an existing\n" +
+			"WitwaveAgent without recreating it. The command adds\n" +
+			"spec.runtimeStorage for the harness runtime PVC, then adds\n" +
+			"/home/agent/state to each backend that already has persistent\n" +
+			"backend storage. The operator renders TASK_STORE_PATH when the\n" +
+			"state mount is present.\n\n" +
+			"This is the existing-agent counterpart to `ww agent create\n" +
+			"--with-persistence` for the runtime state portion.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentStorageEnable(cmd.Context(), f, args[0], size, storageClass, !noBackendState, !noWait, timeout)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().StringVar(&size, "size", "1Gi",
+		"Runtime PVC size to use when spec.runtimeStorage does not already set a size")
+	cmd.Flags().StringVar(&storageClass, "storage-class", "",
+		"StorageClassName for the runtime PVC (default: cluster default). "+
+			"When runtimeStorage already exists, this updates storageClassName only when supplied.")
+	cmd.Flags().BoolVar(&noBackendState, "no-backend-state", false,
+		"Only enable harness runtimeStorage; do not add /home/agent/state to existing backend PVC mounts.")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false,
+		"Return as soon as the patch lands; skip the rollout-to-Ready wait.")
+	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute,
+		"Maximum time to wait for the rollout to finish (ignored with --no-wait). "+
+			"On timeout, recent CR + pod events are dumped.")
+	return cmd
+}
+
+func runAgentStorageEnable(ctx context.Context, f *agentFlags, name, size, storageClass string, backendState, wait bool, timeout time.Duration) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.StorageEnable(ctx, target, cfg, agent.StorageEnableOptions{
+		Name:                    name,
+		Namespace:               ns,
+		RuntimeSize:             size,
+		RuntimeStorageClassName: storageClass,
+		BackendState:            backendState,
+		Wait:                    wait,
+		Timeout:                 timeout,
+		AssumeYes:               assumeYes,
+		DryRun:                  f.dryRun,
+		Out:                     os.Stdout,
+		In:                      os.Stdin,
 	})
 }
 
