@@ -29,6 +29,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -114,6 +115,7 @@ type WitwaveAgentReconciler struct {
 // +kubebuilder:rbac:groups=witwave.ai,resources=witwaveagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // Secret verbs (#749, #761, #1613): split into read-only and write
 // markers so the canonical config/rbac/role.yaml mirrors the chart's
 // two-rule shape (charts/witwave-operator/templates/clusterrole.yaml +
@@ -134,6 +136,7 @@ type WitwaveAgentReconciler struct {
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies;ingresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the WitwaveAgent spec and writes status.
@@ -363,6 +366,9 @@ func (r *WitwaveAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// removes the HPA. Ordering the delete-if-present first avoids the
 	// transient under-provisioning window.
 	if err := r.preflightDeleteHPAIfDisabled(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	if err := r.reconcileKubernetesApiAccess(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
 	if err := r.applyDeployment(ctx, agent); err != nil {
@@ -1657,6 +1663,18 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 		recordErr("Service", "get", gErr)
 		recordErr("Service", "delete", dErr)
 	}
+	if gErr, dErr := tryDelete(&corev1.ServiceAccount{}); gErr != nil || dErr != nil {
+		recordErr("ServiceAccount", "get", gErr)
+		recordErr("ServiceAccount", "delete", dErr)
+	}
+	if gErr, dErr := tryDelete(&rbacv1.Role{}); gErr != nil || dErr != nil {
+		recordErr("Role", "get", gErr)
+		recordErr("Role", "delete", dErr)
+	}
+	if gErr, dErr := tryDelete(&rbacv1.RoleBinding{}); gErr != nil || dErr != nil {
+		recordErr("RoleBinding", "get", gErr)
+		recordErr("RoleBinding", "delete", dErr)
+	}
 	if gErr, dErr := tryDelete(&autoscalingv2.HorizontalPodAutoscaler{}); gErr != nil || dErr != nil {
 		recordErr("HorizontalPodAutoscaler", "get", gErr)
 		recordErr("HorizontalPodAutoscaler", "delete", dErr)
@@ -1746,6 +1764,9 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 	// is still true on the CR.
 	if err := r.reconcileNetworkPolicy(ctx, agent); err != nil {
 		recordErr("NetworkPolicy", "delete", err)
+	}
+	if err := r.deleteKubernetesApiAccess(ctx, agent); err != nil {
+		recordErr("KubernetesApiAccess", "delete", err)
 	}
 	// Force the dashboard teardown regardless of spec.dashboard.enabled
 	// (#682). Without the forceDelete flag, reconcileDashboard's apply
@@ -2949,6 +2970,7 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&witwavev1alpha1.WitwaveAgent{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
+		Owns(&corev1.ServiceAccount{}).
 		Owns(&corev1.ConfigMap{}).
 		// #1566: drop Owns(&corev1.Secret{}). The operator-owned
 		// credential Secrets are already enqueued by the
@@ -2959,6 +2981,8 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// inflated credential-watch error counters for no additional
 		// coverage.
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
 		Watches(&witwavev1alpha1.WitwaveAgent{}, enqueueTeammates, builder.WithPredicates(teamPredicate)).

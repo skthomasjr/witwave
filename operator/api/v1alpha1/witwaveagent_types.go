@@ -583,6 +583,45 @@ type RuntimeStorageSpec struct {
 	Mounts []RuntimeStorageMount `json:"mounts,omitempty"`
 }
 
+// KubernetesApiAccessMode controls the permission preset rendered for an
+// agent's Kubernetes API identity.
+type KubernetesApiAccessMode string
+
+const (
+	// KubernetesApiAccessModeReadOnly renders a conservative diagnostics
+	// surface: get/list/watch on common workload and Witwave resources, plus
+	// get on pod logs. It deliberately grants no create/update/patch/delete.
+	KubernetesApiAccessModeReadOnly KubernetesApiAccessMode = "readOnly"
+)
+
+// KubernetesApiAccessSpec configures an operator-managed Kubernetes API
+// identity for an agent pod. When enabled, the operator renders a per-agent
+// ServiceAccount plus a per-agent namespace-scoped Role/RoleBinding so tools
+// such as kubectl can authenticate from backend containers.
+type KubernetesApiAccessSpec struct {
+	// Enabled creates and wires the per-agent Kubernetes API identity. When
+	// false or omitted, the operator leaves the pod in the hardened default:
+	// no service account token mounted.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Name overrides the generated ServiceAccount, Role, and RoleBinding
+	// name. Defaults to the WitwaveAgent name, so an agent named "mira" gets
+	// ServiceAccount/mira, Role/mira, and RoleBinding/mira in its namespace.
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Mode selects the RBAC preset. Defaults to readOnly. The first operator
+	// implementation intentionally supports only readOnly so mutation access
+	// cannot be granted accidentally.
+	// +kubebuilder:validation:Enum=readOnly
+	// +kubebuilder:default=readOnly
+	// +optional
+	Mode KubernetesApiAccessMode `json:"mode,omitempty"`
+}
+
 // WitwaveAgentSpec defines the desired state of WitwaveAgent.
 type WitwaveAgentSpec struct {
 	// Enabled toggles whether the entire agent (Deployment, Service, PVCs,
@@ -643,8 +682,8 @@ type WitwaveAgentSpec struct {
 	// automatically so the SA token is projected into every container in
 	// the pod. Note: the token is visible to every sibling container
 	// (harness + all backend sidecars + any MCP sidecars) — there is
-	// no per-container scoping. When unset, the pod retains the hardened
-	// default (no SA, no token mounted).
+	// no per-container scoping. When unset, the pod uses the namespace's
+	// default ServiceAccount with token automount disabled.
 	//
 	// See risk #538.
 	// +optional
@@ -653,15 +692,24 @@ type WitwaveAgentSpec struct {
 	// AutomountServiceAccountToken explicitly controls whether the
 	// ServiceAccount token is mounted into the agent pod. When nil (the
 	// default), the operator infers the value: false when
-	// ServiceAccountName is empty (hardened), true when ServiceAccountName
-	// is set (so MCP tools can reach the Kubernetes API). Set this field
-	// explicitly only when you need to override the inferred value — e.g.
-	// to mount the default SA's token without naming a custom SA, or to
-	// keep the token out of a pod that does name a custom SA.
+	// ServiceAccountName is empty (hardened default ServiceAccount, no
+	// token), true when ServiceAccountName is set (so MCP tools can reach
+	// the Kubernetes API). Set this field explicitly only when you need to
+	// override the inferred value — e.g. to mount the default SA's token
+	// without naming a custom SA, or to keep the token out of a pod that
+	// does name a custom SA.
 	//
 	// See risk #538.
 	// +optional
 	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+
+	// KubernetesApiAccess optionally creates and wires a per-agent
+	// Kubernetes API identity. This is the managed replacement for manually
+	// creating ServiceAccounts/RBAC and then setting ServiceAccountName.
+	// It remains opt-in because the projected service-account token is a
+	// powerful credential even when the rendered RBAC is read-only.
+	// +optional
+	KubernetesApiAccess *KubernetesApiAccessSpec `json:"kubernetesApiAccess,omitempty"`
 
 	// Resources are CPU/memory requests and limits for the harness container.
 	// +optional

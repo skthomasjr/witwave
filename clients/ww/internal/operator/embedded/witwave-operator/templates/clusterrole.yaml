@@ -21,6 +21,7 @@ rules:
     resources:
       - configmaps
       - persistentvolumeclaims
+      - serviceaccounts
       - services
     verbs: [create, delete, get, list, patch, update, watch]
   # Secrets get the FULL verb set split from the other core/v1
@@ -78,6 +79,12 @@ rules:
   # are required; restricting them silently wedged reconciles (#1224).
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Per-agent Kubernetes API access: the operator can render an opt-in
+  # namespace-scoped ServiceAccount + Role + RoleBinding for agents that
+  # need in-cluster kubectl/client-go diagnostics.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [witwave.ai]
     resources: [witwaveagents]

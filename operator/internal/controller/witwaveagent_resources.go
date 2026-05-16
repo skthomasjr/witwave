@@ -1005,14 +1005,27 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 	}
 
 	// Resolve ServiceAccount + automount per risk #538. Default stays
-	// hardened (no SA, token not mounted). When the user opts in by
-	// setting ServiceAccountName, automount flips to true so in-cluster
-	// MCP tools (mcp-kubernetes, mcp-helm) can reach the Kubernetes API.
-	// An explicit AutomountServiceAccountToken on the spec always wins.
+	// hardened (namespace default SA, token not mounted). Rendering the
+	// default SA name explicitly avoids SSA drift when an agent moves from
+	// an explicit/managed ServiceAccount back to the no-token posture.
+	// When the user opts in via kubernetesApiAccess, the operator-created
+	// per-agent SA is used and automount flips to true so kubectl/client-go
+	// can authenticate in-cluster. The legacy ServiceAccountName path keeps
+	// its inferred true automount behaviour. An explicit
+	// AutomountServiceAccountToken on the spec always wins.
+	serviceAccountName := "default" //nolint:goconst // Kubernetes' namespace-local default ServiceAccount.
+	switch {
+	case kubernetesApiAccessEnabled(agent):
+		serviceAccountName = kubernetesApiAccessName(agent)
+	case agent.Spec.ServiceAccountName != "":
+		serviceAccountName = agent.Spec.ServiceAccountName
+	}
 	var automount *bool
 	switch {
 	case agent.Spec.AutomountServiceAccountToken != nil:
 		automount = agent.Spec.AutomountServiceAccountToken
+	case kubernetesApiAccessEnabled(agent):
+		automount = boolPtr(true)
 	case agent.Spec.ServiceAccountName != "":
 		automount = boolPtr(true)
 	default:
@@ -1042,7 +1055,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 			}
 			return int64Ptr(60)
 		}(),
-		ServiceAccountName:           agent.Spec.ServiceAccountName,
+		ServiceAccountName:           serviceAccountName,
 		AutomountServiceAccountToken: automount,
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: boolPtr(true),

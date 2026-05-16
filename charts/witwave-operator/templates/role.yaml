@@ -31,6 +31,7 @@ rules:
     resources:
       - configmaps
       - persistentvolumeclaims
+      - serviceaccounts
       - services
     verbs: [create, delete, get, list, patch, update, watch]
   # Secret verbs split for #761 parity with the ClusterRole variant.
@@ -79,6 +80,12 @@ rules:
   # missing these verbs silently wedged both features in namespace mode.
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Per-agent Kubernetes API access: the operator can render an opt-in
+  # namespace-scoped ServiceAccount + Role + RoleBinding for agents that
+  # need in-cluster kubectl/client-go diagnostics.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [witwave.ai]
     resources: [witwaveagents]

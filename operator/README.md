@@ -194,6 +194,7 @@ Owned resources per `WitwaveAgent`:
 | Dashboard `Ingress`                      | when `spec.dashboard.enabled` and `spec.dashboard.ingress.enabled` are both true (#1741); `auth.mode=basic` stamps nginx auth annotations against `basicAuthSecretName` |
 | Per-MCP-tool / dashboard `NetworkPolicy` | when `spec.networkPolicy.enabled` is true; renders sibling NetworkPolicies for each enabled MCP tool and the dashboard pod alongside the agent's own (#1743)            |
 | `PrometheusRule`                         | when `spec.prometheusRule.enabled` is true (#1746); ships the chart's default alert set, gated on a `monitoring.coreos.com/v1` CRD-presence probe                       |
+| `ServiceAccount`/`Role`/`RoleBinding`    | when `spec.kubernetesApiAccess.enabled` is true; renders a namespace-scoped read-only diagnostic identity for in-pod `kubectl` / client-go use                          |
 
 When `spec.enabled` is explicitly false, every owned resource above is torn down (only resources owned via
 `IsControlledBy` are touched). Per-backend `backends[].enabled: false` skips that backend's container, PVC, and
@@ -204,6 +205,17 @@ Pod-level Prometheus scrape annotations are emitted onto the Pod template when
 `spec.metrics.serviceAnnotations` (default true).
 
 All owned resources carry `ownerReferences` pointing at the `WitwaveAgent`, so deleting the CR cascades their deletion.
+
+### Kubernetes API access
+
+`spec.kubernetesApiAccess.enabled: true` creates a per-agent `ServiceAccount`, namespace-scoped `Role`, and
+`RoleBinding`, then wires the agent pod to that ServiceAccount. The first supported preset is `mode: readOnly`, which
+grants `get/list/watch` on common namespace-local workload resources and Witwave CRs plus `get` on `pods/log`. It does
+not grant secrets, nodes, persistent volumes, namespaces, or any mutating verbs.
+
+When this field is omitted or disabled, the operator renders the namespace `default` ServiceAccount with
+`automountServiceAccountToken: false`, so the pod keeps the no-token posture while still converging cleanly under
+server-side apply.
 
 ### Health probes
 

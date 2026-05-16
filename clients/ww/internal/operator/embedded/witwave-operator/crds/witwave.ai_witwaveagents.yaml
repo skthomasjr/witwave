@@ -983,11 +983,12 @@ spec:
                   AutomountServiceAccountToken explicitly controls whether the
                   ServiceAccount token is mounted into the agent pod. When nil (the
                   default), the operator infers the value: false when
-                  ServiceAccountName is empty (hardened), true when ServiceAccountName
-                  is set (so MCP tools can reach the Kubernetes API). Set this field
-                  explicitly only when you need to override the inferred value — e.g.
-                  to mount the default SA's token without naming a custom SA, or to
-                  keep the token out of a pod that does name a custom SA.
+                  ServiceAccountName is empty (hardened default ServiceAccount, no
+                  token), true when ServiceAccountName is set (so MCP tools can reach
+                  the Kubernetes API). Set this field explicitly only when you need to
+                  override the inferred value — e.g. to mount the default SA's token
+                  without naming a custom SA, or to keep the token out of a pod that
+                  does name a custom SA.
 
                   See risk #538.
                 type: boolean
@@ -2157,6 +2158,38 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+              kubernetesApiAccess:
+                description: |-
+                  KubernetesApiAccess optionally creates and wires a per-agent
+                  Kubernetes API identity. This is the managed replacement for manually
+                  creating ServiceAccounts/RBAC and then setting ServiceAccountName.
+                  It remains opt-in because the projected service-account token is a
+                  powerful credential even when the rendered RBAC is read-only.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled creates and wires the per-agent Kubernetes API identity. When
+                      false or omitted, the operator leaves the pod in the hardened default:
+                      no service account token mounted.
+                    type: boolean
+                  mode:
+                    default: readOnly
+                    description: |-
+                      Mode selects the RBAC preset. Defaults to readOnly. The first operator
+                      implementation intentionally supports only readOnly so mutation access
+                      cannot be granted accidentally.
+                    enum:
+                    - readOnly
+                    type: string
+                  name:
+                    description: |-
+                      Name overrides the generated ServiceAccount, Role, and RoleBinding
+                      name. Defaults to the WitwaveAgent name, so an agent named "mira" gets
+                      ServiceAccount/mira, Role/mira, and RoleBinding/mira in its namespace.
+                    maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                type: object
               mcpTools:
                 description: |-
                   MCPTools configures cluster-wide MCP tool Deployments + Services
@@ -5020,10 +5053,23 @@ spec:
                   Service.
                 properties:
                   enabled:
+                    default: true
                     description: |-
                       Master toggle. When false, no scrape annotations are emitted on
                       either the Service or the Pod template, regardless of the
-                      granular flags below.
+                      granular flags below. Also stamps METRICS_ENABLED=false on the
+                      pod's containers, which keeps the harness's /internal/events/*
+                      routes on the app listener (#1781) and skips the /metrics
+                      listener entirely.
+
+                      Defaults to true — every agent the operator provisions has metrics
+                      on by default. Disable explicitly via spec.metrics.enabled=false
+                      on the CR (or `ww agent create --no-metrics` from the CLI).
+
+                      Pointer type so the kubebuilder default fires at admission when
+                      the field is omitted; mirrors the BackendSpec.Enabled / top-level
+                      WitwaveAgentSpec.Enabled pattern. Read via metricsEnabled(agent)
+                      in the controller — nil dereferences as true.
                     type: boolean
                   podAnnotations:
                     default: false
@@ -5661,6 +5707,63 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              runtimeStorage:
+                description: |-
+                  RuntimeStorage optionally mounts durable runtime state into the harness
+                  container. It is distinct from SharedStorage (team/project files) and
+                  backend storage (LLM backend-native sessions/memory/logs).
+                properties:
+                  accessModes:
+                    description: |-
+                      AccessModes are the PVC access modes for the operator-created claim.
+                      Defaults to [ReadWriteOnce] for the single-pod harness runtime path.
+                    items:
+                      type: string
+                    type: array
+                  enabled:
+                    description: |-
+                      Enabled creates/mounts the runtime storage PVC. When false or omitted,
+                      harness runtime state remains container-local.
+                    type: boolean
+                  existingClaim:
+                    description: |-
+                      ExistingClaim references a pre-existing PersistentVolumeClaim. When set,
+                      the operator mounts it and does not create a runtime PVC.
+                    type: string
+                  mounts:
+                    description: |-
+                      Mounts maps runtime PVC subdirectories into the harness container. When
+                      empty, the operator mounts `logs:/home/agent/logs` and
+                      `state:/home/agent/state`.
+                    items:
+                      description: |-
+                        RuntimeStorageMount maps a sub-path of the agent runtime PVC to a harness
+                        container mount path.
+                      properties:
+                        mountPath:
+                          minLength: 1
+                          pattern: ^/.*
+                          type: string
+                        subPath:
+                          minLength: 1
+                          type: string
+                      required:
+                      - mountPath
+                      - subPath
+                      type: object
+                    type: array
+                  size:
+                    description: |-
+                      Size is a Kubernetes resource.Quantity string (e.g. "1Gi", "500M").
+                      Only meaningful when ExistingClaim is empty.
+                    pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
+                    type: string
+                  storageClassName:
+                    description: |-
+                      StorageClassName is the storage class for the created PVC. When empty
+                      the cluster default storage class is used.
+                    type: string
+                type: object
               serviceAccountName:
                 description: |-
                   ServiceAccountName is the name of a pre-existing ServiceAccount to
@@ -5674,8 +5777,8 @@ spec:
                   automatically so the SA token is projected into every container in
                   the pod. Note: the token is visible to every sibling container
                   (harness + all backend sidecars + any MCP sidecars) — there is
-                  no per-container scoping. When unset, the pod retains the hardened
-                  default (no SA, no token mounted).
+                  no per-container scoping. When unset, the pod uses the namespace's
+                  default ServiceAccount with token automount disabled.
 
                   See risk #538.
                 type: string
@@ -5738,63 +5841,6 @@ spec:
                 - NodePort
                 - LoadBalancer
                 type: string
-              runtimeStorage:
-                description: |-
-                  RuntimeStorage optionally mounts durable runtime state into the harness
-                  container. It is distinct from SharedStorage (team/project files) and
-                  backend storage (LLM backend-native sessions/memory/logs).
-                properties:
-                  accessModes:
-                    description: |-
-                      AccessModes are the PVC access modes for the operator-created claim.
-                      Defaults to [ReadWriteOnce] for the single-pod harness runtime path.
-                    items:
-                      type: string
-                    type: array
-                  enabled:
-                    description: |-
-                      Enabled creates/mounts the runtime storage PVC. When false or omitted,
-                      harness runtime state remains container-local.
-                    type: boolean
-                  existingClaim:
-                    description: |-
-                      ExistingClaim references a pre-existing PersistentVolumeClaim. When set,
-                      the operator mounts it and does not create a runtime PVC.
-                    type: string
-                  mounts:
-                    description: |-
-                      Mounts maps runtime PVC subdirectories into the harness container. When
-                      empty, the operator mounts `logs:/home/agent/logs` and
-                      `state:/home/agent/state`.
-                    items:
-                      description: |-
-                        RuntimeStorageMount maps a sub-path of the agent runtime PVC to a harness
-                        container mount path.
-                      properties:
-                        mountPath:
-                          minLength: 1
-                          pattern: ^/.*
-                          type: string
-                        subPath:
-                          minLength: 1
-                          type: string
-                      required:
-                      - mountPath
-                      - subPath
-                      type: object
-                    type: array
-                  size:
-                    description: |-
-                      Size is a Kubernetes resource.Quantity string (e.g. "1Gi", "500M").
-                      Only meaningful when ExistingClaim is empty.
-                    pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
-                    type: string
-                  storageClassName:
-                    description: |-
-                      StorageClassName is the storage class for the created PVC. When empty
-                      the cluster default storage class is used.
-                    type: string
-                type: object
               sharedStorage:
                 description: |-
                   SharedStorage optionally mounts a volume into every container of the
