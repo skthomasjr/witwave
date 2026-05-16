@@ -6,7 +6,7 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
-## [0.23.20] — 2026-05-15
+## [0.23.21] — 2026-05-16
 
 Patch release introducing persistent agent runtime state — the operator and `witwave` chart now provision a PVC per
 WitwaveAgent and mount it into the harness so agents survive pod restarts with their workspace and memory intact — plus
