@@ -466,9 +466,9 @@ churn.
 **Levers under your authority (you decide the mix and write the chosen values to `team_state.md`):**
 
 1. **Cadence floors.** evan bug-work 3h, evan risk-work 8h, nova `code-cleanup` 8h, kira `docs-cleanup` 6h, finn
-   `gap-work` 6h, kira `docs-research` 2d (relaxed defaults as of 2026-05-15 to halve peer-skill compute cost; team
-   was over-polling a steady-state codebase). Tighten further when the team has exhausted the cheap finds at the
-   current cadence AND the resulting stand-down ratio stays below 30%; relax when peers report two consecutive 0/0/0
+   `gap-work` 6h, kira `docs-research` 2d (relaxed defaults as of 2026-05-15 to halve peer-skill compute cost; team was
+   over-polling a steady-state codebase). Tighten further when the team has exhausted the cheap finds at the current
+   cadence AND the resulting stand-down ratio stays below 30%; relax when peers report two consecutive 0/0/0
    zero-streaks.
 2. **Polish-tier advancement.** Default rule is "advance after 1 consecutive zero-streak" (tightened from 2 on
    2026-05-10). Drop to "advance on every zero-yield run including the first" if even tighter surfacing is needed;
