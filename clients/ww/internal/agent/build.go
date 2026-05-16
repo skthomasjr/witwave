@@ -465,8 +465,8 @@ var _ = metav1.TypeMeta{}
 
 // renderBackendYAML generates the harness routing config consumed at
 // BACKEND_CONFIG_PATH. Every declared backend is enumerated in
-// `agents:`; every concern (a2a, heartbeat, job, task, trigger,
-// continuation) initially routes to the FIRST backend. Users with
+// `agents:`; every concern (default, a2a, heartbeat, job, task,
+// trigger, continuation) initially routes to the FIRST backend. Users with
 // multi-backend agents redistribute routing by editing the file —
 // picking defaults that put some on a "foreground" backend and others
 // on "background" is a product decision we don't want to guess. See
