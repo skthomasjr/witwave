@@ -114,6 +114,10 @@ type CreateOptions struct {
 	// --with-persistence.
 	RuntimeStorage *RuntimeStorageSpec
 
+	// KubernetesApiAccess stamps spec.kubernetesApiAccess so the operator
+	// creates and wires a per-agent Kubernetes API identity at creation time.
+	KubernetesApiAccess *KubernetesApiAccessSpec
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -216,6 +220,16 @@ func Create(
 				opts.GitSyncFromEnv.UserVar, opts.GitSyncFromEnv.PassVar),
 		})
 	}
+	if opts.KubernetesApiAccess != nil {
+		mode, err := NormalizeKubernetesApiAccessMode(opts.KubernetesApiAccess.Mode)
+		if err != nil {
+			return err
+		}
+		plan = append(plan, k8s.PlanLine{
+			Key:   "Kubernetes API",
+			Value: kubernetesApiAccessPlanValue(mode),
+		})
+	}
 	if IsDevVersion(opts.CLIVersion) {
 		plan = append(plan, k8s.PlanLine{
 			Key:   "Note",
@@ -297,18 +311,19 @@ func Create(
 	}
 
 	obj, err := Build(BuildOptions{
-		Name:           opts.Name,
-		Namespace:      opts.Namespace,
-		Backends:       backends,
-		CLIVersion:     opts.CLIVersion,
-		CreatedBy:      opts.CreatedBy,
-		Team:           opts.Team,
-		WorkspaceRefs:  opts.WorkspaceRefs,
-		GitSyncs:       opts.GitSyncs,
-		GitMappings:    opts.GitMappings,
-		NoMetrics:      opts.NoMetrics,
-		HarnessEnv:     opts.HarnessEnv,
-		RuntimeStorage: opts.RuntimeStorage,
+		Name:                opts.Name,
+		Namespace:           opts.Namespace,
+		Backends:            backends,
+		CLIVersion:          opts.CLIVersion,
+		CreatedBy:           opts.CreatedBy,
+		Team:                opts.Team,
+		WorkspaceRefs:       opts.WorkspaceRefs,
+		GitSyncs:            opts.GitSyncs,
+		GitMappings:         opts.GitMappings,
+		NoMetrics:           opts.NoMetrics,
+		HarnessEnv:          opts.HarnessEnv,
+		RuntimeStorage:      opts.RuntimeStorage,
+		KubernetesApiAccess: opts.KubernetesApiAccess,
 	})
 	if err != nil {
 		return fmt.Errorf("build agent CR: %w", err)

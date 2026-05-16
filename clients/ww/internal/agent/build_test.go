@@ -220,6 +220,48 @@ func TestBuild_EmitsRuntimeStorage(t *testing.T) {
 	}
 }
 
+func TestBuild_EmitsKubernetesApiAccess(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:      "mira",
+		Namespace: "witwave-self",
+		KubernetesApiAccess: &KubernetesApiAccessSpec{
+			Enabled: true,
+			Mode:    KubernetesApiAccessModeReadOnly,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned unexpected error: %v", err)
+	}
+	enabled, found, err := unstructured.NestedBool(obj.Object, "spec", "kubernetesApiAccess", "enabled")
+	if err != nil || !found || !enabled {
+		t.Fatalf("kubernetesApiAccess.enabled = %v found=%v err=%v; want true", enabled, found, err)
+	}
+	mode, found, err := unstructured.NestedString(obj.Object, "spec", "kubernetesApiAccess", "mode")
+	if err != nil || !found || mode != KubernetesApiAccessModeReadOnly {
+		t.Fatalf("kubernetesApiAccess.mode = %q found=%v err=%v; want readOnly", mode, found, err)
+	}
+}
+
+func TestBuild_EmitsKubernetesApiAccessNamespaceWrite(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:      "mira",
+		Namespace: "witwave-self",
+		KubernetesApiAccess: &KubernetesApiAccessSpec{
+			Enabled: true,
+			Mode:    KubernetesApiAccessModeNamespaceWrite,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned unexpected error: %v", err)
+	}
+	mode, found, err := unstructured.NestedString(obj.Object, "spec", "kubernetesApiAccess", "mode")
+	if err != nil || !found || mode != KubernetesApiAccessModeNamespaceWrite {
+		t.Fatalf("kubernetesApiAccess.mode = %q found=%v err=%v; want namespaceWrite", mode, found, err)
+	}
+}
+
 func TestBuild_InvalidTeamName(t *testing.T) {
 	t.Parallel()
 	_, err := Build(BuildOptions{

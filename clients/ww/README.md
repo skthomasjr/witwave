@@ -396,6 +396,12 @@ ww agent backend remove hello echo-2 --remove-repo-folder    # drop a backend + 
 ww agent storage enable hello                  # add runtime logs/state PVC + backend state mounts
 ww agent storage enable hello --no-backend-state    # harness runtime PVC only
 
+# Kubernetes API access for in-agent diagnostics/remediation
+ww agent create mira --kubernetes-api-access   # create with read-only Kubernetes API access
+ww agent create mira --kubernetes-api-access=namespaceWrite    # create with bounded namespace write access
+ww agent k8s-access enable mira --mode readOnly    # enable/update an existing agent
+ww agent k8s-access disable mira               # return an existing agent to the no-token default
+
 # Team membership (runtime peer discovery via witwave-manifest-<team>)
 ww agent team join hello research               # set witwave.ai/team=research
 ww agent team leave hello                       # drop the label; agent falls into namespace-wide manifest
@@ -538,6 +544,14 @@ runtime state. It patches `spec.runtimeStorage` so harness gets `/home/agent/log
 `TASK_STORE_PATH=/home/agent/state/a2a-tasks.db` when the state mount is present. Backends without storage are skipped
 instead of silently allocating new backend PVCs; add backend persistence at creation time with `--persist` or
 `--with-persistence`.
+
+`ww agent create --kubernetes-api-access` stamps `spec.kubernetesApiAccess` at creation time so the operator creates a
+per-agent ServiceAccount, namespace-scoped Role, and RoleBinding, then wires the pod to that identity. With no value,
+the flag uses `readOnly` for diagnostics (`get/list/watch` plus pod logs). Pass `--kubernetes-api-access=namespaceWrite`
+when the agent needs bounded namespace-local remediation: ConfigMaps, Services, Deployments, Jobs, CronJobs, and Pod
+delete/eviction. This managed path still excludes secrets, RBAC mutation, raw Pod creation, and cluster-scoped
+resources. Existing agents can be changed with `ww agent kubernetes-api-access enable <name> --mode readOnly` (alias:
+`ww agent k8s-access enable ...`) or returned to the no-token default with `ww agent k8s-access disable <name>`.
 
 `ww agent send` uses the Kubernetes apiserver's built-in Service proxy so any `ClusterIP` Service is reachable without
 local port-forwarding or an external LoadBalancer. This makes round-trip A2A calls from a laptop against a cluster-only

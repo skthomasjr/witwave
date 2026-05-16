@@ -114,6 +114,7 @@ func newAgentCmd() *cobra.Command {
 	cmd.AddCommand(newAgentEventsCmd(f))
 	cmd.AddCommand(newAgentScaffoldCmd())
 	cmd.AddCommand(newAgentStorageCmd(f))
+	cmd.AddCommand(newAgentKubernetesApiAccessCmd(f))
 	cmd.AddCommand(newAgentGitCmd(f))
 	cmd.AddCommand(newAgentBackendCmd(f))
 	cmd.AddCommand(newAgentTeamCmd(f))
@@ -974,6 +975,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		backendEnvs     []string
 		harnessEnvs     []string
 		noMetrics       bool
+		kubernetesAPI   string
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -1088,7 +1090,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 				harnessEnv = agent.ApplyHarnessTaskStoreDefault(harnessEnv)
 			}
 			specs = agent.ApplyBackendTaskStoreDefaults(specs)
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics, harnessEnv, runtimeStorage)
+			var kubernetesAccess *agent.KubernetesApiAccessSpec
+			if cmd.Flags().Changed("kubernetes-api-access") {
+				kubernetesAccess, err = agent.NewKubernetesApiAccessSpec(kubernetesAPI)
+				if err != nil {
+					return err
+				}
+			}
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics, harnessEnv, runtimeStorage, kubernetesAccess)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -1178,6 +1187,10 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"[persist.defaults.<type>] (size, storageClassName, and mounts). Explicit "+
 			"--persist <name>=<size> takes precedence — --with-persistence only fills in "+
 			"backends that weren't named explicitly.")
+	cmd.Flags().StringVar(&kubernetesAPI, "kubernetes-api-access", "",
+		"Enable operator-managed Kubernetes API access for the agent. Optional value: readOnly or namespaceWrite. "+
+			"Omit the value for readOnly.")
+	cmd.Flags().Lookup("kubernetes-api-access").NoOptDefVal = agent.KubernetesApiAccessModeReadOnly
 	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
 		fmt.Sprintf(
 			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
@@ -1219,7 +1232,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool, harnessEnv map[string]string, runtimeStorage *agent.RuntimeStorageSpec) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool, harnessEnv map[string]string, runtimeStorage *agent.RuntimeStorageSpec, kubernetesAccess *agent.KubernetesApiAccessSpec) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1232,27 +1245,28 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.Create(ctx, target, cfg, resolver.ConfigFlags(), agent.CreateOptions{
-		Name:            name,
-		Namespace:       ns,
-		Backends:        backends,
-		CLIVersion:      Version,
-		CreatedBy:       fmt.Sprintf("ww agent create %s", name),
-		AssumeYes:       assumeYes,
-		DryRun:          f.dryRun,
-		Wait:            wait,
-		Timeout:         timeout,
-		CreateNamespace: createNamespace,
-		Team:            team,
-		WorkspaceRefs:   workspaces,
-		GitSyncs:        gitSyncs,
-		GitMappings:     gitMappings,
-		GitSyncFromEnv:  gitsyncFromEnv,
-		NoMetrics:       noMetrics,
-		BackendAuth:     backendAuth,
-		HarnessEnv:      harnessEnv,
-		RuntimeStorage:  runtimeStorage,
-		Out:             os.Stdout,
-		In:              os.Stdin,
+		Name:                name,
+		Namespace:           ns,
+		Backends:            backends,
+		CLIVersion:          Version,
+		CreatedBy:           fmt.Sprintf("ww agent create %s", name),
+		AssumeYes:           assumeYes,
+		DryRun:              f.dryRun,
+		Wait:                wait,
+		Timeout:             timeout,
+		CreateNamespace:     createNamespace,
+		Team:                team,
+		WorkspaceRefs:       workspaces,
+		GitSyncs:            gitSyncs,
+		GitMappings:         gitMappings,
+		GitSyncFromEnv:      gitsyncFromEnv,
+		NoMetrics:           noMetrics,
+		BackendAuth:         backendAuth,
+		HarnessEnv:          harnessEnv,
+		RuntimeStorage:      runtimeStorage,
+		KubernetesApiAccess: kubernetesAccess,
+		Out:                 os.Stdout,
+		In:                  os.Stdin,
 	})
 }
 
@@ -1593,6 +1607,130 @@ func runAgentStorageEnable(ctx context.Context, f *agentFlags, name, size, stora
 		DryRun:                  f.dryRun,
 		Out:                     os.Stdout,
 		In:                      os.Stdin,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// kubernetes-api-access
+// ---------------------------------------------------------------------------
+
+func newAgentKubernetesApiAccessCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "kubernetes-api-access",
+		Aliases: []string{"k8s-access"},
+		Short:   "Manage operator-rendered Kubernetes API access on an agent",
+		Long: "Manage spec.kubernetesApiAccess on an existing WitwaveAgent CR.\n\n" +
+			"When enabled, the operator creates a per-agent ServiceAccount,\n" +
+			"namespace-scoped Role, and RoleBinding, then rolls the pod so\n" +
+			"kubectl and client-go can authenticate from the agent containers.\n" +
+			"The default mode is readOnly; namespaceWrite must be requested\n" +
+			"explicitly for bounded namespace-local remediation.",
+	}
+	cmd.AddCommand(newAgentKubernetesApiAccessEnableCmd(f))
+	cmd.AddCommand(newAgentKubernetesApiAccessDisableCmd(f))
+	return cmd
+}
+
+func newAgentKubernetesApiAccessEnableCmd(f *agentFlags) *cobra.Command {
+	var (
+		mode    string
+		noWait  bool
+		timeout time.Duration
+	)
+	cmd := &cobra.Command{
+		Use:   "enable <name>",
+		Short: "Enable or update Kubernetes API access on an existing agent",
+		Long: "Enables or updates operator-managed Kubernetes API access on\n" +
+			"an existing WitwaveAgent. readOnly grants diagnostics-only access\n" +
+			"(get/list/watch plus pod logs). namespaceWrite adds bounded\n" +
+			"namespace-local remediation while still excluding secrets, RBAC,\n" +
+			"raw pod creation, and cluster-scoped resources.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentKubernetesApiAccessEnable(cmd.Context(), f, args[0], mode, !noWait, timeout)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().StringVar(&mode, "mode", agent.KubernetesApiAccessModeReadOnly,
+		"Kubernetes API access preset: readOnly or namespaceWrite")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false,
+		"Return as soon as the patch lands; skip the rollout-to-Ready wait.")
+	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute,
+		"Maximum time to wait for the rollout to finish (ignored with --no-wait). "+
+			"On timeout, recent CR + pod events are dumped.")
+	return cmd
+}
+
+func newAgentKubernetesApiAccessDisableCmd(f *agentFlags) *cobra.Command {
+	var (
+		noWait  bool
+		timeout time.Duration
+	)
+	cmd := &cobra.Command{
+		Use:   "disable <name>",
+		Short: "Disable Kubernetes API access on an existing agent",
+		Long: "Removes spec.kubernetesApiAccess from the WitwaveAgent. The\n" +
+			"operator cleans up its managed ServiceAccount, Role, and\n" +
+			"RoleBinding, then rolls the pod back to the default no-token\n" +
+			"service-account posture.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentKubernetesApiAccessDisable(cmd.Context(), f, args[0], !noWait, timeout)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&noWait, "no-wait", false,
+		"Return as soon as the patch lands; skip the rollout-to-Ready wait.")
+	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute,
+		"Maximum time to wait for the rollout to finish (ignored with --no-wait). "+
+			"On timeout, recent CR + pod events are dumped.")
+	return cmd
+}
+
+func runAgentKubernetesApiAccessEnable(ctx context.Context, f *agentFlags, name, mode string, wait bool, timeout time.Duration) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.KubernetesApiAccessEnable(ctx, target, cfg, agent.KubernetesApiAccessOptions{
+		Name:      name,
+		Namespace: ns,
+		Mode:      mode,
+		Wait:      wait,
+		Timeout:   timeout,
+		AssumeYes: assumeYes,
+		DryRun:    f.dryRun,
+		Out:       os.Stdout,
+		In:        os.Stdin,
+	})
+}
+
+func runAgentKubernetesApiAccessDisable(ctx context.Context, f *agentFlags, name string, wait bool, timeout time.Duration) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.KubernetesApiAccessDisable(ctx, target, cfg, agent.KubernetesApiAccessOptions{
+		Name:      name,
+		Namespace: ns,
+		Wait:      wait,
+		Timeout:   timeout,
+		AssumeYes: assumeYes,
+		DryRun:    f.dryRun,
+		Out:       os.Stdout,
+		In:        os.Stdin,
 	})
 }
 

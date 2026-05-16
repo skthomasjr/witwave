@@ -89,6 +89,11 @@ type BuildOptions struct {
 	// RuntimeStorage, when non-nil, stamps spec.runtimeStorage for durable
 	// harness runtime state such as /home/agent/state/a2a-tasks.db.
 	RuntimeStorage *RuntimeStorageSpec
+
+	// KubernetesApiAccess, when non-nil, stamps spec.kubernetesApiAccess
+	// so the operator creates and wires a per-agent ServiceAccount,
+	// namespace Role, and RoleBinding.
+	KubernetesApiAccess *KubernetesApiAccessSpec
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -331,6 +336,23 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 			runtimeStorage["mounts"] = mounts
 		}
 		spec["runtimeStorage"] = runtimeStorage
+	}
+	if opts.KubernetesApiAccess != nil {
+		mode, err := NormalizeKubernetesApiAccessMode(opts.KubernetesApiAccess.Mode)
+		if err != nil {
+			return nil, fmt.Errorf("kubernetesApiAccess.mode: %w", err)
+		}
+		access := map[string]interface{}{
+			"enabled": opts.KubernetesApiAccess.Enabled,
+			"mode":    mode,
+		}
+		if opts.KubernetesApiAccess.Name != "" {
+			if err := ValidateName(opts.KubernetesApiAccess.Name); err != nil {
+				return nil, fmt.Errorf("kubernetesApiAccess.name %q: %w", opts.KubernetesApiAccess.Name, err)
+			}
+			access["name"] = opts.KubernetesApiAccess.Name
+		}
+		spec["kubernetesApiAccess"] = access
 	}
 	if len(opts.HarnessEnv) > 0 {
 		// Sort keys for deterministic CR output — same rationale as
