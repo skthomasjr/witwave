@@ -83,7 +83,25 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Per-agent Kubernetes API access: the operator can render an opt-in
   # namespace-scoped ServiceAccount + Role + RoleBinding for agents that
-  # need in-cluster kubectl/client-go diagnostics.
+  # need in-cluster kubectl/client-go diagnostics. Kubernetes RBAC forbids
+  # the operator from creating a Role that grants permissions the operator
+  # does not already hold, so these read-only rules mirror the agent
+  # diagnostic preset rendered by spec.kubernetesApiAccess.
+  - apiGroups: [""]
+    resources: ["events", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
