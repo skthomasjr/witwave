@@ -19,9 +19,9 @@ cluster-scoped resources stay out of reach. Unblocks namespace-scoped reconcilia
 
 - **operator**: `spec.kubernetesApiAccess.mode: namespaceWrite` grants the per-agent Role mutating verbs
   (`create/update/patch/delete`) on common namespace workload resources alongside the existing `readOnly` read verbs.
-  Secrets, RBAC mutation, raw pod creation, and cluster-scoped resources are explicitly withheld. CRD schema, both
-  Helm chart copies (operator + embedded), reconciler logic, RBAC templates, and tests are updated together; docs
-  describe the new preset and its boundary.
+  Secrets, RBAC mutation, raw pod creation, and cluster-scoped resources are explicitly withheld. CRD schema, both Helm
+  chart copies (operator + embedded), reconciler logic, RBAC templates, and tests are updated together; docs describe
+  the new preset and its boundary.
 
 ## [0.24.3] — 2026-05-16
 
