@@ -35,13 +35,36 @@ func runHeartbeatView(cc *cobra.Command) error {
 	ctx := cc.Context()
 	c := ClientFromCtx(ctx)
 	out := OutFromCtx(ctx)
-	entries, err := fetchSnapshot(ctx, c, "/heartbeat")
+	// /heartbeat returns a flat JSON object (one heartbeat per agent),
+	// not the envelope shape used by /jobs|/tasks|/triggers|/continuations.
+	// Use the single-entry parser so the body decodes without rejecting
+	// at the envelope-key check.
+	entry, err := fetchSnapshotSingle(ctx, c, "/heartbeat")
 	if err != nil {
 		return handleErr(out, err)
 	}
-	if len(entries) == 0 {
+	// The harness always returns a populated object — when HEARTBEAT.md
+	// is missing or disabled it returns `{"enabled": false, ...}` with
+	// nulled fields, not an empty body. Treat both an empty entry and
+	// an explicit `enabled: false` as "no heartbeat configured".
+	if entry == nil || !heartbeatEnabled(entry) {
 		out.Warnf("no heartbeat configured")
 		return nil
 	}
-	return printView(out, entries[0])
+	return printView(out, entry)
+}
+
+// heartbeatEnabled returns the value of entry["enabled"] coerced to
+// bool. Missing key returns true (permissive: an older harness or an
+// unknown payload shape shouldn't be silently treated as disabled).
+func heartbeatEnabled(entry snapshotEntry) bool {
+	v, ok := entry["enabled"]
+	if !ok {
+		return true
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false
+	}
+	return b
 }

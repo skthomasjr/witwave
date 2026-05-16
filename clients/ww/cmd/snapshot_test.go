@@ -407,3 +407,157 @@ func TestParseSnapshot(t *testing.T) {
 		})
 	}
 }
+
+// TestParseSnapshotSingle_FlatHeartbeatEnabled pins the contract between
+// the ww CLI and the harness /heartbeat handler: harness returns a flat
+// JSON object whose top-level keys are {enabled, schedule, model,
+// backend_id, consensus, max_tokens, next_fire, last_fire, last_success}
+// (see harness/main.py:heartbeat_handler — the response is built
+// inline, not enveloped). parseSnapshotSingle decodes that body into a
+// single snapshotEntry preserving those keys verbatim.
+//
+// Regression test for the 2026-05-16 06:30Z bug-work run: before the
+// fix, runHeartbeatView called the envelope-only parseSnapshot which
+// rejected the flat shape with "unexpected snapshot shape" because none
+// of its envelope keys (jobs / tasks / triggers / continuations /
+// heartbeat) match the flat payload's top-level keys. The companion
+// sibling harness/test_heartbeat_handler_shape.py pins the same
+// contract on the producer side.
+func TestParseSnapshotSingle_FlatHeartbeatEnabled(t *testing.T) {
+	raw := []byte(`{
+	  "enabled": true,
+	  "schedule": "*/30 * * * *",
+	  "model": null,
+	  "backend_id": null,
+	  "consensus": [],
+	  "max_tokens": null,
+	  "next_fire": null,
+	  "last_fire": null,
+	  "last_success": null
+	}`)
+	entry, err := parseSnapshotSingle(raw)
+	if err != nil {
+		t.Fatalf("parseSnapshotSingle returned error: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("parseSnapshotSingle returned nil entry on a populated payload")
+	}
+	if got, ok := entry["schedule"].(string); !ok || got != "*/30 * * * *" {
+		t.Errorf("schedule = %v; want %q", entry["schedule"], "*/30 * * * *")
+	}
+	if enabled, ok := entry["enabled"].(bool); !ok || !enabled {
+		t.Errorf("enabled = %v; want true", entry["enabled"])
+	}
+	// next_fire / last_fire / last_success arrive as null in the
+	// never-fired state (#1087). They must round-trip as nil so the
+	// view renderer can surface them as "-" rather than as the string
+	// "null".
+	for _, k := range []string{"next_fire", "last_fire", "last_success"} {
+		if entry[k] != nil {
+			t.Errorf("%s = %v; want nil for never-fired state", k, entry[k])
+		}
+	}
+}
+
+// TestParseSnapshotSingle_FlatHeartbeatDisabled pins the disabled
+// branch of the handler contract: when HEARTBEAT.md is missing or
+// disabled the handler returns `{"enabled": false, ...}` with the
+// same flat shape, not an empty body. The CLI command layer must
+// distinguish "no heartbeat" via the `enabled` field rather than via
+// len(entries) == 0 — that latter check is unreachable against the
+// real harness because the body is never empty.
+func TestParseSnapshotSingle_FlatHeartbeatDisabled(t *testing.T) {
+	raw := []byte(`{"enabled":false,"schedule":null,"model":null,"backend_id":null,"consensus":[],"max_tokens":null,"next_fire":null,"last_fire":null,"last_success":null}`)
+	entry, err := parseSnapshotSingle(raw)
+	if err != nil {
+		t.Fatalf("parseSnapshotSingle returned error: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("parseSnapshotSingle returned nil on a disabled-heartbeat payload")
+	}
+	if heartbeatEnabled(entry) {
+		t.Errorf("heartbeatEnabled = true; want false for disabled payload")
+	}
+}
+
+// TestParseSnapshotSingle_EmptyBody covers the degenerate empty-body
+// path. parseSnapshotSingle returns (nil, nil) — the caller treats
+// that the same as a disabled heartbeat (printed as "no heartbeat
+// configured") rather than as an error.
+func TestParseSnapshotSingle_EmptyBody(t *testing.T) {
+	entry, err := parseSnapshotSingle([]byte(""))
+	if err != nil {
+		t.Fatalf("parseSnapshotSingle on empty body returned error: %v", err)
+	}
+	if entry != nil {
+		t.Errorf("parseSnapshotSingle on empty body = %v; want nil", entry)
+	}
+	entry, err = parseSnapshotSingle([]byte("   \n\t  "))
+	if err != nil {
+		t.Fatalf("parseSnapshotSingle on whitespace body returned error: %v", err)
+	}
+	if entry != nil {
+		t.Errorf("parseSnapshotSingle on whitespace body = %v; want nil", entry)
+	}
+}
+
+// TestParseSnapshotSingle_Malformed pins the error-wrapping branch:
+// malformed JSON returns an error prefixed with "parse object:" so a
+// future caller can distinguish a transport-level fetch failure from
+// a body-level decode failure.
+func TestParseSnapshotSingle_Malformed(t *testing.T) {
+	_, err := parseSnapshotSingle([]byte("{"))
+	if err == nil {
+		t.Fatal("parseSnapshotSingle on malformed JSON returned nil err; want non-nil")
+	}
+	if !strings.Contains(err.Error(), "parse object:") {
+		t.Errorf("parseSnapshotSingle err = %q; want substring %q", err.Error(), "parse object:")
+	}
+}
+
+// TestHeartbeatEnabled pins the truthiness helper used by
+// runHeartbeatView to decide whether to render the heartbeat or warn
+// "no heartbeat configured". Missing `enabled` key returns true
+// (permissive): an older harness or a future schema change that drops
+// the field shouldn't be silently treated as disabled — better to
+// render what was returned than to suppress it.
+func TestHeartbeatEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		in   snapshotEntry
+		want bool
+	}{
+		{"enabled true", snapshotEntry{"enabled": true}, true},
+		{"enabled false", snapshotEntry{"enabled": false}, false},
+		{"enabled missing — permissive", snapshotEntry{"schedule": "*/5 * * * *"}, true},
+		{"enabled wrong type — defensive false", snapshotEntry{"enabled": "true"}, false},
+		{"enabled nil — defensive false", snapshotEntry{"enabled": nil}, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := heartbeatEnabled(tc.in)
+			if got != tc.want {
+				t.Errorf("heartbeatEnabled(%v) = %v; want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseSnapshot_FlatHeartbeatRejected guards the contract boundary
+// in the opposite direction: parseSnapshot (the envelope parser) MUST
+// still reject the flat heartbeat shape. The flat shape is owned by
+// parseSnapshotSingle; teaching parseSnapshot to silently accept it
+// would mask real envelope-schema-drift errors on the jobs / tasks /
+// triggers / continuations endpoints (#1244 documented that risk in
+// the parseSnapshot error message itself).
+func TestParseSnapshot_FlatHeartbeatRejected(t *testing.T) {
+	raw := []byte(`{"enabled":true,"schedule":"*/30 * * * *","model":null,"backend_id":null,"consensus":[],"max_tokens":null,"next_fire":null,"last_fire":null,"last_success":null}`)
+	_, err := parseSnapshot(raw)
+	if err == nil {
+		t.Fatal("parseSnapshot accepted a flat heartbeat shape; expected envelope-shape error")
+	}
+	if !strings.Contains(err.Error(), "unexpected snapshot shape") {
+		t.Errorf("parseSnapshot err = %q; want substring %q", err.Error(), "unexpected snapshot shape")
+	}
+}

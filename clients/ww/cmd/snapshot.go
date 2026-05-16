@@ -30,6 +30,37 @@ func fetchSnapshot(ctx context.Context, c *client.Client, path string) ([]snapsh
 	return parseSnapshot(raw)
 }
 
+// fetchSnapshotSingle hits a snapshot endpoint that returns a single
+// flat JSON object rather than the list/envelope shape used by /jobs,
+// /tasks, /triggers, /continuations. Currently only /heartbeat — each
+// agent has at most one heartbeat configured, so the harness returns
+// the heartbeat record directly (e.g. `{"enabled": true, "schedule":
+// "...", "model": null, ...}`) rather than wrapping it in an envelope.
+// See harness/main.py:heartbeat_handler for the response contract.
+func fetchSnapshotSingle(ctx context.Context, c *client.Client, path string) (snapshotEntry, error) {
+	raw, err := c.GetBytes(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return parseSnapshotSingle(raw)
+}
+
+// parseSnapshotSingle decodes a flat JSON object body into a single
+// snapshotEntry. Empty/whitespace input returns (nil, nil) — callers
+// distinguish "no payload" from "disabled heartbeat" via the
+// `enabled` field on the returned entry, not by nil-ness.
+func parseSnapshotSingle(raw []byte) (snapshotEntry, error) {
+	raw = []byte(strings.TrimSpace(string(raw)))
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("parse object: %w", err)
+	}
+	return snapshotEntry(obj), nil
+}
+
 func parseSnapshot(raw []byte) ([]snapshotEntry, error) {
 	raw = []byte(strings.TrimSpace(string(raw)))
 	if len(raw) == 0 {
