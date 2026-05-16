@@ -97,8 +97,7 @@ def test_heartbeat_handler_returns_flat_object_not_envelope() -> None:
         # Allow the envelope-key string inside comments / docstrings
         # by requiring it to appear inside a JSONResponse(...) call.
         bad = re.compile(
-            r"JSONResponse\s*\(\s*\{[^}]*"
-            + re.escape(envelope),
+            r"JSONResponse\s*\(\s*\{[^}]*" + re.escape(envelope),
             re.DOTALL,
         )
         assert not bad.search(body), (
@@ -198,7 +197,7 @@ def test_disabled_branch_keeps_same_keys() -> None:
     assert '"enabled": False' in not_loaded_block, (
         "not-loaded branch must return enabled=False; the CLI's "
         "heartbeatEnabled() helper relies on this sentinel to print "
-        "\"no heartbeat configured\" rather than a half-rendered view."
+        '"no heartbeat configured" rather than a half-rendered view.'
     )
     for k in ("schedule", "model", "backend_id", "consensus", "max_tokens"):
         assert f'"{k}"' in not_loaded_block, (
