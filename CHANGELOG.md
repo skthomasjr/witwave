@@ -6,6 +6,13 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.23] — 2026-05-16
+
+Recovery release republishing v0.23.22's `ww agent storage enable` shipment after the v0.23.22 tag's `CI — Docs` gate
+failed on a prettier version mismatch (local 3.8.3 vs CI-pinned 3.4.2 on `CHANGELOG.md`) and gated all three release
+workflows — no artifacts published for v0.23.22. Cut from `main` HEAD after the prettier reflow followup landed and the
+docs gate cleared. No new user-visible changes versus v0.23.22; the runtime-storage CLI command is unchanged.
+
 ## [0.23.22] — 2026-05-16
 
 Patch release adding a `ww agent storage enable` CLI command that turns on runtime storage for an existing WitwaveAgent
