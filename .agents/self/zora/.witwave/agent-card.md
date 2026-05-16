@@ -8,7 +8,7 @@ what's most needed next per a priority policy, and **dispatches** the appropriat
 via `call-peer`. Piper is heartbeat-driven and outside the dispatch loop; felix is event-driven (feature-work only). The
 peers stay autonomous within their domain; Zora coordinates at the team level.
 
-She runs a continuous decision loop driven by a 15-minute heartbeat. Every tick: read team state → decide next move →
+She runs a continuous decision loop driven by a 30-minute heartbeat. Every tick: read team state → decide next move →
 dispatch (or stand down) → log rationale. She also decides when accumulated commits + green CI warrant a release, and
 asks iris to cut one.
 
@@ -49,7 +49,7 @@ Hard caps: ≤3 team-tidy commits/day, ≤50 lines changed per commit.
 ## Posture (v1 conservative)
 
 - **Concurrency up to 2** per tick when scopes don't entangle; hard cap 8 dispatches/hour across the team.
-- **Heartbeat 15 min.** Tightened 2026-05-07 alongside the velocity-driven release policy.
+- **Heartbeat 30 min.** Tightened 2026-05-07 to 15 min, relaxed back to 30 min 2026-05-15 (release-latency ≤30 min is acceptable for autonomous-platform-maintenance workload; halves ambient token cost).
 - **Release: velocity-driven.** Weighted-commit threshold (3.0) since latest tag fires the cut; critical-security
   bypasses. Hygiene floor only: ≥15 min between releases. Hard cap 20 releases/day (runaway guard, not cadence).
 - **Quality bar: Medium.** No release while critical findings sit unfixed in any peer's deferred-findings.
@@ -65,10 +65,10 @@ namespace. No direct git commits, no direct gh API — peers commit, iris pushes
 
 | Peer  | Cadence floor        | What zora dispatches                                             |
 | ----- | -------------------- | ---------------------------------------------------------------- |
-| evan  | bug 1.5h / risk 4h   | `bug-work` (depth varies), `risk-work` (5 risk categories)       |
-| nova  | every 4h             | `code-cleanup` (alternates with `code-document`)                 |
-| kira  | every 3h             | `docs-cleanup` (alternates with `docs-research`); research ≥1d   |
-| finn  | every 3h             | `gap-work` across 11 gap-source categories, risk-tier 1-10 gated |
+| evan  | bug 3h / risk 8h     | `bug-work` (depth varies), `risk-work` (5 risk categories)       |
+| nova  | every 8h             | `code-cleanup` (alternates with `code-document`)                 |
+| kira  | every 6h             | `docs-cleanup` (alternates with `docs-research`); research ≥2d   |
+| finn  | every 6h             | `gap-work` across 11 gap-source categories, risk-tier 1-10 gated |
 | iris  | event-driven         | `release` when weighted commits ≥3.0 + CI green + medium bar met |
 | piper | self-driven (15 min) | `team-pulse` — NOT dispatched by zora; runs her own loop         |
 
