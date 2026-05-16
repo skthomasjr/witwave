@@ -6,6 +6,25 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-05-16
+
+Minor release extending the `ww` CLI with first-class support for managing the operator's `kubernetesApiAccess` spec on
+agents. Pairs with the operator-side provisioning shipped in v0.24.2 / v0.24.3 / v0.25.0 — the CLI can now configure
+agents to use the per-agent ServiceAccount/Role/RoleBinding plumbing without hand-editing `WitwaveAgent` manifests.
+
+### Added
+
+- **ww**: Manage agent Kubernetes API access from `ww agent` — set `spec.kubernetesApiAccess.enabled` and `mode`
+  (`readOnly` / `namespaceWrite`) when creating or updating agents, surfacing the same bounded presets the operator
+  enforces server-side. New `kubernetes_api_access` helper isolates the access-spec construction and is covered by unit
+  tests; the `agent create` flow and build helpers are updated together, and the README documents the new flags.
+
+### Agent identity
+
+- **zora**: Self-tidy 2026-05-16 syncs the agent-card numerical surface against CLAUDE.md after the 2026-05-15 cadence
+  relax (heartbeat 15→30 min; evan bug 1.5h→3h, risk 4h→8h; nova every 4h→8h; kira every 3h→6h, research ≥1d→≥2d; finn
+  every 3h→6h). Follow-up commit wraps the new heartbeat bullet to satisfy the 120-char Prettier prose-wrap.
+
 ## [0.25.1] — 2026-05-16
 
 Recovery patch release re-publishing v0.25.0's artifacts. The v0.25.0 tag fired against a commit whose `CHANGELOG.md`
