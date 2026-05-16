@@ -7,6 +7,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/witwave-ai/witwave/clients/ww/internal/agent"
@@ -46,6 +47,79 @@ func TestChooseAuthMode(t *testing.T) {
 			if got != tc.want {
 				t.Errorf("chooseAuthMode(secret=%q, fromGH=%v, env=%q) = %v, want %v",
 					tc.secret, tc.fromGH, tc.envVar, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseBackendTagFlags covers the `--backend-tag <name>=<tag>`
+// repeatable-flag parser that runs at `ww agent upgrade` validation
+// time, before any cluster call. Mirrors the table-driven shape used
+// by TestChooseAuthMode / TestAssertOneAuthMode above. Pins every
+// distinct error branch (empty, no-equals, empty-name, empty-tag,
+// duplicate) so a future refactor can't quietly downgrade an
+// operator-visible flag error into a silent map insert.
+func TestParseBackendTagFlags(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       []string
+		want      map[string]string
+		wantErr   bool
+		errSubstr string
+	}{
+		{"empty input returns empty map", nil, map[string]string{}, false, ""},
+		{"single happy path", []string{"claude=v1.2.3"}, map[string]string{"claude": "v1.2.3"}, false, ""},
+		{
+			"multiple distinct backends",
+			[]string{"claude=v1.2.3", "gemini=v0.5.0"},
+			map[string]string{"claude": "v1.2.3", "gemini": "v0.5.0"},
+			false, "",
+		},
+		{
+			"surrounding whitespace trimmed on name and tag",
+			[]string{"  claude  =  v1.2.3  "},
+			map[string]string{"claude": "v1.2.3"},
+			false, "",
+		},
+		{"empty entry rejected", []string{""}, nil, true, "empty value"},
+		{"whitespace-only entry rejected as empty", []string{"   "}, nil, true, "empty value"},
+		{"no equals separator rejected", []string{"claude"}, nil, true, "form is <backend-name>=<tag>"},
+		{"leading equals (empty name) rejected by separator rule", []string{"=v1.2.3"}, nil, true, "form is <backend-name>=<tag>"},
+		// Note: a leading-whitespace name like " =v" is normalised to "=v"
+		// by the outer TrimSpace and falls under the eq<1 branch, so the
+		// `name == ""` half of the post-trim guard is only reachable in
+		// theory — the empty-tag half below is the live branch.
+		{"empty tag rejected", []string{"claude="}, nil, true, "both name and tag required"},
+		{"whitespace-only tag rejected", []string{"claude=   "}, nil, true, "both name and tag required"},
+		{
+			"duplicate backend name rejected on second occurrence",
+			[]string{"claude=v1.2.3", "claude=v4.5.6"},
+			nil, true, "already given",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseBackendTagFlags(tc.raw)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseBackendTagFlags(%v): want error, got nil (result=%v)", tc.raw, got)
+				}
+				if tc.errSubstr != "" && !strings.Contains(err.Error(), tc.errSubstr) {
+					t.Errorf("parseBackendTagFlags(%v): error %q missing substring %q", tc.raw, err.Error(), tc.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseBackendTagFlags(%v): unexpected error %v", tc.raw, err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("parseBackendTagFlags(%v): len=%d, want %d (got=%v want=%v)", tc.raw, len(got), len(tc.want), got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Errorf("parseBackendTagFlags(%v)[%q] = %q, want %q", tc.raw, k, got[k], v)
+				}
 			}
 		})
 	}
