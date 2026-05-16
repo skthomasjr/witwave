@@ -49,7 +49,8 @@ Hard caps: ≤3 team-tidy commits/day, ≤50 lines changed per commit.
 ## Posture (v1 conservative)
 
 - **Concurrency up to 2** per tick when scopes don't entangle; hard cap 8 dispatches/hour across the team.
-- **Heartbeat 30 min.** Tightened 2026-05-07 to 15 min, relaxed back to 30 min 2026-05-15 (release-latency ≤30 min is acceptable for autonomous-platform-maintenance workload; halves ambient token cost).
+- **Heartbeat 30 min.** Tightened 2026-05-07 to 15 min, relaxed back to 30 min 2026-05-15 (release-latency ≤30 min is
+  acceptable for autonomous-platform-maintenance workload; halves ambient token cost).
 - **Release: velocity-driven.** Weighted-commit threshold (3.0) since latest tag fires the cut; critical-security
   bypasses. Hygiene floor only: ≥15 min between releases. Hard cap 20 releases/day (runaway guard, not cadence).
 - **Quality bar: Medium.** No release while critical findings sit unfixed in any peer's deferred-findings.
