@@ -35,9 +35,16 @@ rules:
   resources:
   - pods
   verbs:
+  - delete
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/eviction
+  verbs:
+  - create
 - apiGroups:
   - ""
   resources:
@@ -84,8 +91,12 @@ rules:
   - cronjobs
   - jobs
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - events.k8s.io

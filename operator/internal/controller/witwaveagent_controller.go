@@ -118,6 +118,8 @@ type WitwaveAgentReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events;pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=delete
+// +kubebuilder:rbac:groups=core,resources=pods/eviction,verbs=create
 // +kubebuilder:rbac:groups=core,resources=pods/log,verbs=get
 // Secret verbs (#749, #761, #1613): split into read-only and write
 // markers so the canonical config/rbac/role.yaml mirrors the chart's
@@ -136,6 +138,7 @@ type WitwaveAgentReconciler struct {
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=get;list;watch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete

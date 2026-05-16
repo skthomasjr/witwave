@@ -115,6 +115,38 @@ var _ = Describe("WitwaveAgent Kubernetes API access", func() {
 		Expect(dep.Spec.Template.Spec.AutomountServiceAccountToken).ToNot(BeNil())
 		Expect(*dep.Spec.Template.Spec.AutomountServiceAccountToken).To(BeFalse())
 	})
+
+	It("creates bounded namespace-write identity without secrets or RBAC mutation", func() {
+		name := fmt.Sprintf("k8s-access-write-%s", rand5())
+		key := types.NamespacedName{Name: name, Namespace: "default"}
+		r := newReconciler()
+		agent := newTestAgent(name)
+		agent.Spec.KubernetesApiAccess = &witwavev1alpha1.KubernetesApiAccessSpec{
+			Enabled: true,
+			Mode:    witwavev1alpha1.KubernetesApiAccessModeNamespaceWrite,
+		}
+		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+		defer cleanupKubernetesApiAccessTestAgent(key)
+
+		Expect(reconcileUntilStable(r, key, 5)).To(Succeed())
+
+		role := &rbacv1.Role{}
+		Expect(k8sClient.Get(ctx, key, role)).To(Succeed())
+		Expect(policyRulesContainResourceVerb(role.Rules, "pods", "delete")).To(BeTrue())
+		Expect(policyRulesContainResourceVerb(role.Rules, "pods/eviction", "create")).To(BeTrue())
+		Expect(policyRulesContainResourceVerb(role.Rules, "deployments", "patch")).To(BeTrue())
+		Expect(policyRulesContainResourceVerb(role.Rules, "jobs", "create")).To(BeTrue())
+		Expect(policyRulesContainResourceVerb(role.Rules, "configmaps", "update")).To(BeTrue())
+		Expect(policyRulesContainResourceVerb(role.Rules, "services", "delete")).To(BeTrue())
+
+		Expect(policyRulesContainResource(role.Rules, "secrets")).To(BeFalse())
+		Expect(policyRulesContainResource(role.Rules, "nodes")).To(BeFalse())
+		Expect(policyRulesContainResource(role.Rules, "namespaces")).To(BeFalse())
+		Expect(policyRulesContainResourceVerb(role.Rules, "pods", "create")).To(BeFalse())
+		Expect(policyRulesContainResourceVerb(role.Rules, "pods", "patch")).To(BeFalse())
+		Expect(policyRulesContainResourceVerb(role.Rules, "roles", "patch")).To(BeFalse())
+		Expect(policyRulesContainResourceVerb(role.Rules, "rolebindings", "delete")).To(BeFalse())
+	})
 })
 
 func cleanupKubernetesApiAccessTestAgent(key types.NamespacedName) {
@@ -139,6 +171,27 @@ func policyRulesContainResource(rules []rbacv1.PolicyRule, resource string) bool
 
 func policyRulesContainVerb(rules []rbacv1.PolicyRule, verb string) bool {
 	for _, rule := range rules {
+		for _, got := range rule.Verbs {
+			if got == verb {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func policyRulesContainResourceVerb(rules []rbacv1.PolicyRule, resource, verb string) bool {
+	for _, rule := range rules {
+		hasResource := false
+		for _, got := range rule.Resources {
+			if got == resource {
+				hasResource = true
+				break
+			}
+		}
+		if !hasResource {
+			continue
+		}
 		for _, got := range rule.Verbs {
 			if got == verb {
 				return true

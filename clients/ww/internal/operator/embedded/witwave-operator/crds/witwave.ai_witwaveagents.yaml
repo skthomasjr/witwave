@@ -2175,11 +2175,12 @@ spec:
                   mode:
                     default: readOnly
                     description: |-
-                      Mode selects the RBAC preset. Defaults to readOnly. The first operator
-                      implementation intentionally supports only readOnly so mutation access
-                      cannot be granted accidentally.
+                      Mode selects the RBAC preset. Defaults to readOnly. namespaceWrite grants
+                      a bounded namespace-local remediation surface while still excluding
+                      secrets, RBAC mutation, raw pod creation, and cluster-scoped resources.
                     enum:
                     - readOnly
+                    - namespaceWrite
                     type: string
                   name:
                     description: |-

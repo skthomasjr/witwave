@@ -68,14 +68,14 @@ func buildKubernetesApiAccessServiceAccount(agent *witwavev1alpha1.WitwaveAgent)
 	}
 }
 
-func buildKubernetesApiAccessRole(agent *witwavev1alpha1.WitwaveAgent) *rbacv1.Role {
+func buildKubernetesApiAccessRole(agent *witwavev1alpha1.WitwaveAgent, rules []rbacv1.PolicyRule) *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kubernetesApiAccessName(agent),
 			Namespace: agent.Namespace,
 			Labels:    kubernetesApiAccessLabels(agent),
 		},
-		Rules: kubernetesApiAccessReadOnlyRules(),
+		Rules: rules,
 	}
 }
 
@@ -173,20 +173,76 @@ func kubernetesApiAccessReadOnlyRules() []rbacv1.PolicyRule {
 	}
 }
 
+func kubernetesApiAccessNamespaceWriteRules() []rbacv1.PolicyRule {
+	return append(kubernetesApiAccessReadOnlyRules(),
+		rbacv1.PolicyRule{
+			APIGroups: []string{""},
+			Resources: []string{
+				"configmaps",
+				"services",
+			},
+			Verbs: []string{"create", "update", "patch", "delete"},
+		},
+		rbacv1.PolicyRule{
+			APIGroups: []string{""},
+			Resources: []string{
+				"pods",
+			},
+			// Allow restart-style remediation without allowing raw pod creation
+			// or privileged spec mutation.
+			Verbs: []string{"delete"},
+		},
+		rbacv1.PolicyRule{
+			APIGroups: []string{""},
+			Resources: []string{
+				"pods/eviction",
+			},
+			Verbs: []string{"create"},
+		},
+		rbacv1.PolicyRule{
+			APIGroups: []string{"apps"},
+			Resources: []string{
+				"deployments",
+			},
+			Verbs: []string{"create", "update", "patch", "delete"},
+		},
+		rbacv1.PolicyRule{
+			APIGroups: []string{"batch"},
+			Resources: []string{
+				"cronjobs",
+				"jobs",
+			},
+			Verbs: []string{"create", "update", "patch", "delete"},
+		},
+	)
+}
+
+func kubernetesApiAccessRulesForMode(mode witwavev1alpha1.KubernetesApiAccessMode) ([]rbacv1.PolicyRule, error) {
+	switch mode {
+	case witwavev1alpha1.KubernetesApiAccessModeReadOnly:
+		return kubernetesApiAccessReadOnlyRules(), nil
+	case witwavev1alpha1.KubernetesApiAccessModeNamespaceWrite:
+		return kubernetesApiAccessNamespaceWriteRules(), nil
+	default:
+		return nil, fmt.Errorf("unsupported kubernetesApiAccess.mode %q", mode)
+	}
+}
+
 func (r *WitwaveAgentReconciler) reconcileKubernetesApiAccess(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) error {
 	if !kubernetesApiAccessEnabled(agent) {
 		return r.deleteKubernetesApiAccess(ctx, agent)
 	}
 
-	if mode := kubernetesApiAccessMode(agent); mode != witwavev1alpha1.KubernetesApiAccessModeReadOnly {
-		return fmt.Errorf("unsupported kubernetesApiAccess.mode %q", mode)
+	rules, err := kubernetesApiAccessRulesForMode(kubernetesApiAccessMode(agent))
+	if err != nil {
+		return err
 	}
 
 	name := kubernetesApiAccessName(agent)
 	if err := r.applyKubernetesApiAccessServiceAccount(ctx, agent, buildKubernetesApiAccessServiceAccount(agent)); err != nil {
 		return err
 	}
-	if err := r.applyKubernetesApiAccessRole(ctx, agent, buildKubernetesApiAccessRole(agent)); err != nil {
+	if err := r.applyKubernetesApiAccessRole(ctx, agent, buildKubernetesApiAccessRole(agent, rules)); err != nil {
 		return err
 	}
 	if err := r.applyKubernetesApiAccessRoleBinding(ctx, agent, buildKubernetesApiAccessRoleBinding(agent)); err != nil {

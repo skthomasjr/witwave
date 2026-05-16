@@ -592,6 +592,12 @@ const (
 	// surface: get/list/watch on common workload and Witwave resources, plus
 	// get on pod logs. It deliberately grants no create/update/patch/delete.
 	KubernetesApiAccessModeReadOnly KubernetesApiAccessMode = "readOnly"
+
+	// KubernetesApiAccessModeNamespaceWrite renders a namespace-scoped
+	// operational surface for remediation. It can mutate selected namespaced
+	// workload/config resources and evict/delete pods, but still excludes
+	// secrets, RBAC mutation, raw pod creation, and cluster-scoped resources.
+	KubernetesApiAccessModeNamespaceWrite KubernetesApiAccessMode = "namespaceWrite"
 )
 
 // KubernetesApiAccessSpec configures an operator-managed Kubernetes API
@@ -613,10 +619,10 @@ type KubernetesApiAccessSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Mode selects the RBAC preset. Defaults to readOnly. The first operator
-	// implementation intentionally supports only readOnly so mutation access
-	// cannot be granted accidentally.
-	// +kubebuilder:validation:Enum=readOnly
+	// Mode selects the RBAC preset. Defaults to readOnly. namespaceWrite grants
+	// a bounded namespace-local remediation surface while still excluding
+	// secrets, RBAC mutation, raw pod creation, and cluster-scoped resources.
+	// +kubebuilder:validation:Enum=readOnly;namespaceWrite
 	// +kubebuilder:default=readOnly
 	// +optional
 	Mode KubernetesApiAccessMode `json:"mode,omitempty"`

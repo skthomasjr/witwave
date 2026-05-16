@@ -84,11 +84,17 @@ rules:
   # namespace-scoped ServiceAccount + Role + RoleBinding for agents that
   # need in-cluster kubectl/client-go diagnostics. Kubernetes RBAC forbids
   # the operator from creating a Role that grants permissions the operator
-  # does not already hold, so these read-only rules mirror the agent
-  # diagnostic preset rendered by spec.kubernetesApiAccess.
+  # does not already hold, so these rules mirror the agent access presets
+  # rendered by spec.kubernetesApiAccess.
   - apiGroups: [""]
     resources: ["events", "pods"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
@@ -98,6 +104,9 @@ rules:
   - apiGroups: ["batch"]
     resources: ["cronjobs", "jobs"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["create", "update", "patch", "delete"]
   - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
