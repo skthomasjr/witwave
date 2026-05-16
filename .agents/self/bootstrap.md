@@ -426,8 +426,14 @@ her voice + scoring before publishing live.
 
 Mira is the team's platform reliability observer — read-only by default, focused on detecting platform bugs/anomalies in
 operator health, agent readiness, pod restarts, runtime storage, release posture, upgrade safety, and resource pressure.
-When something looks problematic, she sends a distilled finding to zora to route the fix. Same deployment shape as the
-other self agents; run it deliberately so her first rollout can be observed before relying on her heartbeat.
+Her hourly heartbeat runs `platform-health`, records a compact Kubernetes/platform snapshot, and begins historical
+analysis once at least three snapshots exist or history spans 24 hours. When something looks problematic, she sends a
+distilled finding to zora to route the fix. Systemic, repeated, or fix-needed issues should always become a zora
+handoff, not just a private memory entry. Same deployment shape as the other self agents; run it deliberately so her
+first rollout can be observed before relying on her heartbeat.
+
+The first snapshot priority is pod/container restart tracking. Mira should capture restart counts each tick, compare
+deltas over time, and inspect Kubernetes events plus previous/current container logs when a restart occurs.
 
 ```bash
 mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/mira/agent.sops.env -- \
@@ -448,8 +454,9 @@ mise exec -- scripts/sops-exec-env.py .agents/self/team.sops.env .agents/self/mi
 ```
 
 After Mira is deployed, run her `platform-health` skill once manually before relying on the hourly heartbeat. The first
-run should report whether the deployed container actually has the read-only tools it needs (`ww`, `kubectl`, `gh`) and
-whether she can send a distilled anomaly report to zora when needed.
+run should report whether the deployed container actually has the read-only tools it needs (`ww`, `kubectl`, `gh`),
+create the platform-health snapshot directory under memory, and confirm whether she can send a distilled anomaly report
+to zora when needed. Historical anomaly detection will become useful after several heartbeat snapshots accumulate.
 
 ## Verify the team
 

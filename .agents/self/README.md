@@ -145,8 +145,12 @@ deletion stays off the autonomous menu by design. (`.agents/self/piper/`)
 The team's next operational peer. Mira watches the substrate that lets the rest of the team keep working: operator
 health, self-agent readiness, pod restarts, runtime storage, PVCs, release workflows, `ww update` availability,
 one-agent-at-a-time rollout safety, and resource/anomaly signals. Her default posture is read-only: inspect, summarize,
-record health findings to memory, and send problematic findings to Zora as distilled anomaly reports. Zora then decides
-who should fix the issue.
+record compact platform snapshots to memory, compare them historically once enough data exists, and send problematic
+findings to Zora as distilled anomaly reports. Any systemic, repeated, or fix-needed issue is reported to Zora rather
+than left only in Mira's private history. Zora then decides who should fix the issue.
+
+Mira's first observation priority is pod/container restart behavior: capture restart counts every tick, compare deltas
+over time, and triage likely causes from Kubernetes status, events, termination state, and previous/current logs.
 
 Mira intentionally consolidates the earlier "devops" and "agent-resources" ideas into one clearer first role: **platform
 reliability observation**. Build/release infrastructure and agent runtime lifecycle are tightly coupled in practice; the
