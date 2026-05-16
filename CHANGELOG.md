@@ -6,6 +6,26 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-05-16
+
+Minor release adding `kubectl` to the backend toolchains so agents can manage Kubernetes resources directly from their
+toolbox containers — unblocking platform-reliability work that needs first-class cluster CLI access — alongside the new
+`mira` platform-reliability agent scaffold and a Zora cadence trim halving the team's recurring peer-skill compute.
+
+### Added
+
+- **images (toolbox, backends)**: Bundle `kubectl` into the shared `toolbox` image and the claude/codex/gemini/echo
+  backend Dockerfiles so agents have first-class Kubernetes CLI access from their toolbox containers without per-agent
+  installation.
+- **agents**: Add the `mira` platform-reliability agent scaffold.
+
+### Agent identity
+
+- **mira**: Prioritize restart-snapshot guidance in mira's memory layout so platform-reliability state survives pod
+  restarts cleanly.
+- **zora**: Double peer cadence floors to halve the team's recurring peer-skill compute (worst-case dispatch / outreach
+  latency rises in exchange for fewer ticks/day).
+
 ## [0.23.23] — 2026-05-16
 
 Recovery release republishing v0.23.22's `ww agent storage enable` shipment after the v0.23.22 tag's `CI — Docs` gate
