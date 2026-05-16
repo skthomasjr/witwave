@@ -6,6 +6,21 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.24.3] — 2026-05-16
+
+Patch release fixing the operator's RBAC posture so `spec.kubernetesApiAccess` provisioning works end-to-end. v0.24.2
+shipped the `WitwaveAgent` field and the per-agent ServiceAccount/Role/RoleBinding plumbing, but the operator's own
+ClusterRole/Role lacked the read-only diagnostic permissions it needs to delegate to namespace agents — so
+`mode: readOnly` reconciles failed against live clusters with an RBAC escalation error. This release grants the operator
+the matching read-only permissions plus the bind verb it needs to attach the per-agent Role, unblocking retesting on
+Mira.
+
+### Fixed
+
+- **operator**: Grant the operator ClusterRole/Role the read-only diagnostic permissions it delegates to per-agent
+  Roles, plus the `bind` verb required to attach those Roles. Resolves the RBAC escalation failure that prevented
+  `spec.kubernetesApiAccess.mode: readOnly` from reconciling on v0.24.2.
+
 ## [0.24.2] — 2026-05-16
 
 Patch release adding opt-in namespace-scoped Kubernetes API access to the operator — `spec.kubernetesApiAccess.enabled`
