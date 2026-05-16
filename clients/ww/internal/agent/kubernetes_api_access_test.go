@@ -148,6 +148,46 @@ func TestApplyKubernetesApiAccessInPlace_IsIdempotent(t *testing.T) {
 	}
 }
 
+func TestKubernetesApiAccessPlanValue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "namespaceWrite renders the namespace-write banner",
+			in:   KubernetesApiAccessModeNamespaceWrite,
+			want: "namespaceWrite (bounded namespace-local remediation; no secrets/RBAC/cluster resources)",
+		},
+		{
+			name: "readOnly renders the read-only banner",
+			in:   KubernetesApiAccessModeReadOnly,
+			want: "readOnly (get/list/watch + pod logs; no mutating verbs)",
+		},
+		{
+			name: "empty input falls through to the read-only banner",
+			in:   "",
+			want: "readOnly (get/list/watch + pod logs; no mutating verbs)",
+		},
+		{
+			name: "unknown input falls through to the read-only banner",
+			in:   "cluster-admin",
+			want: "readOnly (get/list/watch + pod logs; no mutating verbs)",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := kubernetesApiAccessPlanValue(tc.in)
+			if got != tc.want {
+				t.Fatalf("kubernetesApiAccessPlanValue(%q) = %q; want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRemoveKubernetesApiAccessInPlace(t *testing.T) {
 	cr := seedAgent("mira", "witwave-self", func(spec map[string]interface{}) {
 		spec["kubernetesApiAccess"] = map[string]interface{}{
