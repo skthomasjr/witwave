@@ -6,6 +6,23 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-05-16
+
+Minor release extending the operator's `spec.kubernetesApiAccess` provisioning with a second bounded preset:
+`mode: namespaceWrite`. Building on v0.24.2's `readOnly` mode and v0.24.3's RBAC fix, this preset lets per-agent
+ServiceAccounts mutate workload resources within their own namespace (deployments, statefulsets, configmaps, pods, jobs,
+services, ingresses, etc.) while keeping the hard guardrails in place — secrets remain unreadable and unwritable, RBAC
+resources cannot be mutated, raw pod creation is blocked (pods are still mutable via owner controllers), and all
+cluster-scoped resources stay out of reach. Unblocks namespace-scoped reconciliation work on Mira.
+
+### Added
+
+- **operator**: `spec.kubernetesApiAccess.mode: namespaceWrite` grants the per-agent Role mutating verbs
+  (`create/update/patch/delete`) on common namespace workload resources alongside the existing `readOnly` read verbs.
+  Secrets, RBAC mutation, raw pod creation, and cluster-scoped resources are explicitly withheld. CRD schema, both
+  Helm chart copies (operator + embedded), reconciler logic, RBAC templates, and tests are updated together; docs
+  describe the new preset and its boundary.
+
 ## [0.24.3] — 2026-05-16
 
 Patch release fixing the operator's RBAC posture so `spec.kubernetesApiAccess` provisioning works end-to-end. v0.24.2
