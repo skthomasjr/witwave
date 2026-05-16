@@ -6,6 +6,22 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.24.2] — 2026-05-16
+
+Patch release adding opt-in namespace-scoped Kubernetes API access to the operator — `spec.kubernetesApiAccess.enabled`
+on `WitwaveAgent` provisions a per-agent ServiceAccount, Role, and RoleBinding so the agent pod can run in-cluster
+`kubectl` / client-go calls against its own namespace. The first supported preset is `mode: readOnly`; secrets, nodes,
+persistent volumes, namespaces, and mutating verbs are all withheld. When the field is omitted or disabled the pod
+continues to mount the namespace `default` ServiceAccount with `automountServiceAccountToken: false`, preserving the
+no-token posture.
+
+### Added
+
+- **operator**: `spec.kubernetesApiAccess.enabled` on `WitwaveAgent` provisions a namespace-scoped
+  ServiceAccount/Role/RoleBinding and wires the agent pod to it. First supported preset `mode: readOnly` grants
+  `get/list/watch` on common namespace workload resources and Witwave CRs plus `get` on `pods/log`; secrets, nodes,
+  persistent volumes, namespaces, and mutating verbs are withheld.
+
 ## [0.24.1] — 2026-05-16
 
 Patch release fixing the `ww` CLI's `/heartbeat` parser to accept the harness's flat-object response shape (the sibling
