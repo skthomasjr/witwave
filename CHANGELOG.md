@@ -6,6 +6,17 @@ user-visible behaviour changes; they are called out explicitly in the **Changed*
 
 ## [Unreleased]
 
+## [0.23.22] — 2026-05-16
+
+Patch release adding a `ww agent storage enable` CLI command that turns on runtime storage for an existing
+WitwaveAgent — replacing the manual `kubectl patch` path that previously sat between agent creation and persistent
+workspace + memory across pod restarts.
+
+### Added
+
+- **ww**: `ww agent storage enable <agent>` enables runtime storage on an existing agent, wiring the same fields
+  surfaced at `ww agent create` time so storage can be turned on after the fact without hand-crafting the CR patch.
+
 ## [0.23.21] — 2026-05-16
 
 Patch release introducing persistent agent runtime state — the operator and `witwave` chart now provision a PVC per
